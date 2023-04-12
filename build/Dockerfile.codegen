@@ -1,0 +1,10 @@
+FROM golang:1.18.10-alpine3.17
+
+RUN apk update && \
+    apk add --no-cache  \
+      build-base \
+      git \
+      make
+
+RUN go install github.com/kyleconroy/sqlc/cmd/sqlc@v1.13.0
+ENTRYPOINT make code_gen

@@ -1,0 +1,26 @@
+FROM golang:1.18.10-alpine3.17
+
+ARG POSTGRES_PACKAGE
+
+RUN apk update && \
+    apk add --no-cache  \
+      build-base \
+      make \
+      $POSTGRES_PACKAGE \
+      postgresql-contrib \
+      postgresql-client
+
+WORKDIR /pg-schema-diff
+
+COPY . .
+
+# Download dependencies so they are cached in a layer
+RUN go mod download
+
+# Run all tests from non-root. This will also prevent Postgres from complaining when
+# we try to launch it within tests
+RUN adduser --disabled-password --gecos '' testrunner
+USER testrunner
+
+# Run tests serially so logs can be streamed. Set overall timeout to 30m (the default is 10m, which is not enough)
+ENTRYPOINT ["go", "test", "-v", "-race", "-p", "1", "./...", "-timeout", "30m"]

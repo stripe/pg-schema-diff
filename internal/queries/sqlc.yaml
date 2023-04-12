@@ -1,0 +1,10 @@
+version: 1
+packages:
+  - path: "."
+    name: "queries"
+    engine: "postgresql"
+    queries: "queries.sql"
+    schema: "system_tables.sql"
+    output_db_file_name: "dml.sql.go"
+    output_models_file_name: "models.sql.go"
+    output_querier_file_name: "querier.sql.go"

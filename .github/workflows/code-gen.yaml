@@ -1,0 +1,23 @@
+name: code_gen
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  code_gen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build Docker image
+        run: docker build -t pg-schema-diff-code-gen-runner -f ./build/Dockerfile.codegen .
+      - name: Run codegen
+        run: docker run -v $(pwd):/pg-schema-diff -w /pg-schema-diff  pg-schema-diff-code-gen-runner
+      - name: Check for changes
+        run: |
+          chmod +x ./build/ci-scripts/assert-no-diff.sh
+          ./build/ci-scripts/assert-no-diff.sh
+        shell: bash
+
