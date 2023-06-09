@@ -6,5 +6,5 @@ RUN apk update && \
       git \
       make
 
-RUN go install github.com/kyleconroy/sqlc/cmd/sqlc@v1.13.0
+RUN go install -tags=nowasm github.com/kyleconroy/sqlc/cmd/sqlc@v1.18.0
 ENTRYPOINT make code_gen
