@@ -116,7 +116,10 @@ func (suite *simpleMigratorTestSuite) TestCannotPackNewTablesWithoutIgnoringChan
 	defer poolCloser.Close()
 	defer conn.Close()
 
-	_, err := diff.GeneratePlan(context.Background(), conn, tempDbFactory, []string{``}, diff.WithDataPackNewTables())
+	_, err := diff.GeneratePlan(context.Background(), conn, tempDbFactory, []string{``},
+		diff.WithDataPackNewTables(),
+		diff.WithRespectColumnOrder(),
+	)
 	suite.ErrorContains(err, "cannot data pack new tables without also ignoring changes to column order")
 }
 

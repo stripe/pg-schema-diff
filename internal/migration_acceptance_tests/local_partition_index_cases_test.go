@@ -320,9 +320,6 @@ var localPartitionIndexAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeIndexDropped,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrColumnOrderingChanged,
-		},
 	},
 	{
 		name: "Switch primary key",
