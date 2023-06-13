@@ -34,30 +34,42 @@ func WithDataPackNewTables() PlanOpt {
 	}
 }
 
-// WithIgnoreChangesToColOrder configures the plan generation to ignore any changes to the ordering of columns in
-// existing tables. You will most likely want this enabled
-func WithIgnoreChangesToColOrder() PlanOpt {
+// WithRespectColumnOrder configures the plan generation to respect any changes to the ordering of columns in
+// existing tables. You will most likely want this disabled, since column ordering changes are common
+func WithRespectColumnOrder() PlanOpt {
 	return func(opts *planOptions) {
-		opts.ignoreChangesToColOrder = true
+		opts.ignoreChangesToColOrder = false
 	}
 }
 
+// WithDoNotValidatePlan disables plan validation, where the migration plan is tested against a temporary database
+// instance
 func WithDoNotValidatePlan() PlanOpt {
 	return func(opts *planOptions) {
 		opts.validatePlan = false
 	}
 }
 
+// WithLogger configures plan generation to use the provided logger instead of the default
 func WithLogger(logger log.Logger) PlanOpt {
 	return func(opts *planOptions) {
 		opts.logger = logger
 	}
 }
 
+// GeneratePlan generates a migration plan to migrate the database to the target schema.
+//
+// Parameters:
+// conn: 			connection to the target database you wish to migrate.
+// tempDbFactory:  	used to create a temporary database instance to extract the schema from the new DDL and validate the
+// migration plan. It is recommended to use tempdb.NewOnInstanceFactory, or you can provide your own.
+// newDDL:  		DDL encoding the new schema
+// opts:  			Additional options to configure the plan generation
 func GeneratePlan(ctx context.Context, conn *sql.Conn, tempDbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
 	planOptions := &planOptions{
-		validatePlan: true,
-		logger:       log.SimpleLogger(),
+		validatePlan:            true,
+		ignoreChangesToColOrder: true,
+		logger:                  log.SimpleLogger(),
 	}
 	for _, opt := range opts {
 		opt(planOptions)

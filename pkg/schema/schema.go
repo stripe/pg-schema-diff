@@ -9,7 +9,7 @@ import (
 )
 
 // GetPublicSchemaHash hash gets the hash of the "public" schema. It can be used to compare against the hash in the migration
-// plan to determine if it's still valid
+// plan to determine if the plan is still valid
 // We do not expose the Schema struct yet because it is subject to change, and we do not want folks depending on its API
 func GetPublicSchemaHash(ctx context.Context, conn *sql.Conn) (string, error) {
 	schema, err := internalschema.GetPublicSchema(ctx, conn)
