@@ -77,7 +77,7 @@ pg-schema-diff apply --dsn "postgres://postgres:postgres@localhost:5432/postgres
 ```
 
 # Using Library
-Docs to use the library can be found [here](https://pkg.go.dev/github.com/stripe/pg-schema-diff). Check out the CLI
+Docs to use the library can be found [here](https://pkg.go.dev/github.com/stripe/pg-schema-diff). Check out [the CLI](https://github.com/stripe/pg-schema-diff/tree/main/cmd/pg-schema-diff)
 for an example implementation with the library
 
 ## 1. Generating plan
