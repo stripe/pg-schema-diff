@@ -141,7 +141,6 @@ func runPlan(ctx context.Context, connConfig *pgx.ConnConfig, plan diff.Plan, lo
 			return fmt.Errorf("setting statement timeout: %w", err)
 		}
 		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
-			// could the migration statement contain sensitive information?
 			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt, err)
 		}
 		fmt.Printf("Finished executing statement. Duration: %s\n", time.Since(start))

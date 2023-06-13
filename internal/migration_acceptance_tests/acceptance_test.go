@@ -42,7 +42,7 @@ type (
 
 		// vanillaExpectations refers to the expectations of the migration if no additional opts are used
 		vanillaExpectations expectations
-		// dataPackingExpectations refers to the expectations of the migration if table packing and ignore column order are used
+		// dataPackingExpectations refers to the expectations of the migration if table packing is used
 		dataPackingExpectations expectations
 	}
 
@@ -72,7 +72,6 @@ func (suite *acceptanceTestSuite) runTestCases(acceptanceTestCases []acceptanceT
 			suite.Run("with data packing (and ignoring column order)", func() {
 				suite.runSubtest(tc, tc.dataPackingExpectations, []diff.PlanOpt{
 					diff.WithDataPackNewTables(),
-					diff.WithIgnoreChangesToColOrder(),
 					diff.WithLogger(log.SimpleLogger()),
 				})
 			})

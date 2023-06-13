@@ -229,7 +229,6 @@ func generatePlan(ctx context.Context, logger log.Logger, connConfig *pgx.ConnCo
 
 	plan, err := diff.GeneratePlan(ctx, conn, tempDbFactory, ddl,
 		diff.WithDataPackNewTables(),
-		diff.WithIgnoreChangesToColOrder(),
 	)
 	if err != nil {
 		return diff.Plan{}, fmt.Errorf("generating plan: %w", err)

@@ -41,15 +41,15 @@ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres"
 - Online index replacement
 
 # Install
-## Library
-```bash
-go get -u github.com/stripe/pg-schema-diff
-````
 ## CLI
 ```bash
 go install github.com/stripe/pg-schema-diff/cmd/pg-schema-diff
 ```
 
+## Library
+```bash
+go get -u github.com/stripe/pg-schema-diff
+````
 # Using CLI
 ## 1. Apply schema to fresh database
 Create a directory to hold your schema files. Then, generate sql files and place them into a schema dir.
@@ -60,7 +60,7 @@ echo "CREATE TABLE bar (id varchar(255), message TEXT NOT NULL);" > schema/bar.s
 ```
 
 Apply the schema to a fresh database. [The connection string spec can be found here](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
-Setting the `PGPASSWORD` env var will override any password set in the connection string and is recommended. 
+Setting the `PGPASSWORD` env var will override any password set in the connection string and is recommended.
 ```bash
 pg-schema-diff apply --dsn "postgres://postgres:postgres@localhost:5432/postgres" --schema-dir schema 
 ```
@@ -74,6 +74,48 @@ echo "CREATE INDEX message_idx ON bar(message)" >> schema/bar.sql
 Apply the schema. Any hazards in the generated plan must be approved
 ```bash
 pg-schema-diff apply --dsn "postgres://postgres:postgres@localhost:5432/postgres" --schema-dir schema --allow-hazards INDEX_BUILD
+```
+
+# Using Library
+Docs to use the library can be found [here](https://pkg.go.dev/github.com/stripe/pg-schema-diff). Check out [the CLI](https://github.com/stripe/pg-schema-diff/tree/main/cmd/pg-schema-diff)
+for an example implementation with the library
+
+## 1. Generating plan
+```go
+// The tempDbFactory is used in plan generation to extract the new schema and validate the plan
+tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*sql.DB, error) {
+	copiedConfig := connConfig.Copy()
+	copiedConfig.Database = dbName
+	return openDbWithPgxConfig(copiedConfig)
+})
+if err != nil {
+	panic("Generating the TempDbFactory failed")
+}
+defer tempDbFactory.Close()
+// Generate the migration plan
+plan, err := diff.GeneratePlan(ctx, conn, tempDbFactory, ddl,
+	diff.WithDataPackNewTables(),
+)
+if err != nil {
+	panic("Generating the plan failed")
+}	
+```
+
+## 2. Applying plan
+We leave plan application up to the user. For example, Users might want to take out a session-level advisory lock if they are 
+concerned about concurrent migrations on their database. They might also want a second user to approve the plan
+before applying it.
+
+Example apply:
+```go
+for _, stmt := range plan.Statements {
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
+		panic(fmt.Sprintf("setting statement timeout: %s", err))
+	}
+	if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
+		panic(fmt.Sprintf("executing migration statement. the database maybe be in a dirty state: %s: %s", stmt, err))
+	}
+}
 ```
 
 # Supported Postgres versions

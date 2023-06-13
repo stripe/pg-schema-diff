@@ -19,6 +19,7 @@ const (
 	MigrationHazardTypeIsUserGenerated             MigrationHazardType = "IS_USER_GENERATED"
 )
 
+// MigrationHazard represents a hazard that a statement poses to a database
 type MigrationHazard struct {
 	Type    MigrationHazardType
 	Message string
@@ -29,8 +30,12 @@ func (p MigrationHazard) String() string {
 }
 
 type Statement struct {
-	DDL     string
+	DDL string
+	// The statement_timeout to apply to this statement. If implementing your own plan executor, be sure to set
+	// the session-level statement_timeout to this value before executing the statement. A transaction-level statement_timeout
+	// will not work since building indexes concurrently cannot be done in a transaction
 	Timeout time.Duration
+	// The hazards this statement poses
 	Hazards []MigrationHazard
 }
 
@@ -38,11 +43,17 @@ func (s Statement) ToSQL() string {
 	return s.DDL + ";"
 }
 
+// Plan represents a set of statements to be executed in order to migrate a database from schema A to schema B
 type Plan struct {
-	Statements        []Statement
+	// Statements is the set of statements to be executed in order to migrate a database from schema A to schema B
+	Statements []Statement
+	// CurrentSchemaHash is the hash of the current schema, schema A. If you serialize this plans somewhere and
+	// plan on running them later, you should verify that the current schema hash matches the current schema hash.
+	// To get the current schema hash, you can use schema.GetPublicSchemaHash(ctx, conn)
 	CurrentSchemaHash string
 }
 
+// ApplyStatementTimeoutModifier applies the given timeout to all statements that match the given regex
 func (p Plan) ApplyStatementTimeoutModifier(regex *regexp.Regexp, timeout time.Duration) Plan {
 	var modifiedStmts []Statement
 	for _, stmt := range p.Statements {
@@ -55,6 +66,8 @@ func (p Plan) ApplyStatementTimeoutModifier(regex *regexp.Regexp, timeout time.D
 	return p
 }
 
+// InsertStatement inserts the given statement at the given index. If index is equal to the length of the statements,
+// it will append the statement to the end of the statement in the plan
 func (p Plan) InsertStatement(index int, statement Statement) (Plan, error) {
 	if index < 0 || index > len(p.Statements) {
 		return Plan{}, fmt.Errorf("index must be >= 0 and <= %d", len(p.Statements))

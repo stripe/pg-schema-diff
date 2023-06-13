@@ -118,7 +118,12 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrColumnOrderingChanged,
+			outputState: []string{`
+					CREATE TABLE foobar(
+						id INT PRIMARY KEY,
+						my_new_column VARCHAR(255) NOT NULL DEFAULT 'a'
+					)
+				`},
 		},
 		dataPackingExpectations: expectations{
 			outputState: []string{`

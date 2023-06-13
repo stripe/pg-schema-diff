@@ -29,6 +29,8 @@ const (
 )
 
 var (
+	// ErrColumnOrderingChanged is returned when the ordering of columns changes and column ordering is not ignored.
+	// It is recommended to ignore column ordering changes to column order
 	ErrColumnOrderingChanged = fmt.Errorf("column ordering changed: %w", ErrNotImplemented)
 
 	migrationHazardAddAlterFunctionCannotTrackDependencies = MigrationHazard{
