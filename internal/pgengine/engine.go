@@ -16,13 +16,6 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
-const (
-	port = 5432
-
-	maxConnAttemptsAtStartup      = 10
-	waitBetweenStartupConnAttempt = time.Second
-)
-
 type ConnectionOption string
 
 const (
@@ -58,6 +51,19 @@ type Engine struct {
 	sockPath string
 }
 
+const (
+	port = 5432
+
+	maxConnAttemptsAtStartup      = 10
+	waitBetweenStartupConnAttempt = time.Second
+)
+
+var (
+	defaultServerConfiguration = map[string]string{
+		"log_checkpoints": "false",
+	}
+)
+
 // StartEngine starts a postgres instance. This is useful for testing, where Postgres databases need to be spun up.
 // "postgres" must be on the system's PATH, and the binary must be located in a directory containing "initdb"
 func StartEngine() (*Engine, error) {
@@ -68,7 +74,7 @@ func StartEngine() (*Engine, error) {
 	return StartEngineUsingPgDir(path.Dir(postgresPath))
 }
 
-func StartEngineUsingPgDir(pgDir string) (*Engine, error) {
+func StartEngineUsingPgDir(pgDir string) (pgEngine *Engine, retErr error) {
 	currentUser, err := user.Current()
 	if err != nil {
 		return nil, err
@@ -88,7 +94,7 @@ func StartEngineUsingPgDir(pgDir string) (*Engine, error) {
 		return nil, err
 	}
 
-	process, err := startServer(path.Join(pgDir, "postgres"), dbPath, sockPath)
+	process, err := startServer(path.Join(pgDir, "postgres"), dbPath, sockPath, defaultServerConfiguration)
 	if err != nil {
 		// Cleanup temporary directories that were created
 		os.RemoveAll(dbPath)
@@ -96,16 +102,21 @@ func StartEngineUsingPgDir(pgDir string) (*Engine, error) {
 		return nil, err
 	}
 
-	pgEngine := &Engine{
+	pgEngine = &Engine{
 		dbPath:   dbPath,
 		sockPath: sockPath,
 		user:     currentUser,
 		process:  process,
 	}
+	defer func() {
+		if retErr != nil {
+			pgEngine.Close()
+		}
+	}()
 	if err := pgEngine.waitTillServingTraffic(maxConnAttemptsAtStartup, waitBetweenStartupConnAttempt); err != nil {
-		pgEngine.Close()
 		return nil, fmt.Errorf("waiting till server can serve traffic: %w", err)
 	}
+
 	return pgEngine, nil
 }
 
@@ -133,12 +144,17 @@ func initDB(currentUser *user.User, initDbPath, dbPath string) error {
 	return nil
 }
 
-func startServer(pgBinaryPath, dbPath, sockPath string) (*os.Process, error) {
-	cmd := exec.Command(pgBinaryPath, []string{
+func startServer(pgBinaryPath, dbPath, sockPath string, configuration map[string]string) (*os.Process, error) {
+	opts := []string{
 		"-D", dbPath,
 		"-k", sockPath,
 		"-p", strconv.Itoa(port),
-		"-h", ""}...)
+		"-h", "",
+	}
+	for k, v := range configuration {
+		opts = append(opts, "-c", fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd := exec.Command(pgBinaryPath, opts...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -163,8 +179,7 @@ func (e *Engine) waitTillServingTraffic(maxAttempts int, timeBetweenAttempts tim
 }
 
 func (e *Engine) testIfInstanceServingTraffic() error {
-	dsn := e.GetPostgresDatabaseConnOpts().ToDSN()
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("pgx", e.GetPostgresDatabaseDSN())
 	if err != nil {
 		return err
 	}
@@ -173,7 +188,6 @@ func (e *Engine) testIfInstanceServingTraffic() error {
 		db.Close()
 		return err
 	}
-	// Don't `defer` the call to DropDB(), since we want to return the error if any
 	return db.Close()
 }
 
