@@ -13,6 +13,13 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE TABLE fizz(
 			);
 
+			CREATE SEQUENCE foobar_sequence
+			    AS BIGINT
+				INCREMENT BY 2
+				MINVALUE 5 MAXVALUE 100
+				START WITH 10 CACHE 5 CYCLE
+				OWNED BY NONE;
+
 			CREATE FUNCTION add(a integer, b integer) RETURNS integer
 				LANGUAGE SQL
 				IMMUTABLE
@@ -33,9 +40,9 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE TABLE foobar(
 			    id INT,
+			    fizz SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL,
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST(foo);
 
@@ -67,6 +74,13 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE TABLE fizz(
 			);
 
+			CREATE SEQUENCE foobar_sequence
+			    AS BIGINT
+				INCREMENT BY 2
+				MINVALUE 5 MAXVALUE 100
+				START WITH 10 CACHE 5 CYCLE
+				OWNED BY NONE;
+
 			CREATE FUNCTION add(a integer, b integer) RETURNS integer
 				LANGUAGE SQL
 				IMMUTABLE
@@ -86,10 +100,10 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				RETURN add(a, b) + increment(a);
 
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
+			    fizz SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL,
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST(foo);
 
@@ -116,13 +130,26 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
 			`,
 		},
+		vanillaExpectations: expectations{
+			empty: true,
+		},
+		dataPackingExpectations: expectations{
+			empty: true,
+		},
 	},
 	{
-		name: "Drop table, Add Table, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers",
+		name: "Drop table, Add Table, Drop seq, Add Seq, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE fizz(
 			);
+
+			CREATE SEQUENCE foobar_sequence
+			    AS BIGINT
+				INCREMENT BY 2
+				MINVALUE 5 MAXVALUE 100
+				START WITH 10 CACHE 5 CYCLE
+				OWNED BY NONE;
 
 			CREATE FUNCTION add(a integer, b integer) RETURNS integer
 				LANGUAGE SQL
@@ -151,9 +178,9 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE TABLE foobar(
 			    id INT PRIMARY KEY,
+			    fizz SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL,
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL
+			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			);
 			CREATE INDEX foobar_normal_idx ON foobar USING hash (fizz);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar DESC);
@@ -182,6 +209,13 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE TABLE fizz(
 			);
 
+			CREATE SEQUENCE new_foobar_sequence
+			    AS SMALLINT
+				INCREMENT BY 4
+				MINVALUE 10 MAXVALUE 200
+				START WITH 20 CACHE 10 NO CYCLE
+				OWNED BY NONE;
+
 			CREATE FUNCTION "new add"(a integer, b integer) RETURNS integer
 				LANGUAGE SQL
 				IMMUTABLE
@@ -209,6 +243,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE TABLE "New_table"(
 			    id INT PRIMARY KEY,
+			    new_fizz SMALLSERIAL NOT NULL,
 				new_foo VARCHAR(255) DEFAULT '' NOT NULL CHECK ( new_foo IS NOT NULL),
 			    new_bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			    version INT NOT NULL DEFAULT 0
@@ -258,6 +293,13 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE TABLE fizz(
 			);
 
+			CREATE SEQUENCE new_foobar_sequence
+			    AS SMALLINT
+				INCREMENT BY 4
+				MINVALUE 10 MAXVALUE 200
+				START WITH 20 CACHE 10 NO CYCLE
+				OWNED BY NONE;
+
 			CREATE FUNCTION "new add"(a integer, b integer) RETURNS integer
 				LANGUAGE SQL
 				IMMUTABLE
@@ -287,6 +329,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				new_bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				id INT PRIMARY KEY,
 				version INT NOT NULL DEFAULT 0,
+				new_fizz SMALLSERIAL NOT NULL,
 				new_foo VARCHAR(255) DEFAULT '' NOT NULL CHECK (new_foo IS NOT NULL)
 			);
 			ALTER TABLE "New_table" ADD CONSTRAINT "new_bar_check" CHECK ( new_bar < CURRENT_TIMESTAMP - interval '1 month' ) NO INHERIT NOT VALID;
@@ -332,9 +375,9 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT,
+			    fizz SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL,
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST(foo);
 
@@ -367,9 +410,9 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			`
 			CREATE TABLE new_foobar(
 			    id INT,
+				fizz SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL
+			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of new_foobar(
@@ -407,7 +450,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				CREATE TABLE new_foobar(
 					bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 					id INT,
-					fizz BOOLEAN NOT NULL,
+					fizz SERIAL NOT NULL,
 					foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0)
 				) PARTITION BY LIST(foo);
 

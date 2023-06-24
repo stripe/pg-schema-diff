@@ -27,6 +27,7 @@ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres"
 - Indexes
 - Partitions
 - Functions/Triggers  (functions created by extensions are ignored)
+- Sequences
 
 *A comprehensive set of features to ensure the safety of planned migrations:*
 - Dangerous operations are flagged as hazards and must be approved before a migration can be applied.
@@ -130,7 +131,6 @@ Note, the library only currently supports diffing the *public* schema. Support f
 *Unsupported*:
 - (On roadmap) Foreign key constraints
 - (On roadmap) Diffing schemas other than "public"
-- (On roadmap) Serials and sequences
 - (On roadmap) Unique constraints (unique indexes are supported but not unique constraints)
 - (On roadmap) Adding and remove partitions from an existing partitioned table
 - (On roadmap) Check constraints localized to specific partitions

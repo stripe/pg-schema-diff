@@ -90,16 +90,25 @@ FROM pg_catalog.pg_proc proc
 WHERE proc_namespace.nspname = 'public'
   AND proc.prokind = 'f'
   -- Exclude functions belonging to extensions
-  AND NOT EXISTS(SELECT depend.objid FROM pg_catalog.pg_depend depend WHERE deptype = 'e' AND depend.objid = proc.oid);
+  AND NOT EXISTS(
+        SELECT depend.objid
+        FROM pg_catalog.pg_depend depend
+        WHERE depend.classid = 'pg_proc'::regclass
+          AND depend.objid = proc.oid
+          AND depend.deptype = 'e'
+    );
 
 -- name: GetDependsOnFunctions :many
 SELECT proc.proname::TEXT                                      as func_name,
        pg_catalog.pg_get_function_identity_arguments(proc.oid) as func_identity_arguments,
        proc_namespace.nspname::TEXT                            as func_schema_name
 FROM pg_catalog.pg_depend depend
-         JOIN pg_catalog.pg_proc proc ON depend.refobjid = proc.oid
+         JOIN pg_catalog.pg_proc proc
+              ON depend.refclassid = 'pg_proc'::regclass
+                  AND depend.refobjid = proc.oid
          JOIN pg_catalog.pg_namespace proc_namespace ON proc.pronamespace = proc_namespace.oid
-WHERE depend.objid = $1
+WHERE depend.classid = sqlc.arg(system_catalog)::regclass
+  AND depend.objid = sqlc.arg(object_id)
   AND depend.deptype = 'n';
 
 -- name: GetTriggers :many
@@ -120,3 +129,37 @@ WHERE proc_namespace.nspname = 'public'
   AND trig.tgparentid = 0
   AND NOT trig.tgisinternal;
 
+-- name: GetSequences :many
+SELECT seq_c.relname::TEXT                    as sequence_name,
+       seq_ns.nspname::TEXT                   as sequence_schema_name,
+       COALESCE(owner_attr.attname, '')::TEXT as owner_column_name,
+       COALESCE(owner_ns.nspname, '')::TEXt   as owner_schema_name,
+       COALESCE(owner_c.relname, '')::TEXT    as owner_table_name,
+       format_type(seq.seqtypid, NULL)        as type,
+       seq.seqstart                           as start_value,
+       seq.seqincrement                       as increment,
+       seq.seqmax                             as max_value,
+       seq.seqmin                             as min_value,
+       seq.seqcache                           as cache_size,
+       seq.seqcycle                           as cycle
+FROM pg_catalog.pg_sequence seq
+         JOIN pg_catalog.pg_class seq_c ON seq.seqrelid = seq_c.oid
+         JOIN pg_catalog.pg_namespace seq_ns ON seq_c.relnamespace = seq_ns.oid
+         LEFT JOIN pg_catalog.pg_depend depend
+                   ON depend.classid = 'pg_class'::regclass
+                       AND seq.seqrelid = depend.objid
+                       AND depend.refclassid = 'pg_class'::regclass
+                       AND depend.deptype = 'a'
+         LEFT JOIN pg_catalog.pg_attribute owner_attr
+                   ON depend.refobjid = owner_attr.attrelid AND depend.refobjsubid = owner_attr.attnum
+         LEFT JOIN pg_catalog.pg_class owner_c ON depend.refobjid = owner_c.oid
+         LEFT JOIN pg_catalog.pg_namespace owner_ns ON owner_c.relnamespace = owner_ns.oid
+WHERE seq_ns.nspname = 'public'
+  -- It doesn't belong to an extension
+  AND NOT EXISTS(
+        SELECT objid
+        FROM pg_catalog.pg_depend ext_depend
+        WHERE ext_depend.classid = 'pg_class'::regclass
+          AND ext_depend.objid = seq.seqrelid
+          AND ext_depend.deptype = 'e'
+    );
