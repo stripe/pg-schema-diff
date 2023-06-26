@@ -1,6 +1,6 @@
 # pg-schema-diff
 
-Diffs Postgres database schemas and generates the the SQL required to get your database schema from point A to B. This 
+Diffs Postgres database schemas and generates the SQL required to get your database schema from point A to B. This 
 enables you to take your database and migrate it to any desired schema defined with plain DDL.
 
 The tooling attempts to use native postgres migration operations and avoid locking wherever possible. Not all migrations will
