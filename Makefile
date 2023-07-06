@@ -1,4 +1,4 @@
-.PHONY: code_gen format lint test vendor sqlc
+.PHONY: code_gen format go_mod_tidy lint test vendor sqlc
 
 format:
 	goimports -w .
@@ -6,7 +6,9 @@ format:
 lint:
 	golangci-lint run
 
-code_gen: sqlc
+code_gen: go_mod_tidy sqlc
+
+go_mod_tidy:
 	go mod tidy
 
 sqlc:
