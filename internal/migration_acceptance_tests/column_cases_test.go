@@ -258,6 +258,9 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
 	},
 	{
 		name: "Modify data type (varchar -> TEXT) with compatible default",

@@ -1318,7 +1318,10 @@ func (s *sequenceSQLVertexGenerator) Add(seq schema.Sequence) ([]Statement, erro
 }
 
 func (s *sequenceSQLVertexGenerator) Delete(seq schema.Sequence) ([]Statement, error) {
-	var hazards []MigrationHazard
+	hazards := []MigrationHazard{{
+		Type:    MigrationHazardTypeDeletesData,
+		Message: "By deleting a sequence, its state will be permanently lost",
+	}}
 	if seq.Owner != nil && (s.isDeletedWithOwningTable(seq) || s.isDeletedWithColumns(seq)) {
 		return nil, nil
 	} else if seq.Owner == nil {
@@ -1337,7 +1340,7 @@ func (s *sequenceSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, erro
 	if !cmp.Equal(diff.old, diff.new) {
 		// Technically, we could support altering expression, but I don't see the use case for it. it would require more test
 		// cases than forceReadding it, and I'm not convinced it unlocks any functionality
-		return nil, fmt.Errorf("altering check constraint to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
+		return nil, fmt.Errorf("altering sequence to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
 	}
 
 	return nil, nil

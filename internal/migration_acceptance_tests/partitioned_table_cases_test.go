@@ -272,6 +272,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,

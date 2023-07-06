@@ -69,6 +69,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeHasUntrackableDependencies,
 		},
 	},
@@ -136,6 +137,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
 	},
@@ -165,6 +167,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
 	},
@@ -196,6 +199,209 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "Alter data type",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+	},
+	{
+		name: "Alter increment",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 3
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+	},
+	{
+		name: "Alter min value",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 6 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+	},
+	{
+		name: "Alter max value",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 101
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+	},
+	{
+		name: "Alter start with",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 11 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+	},
+	{
+		name: "Alter cache",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 6 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+	},
+	{
+		name: "Alter cycle",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 NO CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
 	{
@@ -403,35 +609,6 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeDeletesData,
-		},
-	},
-	{
-		name: "Alter ownership data type",
-		oldSchemaDDL: []string{
-			`
-			CREATE SEQUENCE "foobar sequence"
-						AS INT
-						INCREMENT BY 2
-						MINVALUE 5 MAXVALUE 100
-						START WITH 10 CACHE 5 CYCLE
-						OWNED BY NONE;
-			`,
-		},
-		newSchemaDDL: []string{
-			`
-			CREATE SEQUENCE "foobar sequence"
-						AS BIGINT
-						INCREMENT BY 2
-						MINVALUE 5 MAXVALUE 100
-						START WITH 10 CACHE 5 CYCLE
-						OWNED BY NONE;
-			`,
-		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
 }
