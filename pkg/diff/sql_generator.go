@@ -1320,7 +1320,7 @@ func (s *sequenceSQLVertexGenerator) Add(seq schema.Sequence) ([]Statement, erro
 func (s *sequenceSQLVertexGenerator) Delete(seq schema.Sequence) ([]Statement, error) {
 	hazards := []MigrationHazard{{
 		Type:    MigrationHazardTypeDeletesData,
-		Message: "By deleting a sequence, its state will be permanently lost",
+		Message: "By deleting a sequence, its value will be permanently lost",
 	}}
 	if seq.Owner != nil && (s.isDeletedWithOwningTable(seq) || s.isDeletedWithColumns(seq)) {
 		return nil, nil
