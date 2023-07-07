@@ -49,19 +49,23 @@ var (
 		Type:    MigrationHazardTypeAcquiresAccessExclusiveLock,
 		Message: "Index drops will lock out all accesses to the table. They should be fast",
 	}
+	migrationHazardSequenceCannotTrackDependencies = MigrationHazard{
+		Type:    MigrationHazardTypeHasUntrackableDependencies,
+		Message: "sequence has no owner, so it can't be tracked. It may be in use by a table or function",
+	}
 )
 
-type oldAndNew[S schema.Object] struct {
+type oldAndNew[S any] struct {
 	old S
 	new S
 }
 
 func (o oldAndNew[S]) GetNew() S {
-	return o.old
+	return o.new
 }
 
 func (o oldAndNew[S]) GetOld() S {
-	return o.new
+	return o.old
 }
 
 type (
@@ -85,6 +89,10 @@ type (
 		oldAndNew[schema.Index]
 	}
 
+	sequenceDiff struct {
+		oldAndNew[schema.Sequence]
+	}
+
 	functionDiff struct {
 		oldAndNew[schema.Function]
 	}
@@ -98,6 +106,7 @@ type schemaDiff struct {
 	oldAndNew[schema.Schema]
 	tableDiffs    listDiff[schema.Table, tableDiff]
 	indexDiffs    listDiff[schema.Index, indexDiff]
+	sequenceDiffs listDiff[schema.Sequence, sequenceDiff]
 	functionDiffs listDiff[schema.Function, functionDiff]
 	triggerDiffs  listDiff[schema.Trigger, triggerDiff]
 }
@@ -142,13 +151,34 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing tables: %w", err)
 	}
 
-	newSchemaTablesByName := buildSchemaObjMap(new.Tables)
-	addedTablesByName := buildSchemaObjMap(tableDiffs.adds)
+	newSchemaTablesByName := buildSchemaObjByNameMap(new.Tables)
+	addedTablesByName := buildSchemaObjByNameMap(tableDiffs.adds)
 	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(old, new schema.Index, oldIndex, newIndex int) (indexDiff, bool, error) {
 		return buildIndexDiff(newSchemaTablesByName, addedTablesByName, old, new, oldIndex, newIndex)
 	})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing indexes: %w", err)
+	}
+
+	sequencesDiffs, err := diffLists(old.Sequences, new.Sequences, func(old, new schema.Sequence, oldIndex, newIndex int) (diff sequenceDiff, requiresRecreation bool, error error) {
+		seqDiff := sequenceDiff{
+			oldAndNew[schema.Sequence]{
+				old: old,
+				new: new,
+			},
+		}
+		if new.Owner != nil && cmp.Equal(old.Owner, new.Owner) {
+			if _, isOnNewTable := addedTablesByName[new.Owner.TableUnescapedName]; isOnNewTable {
+				// Recreate the sequence if the owning table is recreated. This simplifies ownership changes, since we
+				// don't need to change the owner to none and then change it back to the new owner
+				// We could alternatively move this into the Alter block of the SequenceSQLVertexGenerator
+				return sequenceDiff{}, true, nil
+			}
+		}
+		return seqDiff, false, nil
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing sequences: %w", err)
 	}
 
 	functionDiffs, err := diffLists(old.Functions, new.Functions, func(old, new schema.Function, _, _ int) (functionDiff, bool, error) {
@@ -187,6 +217,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		},
 		tableDiffs:    tableDiffs,
 		indexDiffs:    indexesDiff,
+		sequenceDiffs: sequencesDiffs,
 		functionDiffs: functionDiffs,
 		triggerDiffs:  triggerDiffs,
 	}, false, nil
@@ -307,8 +338,8 @@ func buildIndexDiff(newSchemaTablesByName map[string]schema.Table, addedTablesBy
 type schemaSQLGenerator struct{}
 
 func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
-	tablesInNewSchemaByName := buildSchemaObjMap(diff.new.Tables)
-	deletedTablesByName := buildSchemaObjMap(diff.tableDiffs.deletes)
+	tablesInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Tables)
+	deletedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.deletes)
 
 	tableSQLVertexGenerator := tableSQLVertexGenerator{
 		deletedTablesByName:     deletedTablesByName,
@@ -331,7 +362,7 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving attach partition sql graphs: %w", err)
 	}
 
-	renameConflictingIndexSQLVertexGenerator := newRenameConflictingIndexSQLVertexGenerator(buildSchemaObjMap(diff.old.Indexes))
+	renameConflictingIndexSQLVertexGenerator := newRenameConflictingIndexSQLVertexGenerator(buildSchemaObjByNameMap(diff.old.Indexes))
 	renameConflictingIndexGraphs, err := diff.indexDiffs.resolveToSQLGraph(&renameConflictingIndexSQLVertexGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("resolving renaming conflicting indexes: %w", err)
@@ -339,9 +370,9 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 
 	indexSQLVertexGenerator := indexSQLVertexGenerator{
 		deletedTablesByName:      deletedTablesByName,
-		addedTablesByName:        buildSchemaObjMap(diff.tableDiffs.adds),
+		addedTablesByName:        buildSchemaObjByNameMap(diff.tableDiffs.adds),
 		tablesInNewSchemaByName:  tablesInNewSchemaByName,
-		indexesInNewSchemaByName: buildSchemaObjMap(diff.new.Indexes),
+		indexesInNewSchemaByName: buildSchemaObjByNameMap(diff.new.Indexes),
 		indexRenamesByOldName:    renameConflictingIndexSQLVertexGenerator.getRenames(),
 	}
 	indexGraphs, err := diff.indexDiffs.resolveToSQLGraph(&indexSQLVertexGenerator)
@@ -349,7 +380,19 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving index sql graphs: %w", err)
 	}
 
-	functionsInNewSchemaByName := buildSchemaObjMap(diff.new.Functions)
+	sequenceGraphs, err := diff.sequenceDiffs.resolveToSQLGraph(&sequenceSQLVertexGenerator{
+		deletedTablesByName: deletedTablesByName,
+		tableDiffsByName:    buildDiffByNameMap[schema.Table, tableDiff](diff.tableDiffs.alters),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolving sequence sql graphs: %w", err)
+	}
+	sequenceOwnershipGraphs, err := diff.sequenceDiffs.resolveToSQLGraph(&sequenceOwnershipSQLVertexGenerator{})
+	if err != nil {
+		return nil, fmt.Errorf("resolving sequence ownership sql graphs: %w", err)
+	}
+
+	functionsInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Functions)
 
 	functionSQLVertexGenerator := functionSQLVertexGenerator{
 		functionsInNewSchemaByName: functionsInNewSchemaByName,
@@ -373,6 +416,12 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	if err := tableGraphs.union(indexGraphs); err != nil {
 		return nil, fmt.Errorf("unioning table and index graphs: %w", err)
 	}
+	if err := tableGraphs.union(sequenceGraphs); err != nil {
+		return nil, fmt.Errorf("unioning table and sequence graphs: %w", err)
+	}
+	if err := tableGraphs.union(sequenceOwnershipGraphs); err != nil {
+		return nil, fmt.Errorf("unioning table and sequence ownership graphs: %w", err)
+	}
 	if err := tableGraphs.union(renameConflictingIndexGraphs); err != nil {
 		return nil, fmt.Errorf("unioning table and rename conflicting index graphs: %w", err)
 	}
@@ -386,10 +435,22 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	return tableGraphs.toOrderedStatements()
 }
 
-func buildSchemaObjMap[S schema.Object](s []S) map[string]S {
-	output := make(map[string]S)
-	for _, obj := range s {
-		output[obj.GetName()] = obj
+func buildSchemaObjByNameMap[S schema.Object](s []S) map[string]S {
+	return buildObjByNameMap(s, func(s S) string {
+		return s.GetName()
+	})
+}
+
+func buildDiffByNameMap[S schema.Object, D diff[S]](d []D) map[string]D {
+	return buildObjByNameMap(d, func(d D) string {
+		return d.GetNew().GetName()
+	})
+}
+
+func buildObjByNameMap[V any](v []V, getName func(V) string) map[string]V {
+	output := make(map[string]V)
+	for _, obj := range v {
+		output[getName(obj)] = obj
 	}
 	return output
 }
@@ -498,8 +559,8 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 	stmts = append(stmts, checkConGeneratedSQL.Deletes...)
 	stmts = append(stmts, columnGeneratedSQL.Deletes...)
 	stmts = append(stmts, columnGeneratedSQL.Adds...)
-	stmts = append(stmts, checkConGeneratedSQL.Adds...)
 	stmts = append(stmts, columnGeneratedSQL.Alters...)
+	stmts = append(stmts, checkConGeneratedSQL.Adds...)
 	stmts = append(stmts, checkConGeneratedSQL.Alters...)
 	return stmts, nil
 }
@@ -1080,7 +1141,6 @@ func (isg *indexSQLVertexGenerator) GetDeleteDependencies(index schema.Index) []
 
 func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index schema.Index) []dependency {
 	// This could be cleaner if start sorting columns separately in the graph
-
 	parentTable, ok := isg.tablesInNewSchemaByName[index.TableName]
 	if !ok {
 		// If the parent table is deleted, we don't need to worry about making the index statement come
@@ -1108,7 +1168,7 @@ func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index sche
 		return addAlterColumnDeps
 	}
 
-	parentTableColumnsByName := buildSchemaObjMap(parentTable.Columns)
+	parentTableColumnsByName := buildSchemaObjByNameMap(parentTable.Columns)
 	for _, idxColumn := range index.Columns {
 		// We need to force the index drop to come before the statements to drop columns. Otherwise, the columns
 		// drops will force the index to drop non-concurrently
@@ -1225,6 +1285,179 @@ func (a *attachPartitionSQLVertexGenerator) GetAddAlterDependencies(table, _ sch
 }
 
 func (a *attachPartitionSQLVertexGenerator) GetDeleteDependencies(_ schema.Table) []dependency {
+	return nil
+}
+
+type sequenceSQLVertexGenerator struct {
+	deletedTablesByName map[string]schema.Table
+	tableDiffsByName    map[string]tableDiff
+}
+
+func (s *sequenceSQLVertexGenerator) Add(seq schema.Sequence) ([]Statement, error) {
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("CREATE SEQUENCE %s\n", seq.GetFQEscapedName()))
+	sb.WriteString(fmt.Sprintf("\tAS %s\n", seq.Type))
+	sb.WriteString(fmt.Sprintf("\tINCREMENT BY %d\n", seq.Increment))
+	sb.WriteString(fmt.Sprintf("\tMINVALUE %d MAXVALUE %d\n", seq.MinValue, seq.MaxValue))
+	cycleModifier := ""
+	if !seq.Cycle {
+		cycleModifier = "NO "
+	}
+	sb.WriteString(fmt.Sprintf("\tSTART WITH %d CACHE %d %sCYCLE\n", seq.StartValue, seq.CacheSize, cycleModifier))
+
+	var hazards []MigrationHazard
+	if seq.Owner == nil {
+		hazards = append(hazards, migrationHazardSequenceCannotTrackDependencies)
+	}
+
+	return []Statement{{
+		DDL:     sb.String(),
+		Timeout: statementTimeoutDefault,
+		Hazards: hazards,
+	}}, nil
+}
+
+func (s *sequenceSQLVertexGenerator) Delete(seq schema.Sequence) ([]Statement, error) {
+	hazards := []MigrationHazard{{
+		Type:    MigrationHazardTypeDeletesData,
+		Message: "By deleting a sequence, its value will be permanently lost",
+	}}
+	if seq.Owner != nil && (s.isDeletedWithOwningTable(seq) || s.isDeletedWithColumns(seq)) {
+		return nil, nil
+	} else if seq.Owner == nil {
+		hazards = append(hazards, migrationHazardSequenceCannotTrackDependencies)
+	}
+	return []Statement{{
+		DDL:     fmt.Sprintf("DROP SEQUENCE %s", seq.GetFQEscapedName()),
+		Timeout: statementTimeoutDefault,
+		Hazards: hazards,
+	}}, nil
+}
+
+func (s *sequenceSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, error) {
+	// Ownership changes handled by the sequenceOwnershipSQLVertexGenerator
+	diff.old.Owner = diff.new.Owner
+	if !cmp.Equal(diff.old, diff.new) {
+		// Technically, we could support altering expression, but I don't see the use case for it. it would require more test
+		// cases than forceReadding it, and I'm not convinced it unlocks any functionality
+		return nil, fmt.Errorf("altering sequence to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
+	}
+
+	return nil, nil
+}
+
+func (s *sequenceSQLVertexGenerator) GetSQLVertexId(seq schema.Sequence) string {
+	return buildSequenceVertexId(seq.SchemaQualifiedName)
+}
+
+func (s *sequenceSQLVertexGenerator) GetAddAlterDependencies(new schema.Sequence, _ schema.Sequence) []dependency {
+	deps := []dependency{
+		mustRun(s.GetSQLVertexId(new), diffTypeAddAlter).after(s.GetSQLVertexId(new), diffTypeDelete),
+	}
+	if new.Owner != nil {
+		// Sequences should be added/altered before the table they are owned by
+		deps = append(deps, mustRun(s.GetSQLVertexId(new), diffTypeAddAlter).before(buildTableVertexId(new.Owner.TableUnescapedName), diffTypeAddAlter))
+	}
+	return deps
+}
+
+func (s *sequenceSQLVertexGenerator) GetDeleteDependencies(seq schema.Sequence) []dependency {
+	var deps []dependency
+	// This is an unfortunate hackaround. It would make sense to also have a dependency on the owner column, such that
+	// the sequence can only be considered deleted after the owning column is deleted. However, we currently don't separate
+	// column deletes from table add/alters. We can't build this dependency without possibly creating a circular dependency:
+	// the sequence add/alter must occur before the new owner column add/alter, but the sequence delete must occur after the
+	// old owner column delete (equivalent to add/alter) and the sequence add/alter. We can get away with this because
+	// we, so far, no columns are ever "re-created". If we ever do support that, we'll need to revisit this.
+	if seq.Owner != nil {
+		deps = append(deps, mustRun(s.GetSQLVertexId(seq), diffTypeDelete).after(buildTableVertexId(seq.Owner.TableUnescapedName), diffTypeDelete))
+	}
+	return deps
+}
+
+func (s *sequenceSQLVertexGenerator) isDeletedWithOwningTable(seq schema.Sequence) bool {
+	if _, ok := s.deletedTablesByName[seq.Owner.TableUnescapedName]; ok {
+		// If the sequence is owned by a table that is also being deleted, we don't need to drop the sequence.
+		return true
+	}
+	return false
+}
+
+func (s *sequenceSQLVertexGenerator) isDeletedWithColumns(seq schema.Sequence) bool {
+	for _, dc := range s.tableDiffsByName[seq.Owner.TableUnescapedName].columnsDiff.deletes {
+		if dc.Name == seq.Owner.ColumnName {
+			// If the sequence is owned by a column that is also being deleted, we don't need to drop the sequence.
+			return true
+		}
+	}
+	return false
+}
+
+func buildSequenceVertexId(name schema.SchemaQualifiedName) string {
+	return buildVertexId("sequence", name.GetFQEscapedName())
+}
+
+type sequenceOwnershipSQLVertexGenerator struct{}
+
+func (s sequenceOwnershipSQLVertexGenerator) Add(seq schema.Sequence) ([]Statement, error) {
+	if seq.Owner == nil {
+		// If a new sequence has no owner, we don't need to alter it. The default is no owner
+		return nil, nil
+	}
+	return []Statement{s.buildAlterOwnershipStmt(seq, nil)}, nil
+}
+
+func (s sequenceOwnershipSQLVertexGenerator) Delete(_ schema.Sequence) ([]Statement, error) {
+	return nil, nil
+}
+
+func (s sequenceOwnershipSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, error) {
+	if cmp.Equal(diff.new.Owner, diff.old.Owner) {
+		return nil, nil
+	}
+	return []Statement{s.buildAlterOwnershipStmt(diff.new, &diff.old)}, nil
+}
+
+func (s sequenceOwnershipSQLVertexGenerator) buildAlterOwnershipStmt(new schema.Sequence, old *schema.Sequence) Statement {
+	newOwner := "NONE"
+	if new.Owner != nil {
+		newOwner = schema.FQEscapedColumnName(new.Owner.TableName, new.Owner.ColumnName)
+	}
+
+	return Statement{
+		DDL:     fmt.Sprintf("ALTER SEQUENCE %s OWNED BY %s", new.GetFQEscapedName(), newOwner),
+		Timeout: statementTimeoutDefault,
+	}
+}
+
+func (s sequenceOwnershipSQLVertexGenerator) GetSQLVertexId(seq schema.Sequence) string {
+	return fmt.Sprintf("%s-ownership", buildSequenceVertexId(seq.SchemaQualifiedName))
+}
+
+func (s sequenceOwnershipSQLVertexGenerator) GetAddAlterDependencies(new schema.Sequence, old schema.Sequence) []dependency {
+	if cmp.Equal(old.Owner, new.Owner) {
+		return nil
+	}
+
+	deps := []dependency{
+		// Always change ownership after the sequence has been added/altered
+		mustRun(s.GetSQLVertexId(new), diffTypeAddAlter).after(buildSequenceVertexId(new.SchemaQualifiedName), diffTypeAddAlter),
+	}
+
+	if old.Owner != nil {
+		// Always update ownership before the old owner has been deleted
+		deps = append(deps, mustRun(s.GetSQLVertexId(new), diffTypeAddAlter).before(buildTableVertexId(old.Owner.TableUnescapedName), diffTypeDelete))
+	}
+
+	if new.Owner != nil {
+		// Always update ownership after the new owner has been created
+		deps = append(deps, mustRun(s.GetSQLVertexId(new), diffTypeAddAlter).after(buildTableVertexId(new.Owner.TableUnescapedName), diffTypeAddAlter))
+	}
+
+	return deps
+}
+
+func (s sequenceOwnershipSQLVertexGenerator) GetDeleteDependencies(_ schema.Sequence) []dependency {
 	return nil
 }
 

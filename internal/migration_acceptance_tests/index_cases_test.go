@@ -31,6 +31,12 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX some_other_idx ON foobar (bar DESC, fizz);
 			`,
 		},
+		vanillaExpectations: expectations{
+			empty: true,
+		},
+		dataPackingExpectations: expectations{
+			empty: true,
+		},
 	},
 	{
 		name: "Add a normal index",

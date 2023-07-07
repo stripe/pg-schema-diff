@@ -25,6 +25,12 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
+		vanillaExpectations: expectations{
+			empty: true,
+		},
+		dataPackingExpectations: expectations{
+			empty: true,
+		},
 	},
 	{
 		name: "Add check constraint",

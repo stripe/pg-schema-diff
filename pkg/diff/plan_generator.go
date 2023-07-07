@@ -204,17 +204,19 @@ func setSchemaForEmptyDatabase(ctx context.Context, conn *sql.Conn, dbSchema sch
 	}
 	dbSchema.Indexes = validIndexes
 
-	if statements, err := generateMigrationStatements(schema.Schema{
-		Name:      "public",
+	statements, err := generateMigrationStatements(schema.Schema{
 		Tables:    nil,
 		Indexes:   nil,
 		Functions: nil,
 		Triggers:  nil,
-	}, dbSchema, &planOptions{}); err != nil {
+	}, dbSchema, &planOptions{})
+	if err != nil {
 		return fmt.Errorf("building schema diff: %w", err)
-	} else {
-		return executeStatements(ctx, conn, statements)
 	}
+	if err := executeStatements(ctx, conn, statements); err != nil {
+		return fmt.Errorf("executing statements: %w\n%# v", err, pretty.Formatter(statements))
+	}
+	return nil
 }
 
 func assertMigratedSchemaMatchesTarget(migratedSchema, targetSchema schema.Schema, planOptions *planOptions) error {

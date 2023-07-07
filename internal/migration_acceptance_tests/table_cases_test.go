@@ -13,7 +13,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL,
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL,
+			    fizz SERIAL NOT NULL,
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
@@ -23,15 +23,21 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY CHECK (id > 0),
+			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL,
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL,
+			    fizz SERIAL NOT NULL,
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX unique_idx ON foobar(foo, bar);
 			`,
+		},
+		vanillaExpectations: expectations{
+			empty: true,
+		},
+		dataPackingExpectations: expectations{
+			empty: true,
 		},
 	},
 	{
@@ -43,7 +49,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL,
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL,
+			    fizz SERIAL NOT NULL,
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
@@ -55,8 +61,8 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
+			    fizz SERIAL NOT NULL,
 				buzz REAL CHECK (buzz IS NOT NULL),
-			    fizz BOOLEAN NOT NULL,
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
@@ -73,7 +79,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT PRIMARY KEY,
 				"Foo" VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL CHECK (LENGTH("Foo") > 0),
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL
+			    fizz SERIAL NOT NULL
 			);
 			CREATE INDEX normal_idx ON "Foobar" USING hash (fizz);
 			CREATE UNIQUE INDEX unique_idx ON "Foobar"("Foo" DESC, bar);
@@ -85,7 +91,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 				CREATE TABLE "Foobar"(
 					bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 					id INT PRIMARY KEY,
-					fizz BOOLEAN NOT NULL,
+					fizz SERIAL NOT NULL,
 					"Foo" VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL CHECK (LENGTH("Foo") > 0)
 				);
 				CREATE INDEX normal_idx ON "Foobar" USING hash (fizz);
@@ -102,7 +108,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
 				foo VARCHAR(255) COLLATE "C" DEFAULT '' NOT NULL,
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL,
+			    fizz SERIAL NOT NULL,
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
@@ -122,7 +128,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT PRIMARY KEY,
 				"Foo" VARCHAR(255) COLLATE "C" DEFAULT '' NOT NULL CHECK (LENGTH("Foo") > 0),
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL
+			    fizz SERIAL NOT NULL
 			);
 			CREATE INDEX normal_idx ON "Foobar"(fizz);
 			CREATE UNIQUE INDEX unique_idx ON "Foobar"("Foo", "bar");
@@ -173,14 +179,14 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter table: New column, new primary key, alter column to nullable, drop column, drop index, drop check constraints",
+		name: "Alter table: New column, new primary key, alter column to nullable, alter column types, drop column, drop index, drop check constraints",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
 			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL,
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL,
+			    fizz SERIAL NOT NULL,
 			   	buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
@@ -190,7 +196,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+			    id SMALLSERIAL,
 				foo CHAR DEFAULT '5',
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
 			    new_fizz DECIMAL(65, 10) DEFAULT 5.25 NOT NULL PRIMARY KEY
@@ -214,7 +220,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL,
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL,
+			    fizz SERIAL NOT NULL,
 			    buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar USING hash (fizz);
@@ -227,7 +233,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    new_id INT PRIMARY KEY CHECK (new_id > 0), CHECK (new_id < new_buzz),
 				new_foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL,
 			    new_bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    new_fizz BOOLEAN NOT NULL,
+			    new_fizz SERIAL NOT NULL,
 				new_buzz REAL CHECK (new_buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar USING hash (new_fizz);

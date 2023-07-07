@@ -35,6 +35,13 @@ var (
 		{
 			name: "Simple test",
 			ddl: []string{`
+			CREATE SEQUENCE foobar_sequence
+			    AS BIGINT
+				INCREMENT BY 2
+				MINVALUE 5 MAXVALUE 100
+				START WITH 10 CACHE 5 CYCLE
+				OWNED BY NONE;
+
 			CREATE FUNCTION add(a integer, b integer) RETURNS integer
 				LANGUAGE SQL
 				IMMUTABLE
@@ -54,7 +61,7 @@ var (
 				RETURN add(a, b) + increment(a);
 
 			CREATE TABLE foo (
-				id INTEGER PRIMARY KEY,
+				id SERIAL PRIMARY KEY,
 				author TEXT COLLATE "C",
 				content TEXT NOT NULL DEFAULT '',
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP CHECK (created_at > CURRENT_TIMESTAMP - interval '1 month') NO INHERIT,
@@ -79,14 +86,13 @@ var (
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE increment_version();
 		`},
-			expectedHash: "9648c294aed76ef6",
+			expectedHash: "bfe91c68ad532e0b",
 			expectedSchema: schema.Schema{
-				Name: "public",
 				Tables: []schema.Table{
 					{
 						Name: "foo",
 						Columns: []schema.Column{
-							{Name: "id", Type: "integer", Size: 4},
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", IsNullable: true, Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
@@ -105,6 +111,33 @@ var (
 								},
 							},
 						},
+					},
+				},
+				Sequences: []schema.Sequence{
+					{
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_id_seq\""},
+						Owner: &schema.SequenceOwner{
+							TableName:          schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+							TableUnescapedName: "foo",
+							ColumnName:         "id",
+						},
+						Type:       "integer",
+						StartValue: 1,
+						Increment:  1,
+						MaxValue:   2147483647,
+						MinValue:   1,
+						CacheSize:  1,
+						Cycle:      false,
+					},
+					{
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_sequence\""},
+						Type:                "bigint",
+						StartValue:          10,
+						Increment:           2,
+						MaxValue:            100,
+						MinValue:            5,
+						CacheSize:           5,
+						Cycle:               true,
 					},
 				},
 				Indexes: []schema.Index{
@@ -165,7 +198,7 @@ var (
 			name: "Simple partition test",
 			ddl: []string{`
 			CREATE TABLE foo (
-				id INTEGER CHECK (id > 0),
+				id SERIAL CHECK (id > 0),
 				author TEXT COLLATE "C",
 				content TEXT DEFAULT '',
 				genre VARCHAR(256) NOT NULL,
@@ -210,14 +243,13 @@ var (
 				EXECUTE PROCEDURE increment_version();
 
 		`},
-			expectedHash: "651c9229cd8373f0",
+			expectedHash: "fcc62a48df881935",
 			expectedSchema: schema.Schema{
-				Name: "public",
 				Tables: []schema.Table{
 					{
 						Name: "foo",
 						Columns: []schema.Column{
-							{Name: "id", Type: "integer", Size: 4},
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
@@ -234,7 +266,7 @@ var (
 						ParentTableName: "foo",
 						Name:            "foo_1",
 						Columns: []schema.Column{
-							{Name: "id", Type: "integer", Size: 4},
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
@@ -247,7 +279,7 @@ var (
 						ParentTableName: "foo",
 						Name:            "foo_2",
 						Columns: []schema.Column{
-							{Name: "id", Type: "integer", Size: 4},
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
@@ -260,7 +292,7 @@ var (
 						ParentTableName: "foo",
 						Name:            "foo_3",
 						Columns: []schema.Column{
-							{Name: "id", Type: "integer", Size: 4},
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
@@ -355,7 +387,23 @@ var (
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_pkey ON public.foo_3 USING btree (author, id)",
 					},
 				},
-
+				Sequences: []schema.Sequence{
+					{
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_id_seq\""},
+						Owner: &schema.SequenceOwner{
+							TableName:          schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+							TableUnescapedName: "foo",
+							ColumnName:         "id",
+						},
+						Type:       "integer",
+						StartValue: 1,
+						Increment:  1,
+						MaxValue:   2147483647,
+						MinValue:   1,
+						CacheSize:  1,
+						Cycle:      false,
+					},
+				},
 				Functions: []schema.Function{
 					{
 						SchemaQualifiedName: schema.SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
@@ -393,9 +441,8 @@ var (
 			    PRIMARY KEY (author, id)
 			) FOR VALUES IN ('some author 1');
 		`},
-			expectedHash: "6976f3d0ada49b66",
+			expectedHash: "2019e87411d440c4",
 			expectedSchema: schema.Schema{
-				Name: "public",
 				Tables: []schema.Table{
 					{
 						Name: "foo",
@@ -439,12 +486,12 @@ var (
 			    "double_precision" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
 			    "integer" INTEGER NOT NULL DEFAULT 0,
 			    "big_integer" BIGINT NOT NULL DEFAULT 0,
-				"decimal" DECIMAL(65, 10) NOT NULL DEFAULT 0.0
+				"decimal" DECIMAL(65, 10) NOT NULL DEFAULT 0.0,
+				"serial" SERIAL NOT NULL
 			);
 		`},
-			expectedHash: "2181b2da75bb74f7",
+			expectedHash: "d9ce32695f0154de",
 			expectedSchema: schema.Schema{
-				Name: "public",
 				Tables: []schema.Table{
 					{
 						Name: "foo",
@@ -459,8 +506,26 @@ var (
 							{Name: "integer", Type: "integer", Default: "0", Size: 4},
 							{Name: "big_integer", Type: "bigint", Default: "0", Size: 8},
 							{Name: "decimal", Type: "numeric(65,10)", Default: "0.0", Size: -1},
+							{Name: "serial", Type: "integer", Collation: schema.SchemaQualifiedName{}, Default: "nextval('foo_serial_seq'::regclass)", IsNullable: false, Size: 4},
 						},
 						CheckConstraints: nil,
+					},
+				},
+				Sequences: []schema.Sequence{
+					{
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_serial_seq\""},
+						Owner: &schema.SequenceOwner{
+							TableName:          schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+							TableUnescapedName: "foo",
+							ColumnName:         "serial",
+						},
+						Type:       "integer",
+						StartValue: 1,
+						Increment:  1,
+						MaxValue:   2147483647,
+						MinValue:   1,
+						CacheSize:  1,
+						Cycle:      false,
 					},
 				},
 			},
@@ -485,9 +550,8 @@ var (
 			ALTER TABLE foobar ADD CONSTRAINT foobar_id_check CHECK (id > 0) NOT VALID;
 			CREATE UNIQUE INDEX foobar_idx ON foobar(content);
 		`},
-			expectedHash: "6518bbfe220d4f16",
+			expectedHash: "4bb4902b92bd1baf",
 			expectedSchema: schema.Schema{
-				Name: "public",
 				Tables: []schema.Table{
 					{
 						Name: "foo",
@@ -620,7 +684,7 @@ var (
 			CREATE TABLE bar_1 PARTITION OF bar FOR VALUES IN ('some author 1');
 
 			CREATE TABLE test.bar (
-				test_id INTEGER CHECK (test_id > 0),
+				test_id SERIAL CHECK (test_id > 0),
 				test_author TEXT,
 				PRIMARY KEY (test_author, test_id)
 			) PARTITION BY LIST (test_author);
@@ -634,9 +698,8 @@ var (
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE test.increment_version();
 		`},
-			expectedHash: "a6a845ad846dc362",
+			expectedHash: "41ccaa5beac7cde0",
 			expectedSchema: schema.Schema{
-				Name: "public",
 				Tables: []schema.Table{
 					{
 						Name: "foo",
@@ -727,9 +790,8 @@ var (
 		{
 			name:         "Empty Schema",
 			ddl:          nil,
-			expectedHash: "660be155e4c39f8b",
+			expectedHash: "651bc0b5adc6120e",
 			expectedSchema: schema.Schema{
-				Name:   "public",
 				Tables: nil,
 			},
 		},
@@ -740,9 +802,8 @@ var (
 				value TEXT
 			);
 		`},
-			expectedHash: "9db57cf969f0a509",
+			expectedHash: "9116df7b20ebce8b",
 			expectedSchema: schema.Schema{
-				Name: "public",
 				Tables: []schema.Table{
 					{
 						Name: "foo",

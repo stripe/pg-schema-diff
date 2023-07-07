@@ -44,19 +44,12 @@ func (o SchemaQualifiedName) IsEmpty() bool {
 }
 
 type Schema struct {
-	// Name refers to the name of the schema. Ultimately, schema objects can cut across
-	// schemas, e.g., a partition of a table can exist in a different table. Thus, we're probably
-	// going to delete this Name attribute soon, once multi-schema is supported
-	Name    string
 	Tables  []Table
 	Indexes []Index
 
+	Sequences []Sequence
 	Functions []Function
 	Triggers  []Trigger
-}
-
-func (s Schema) GetName() string {
-	return s.Name
 }
 
 // Normalize normalizes the schema (alphabetically sorts tables and columns in tables)
@@ -77,6 +70,8 @@ func (s Schema) Normalize() Schema {
 	s.Tables = normTables
 
 	s.Indexes = sortSchemaObjectsByName(s.Indexes)
+
+	s.Sequences = sortSchemaObjectsByName(s.Sequences)
 
 	var normFunctions []Function
 	for _, function := range sortSchemaObjectsByName(s.Functions) {
@@ -220,6 +215,29 @@ func (c CheckConstraint) GetName() string {
 	return c.Name
 }
 
+type (
+	// SequenceOwner represents the owner of a sequence. Once we remove TableUnescapedName, we can replace it with
+	// ColumnIdentifier struct that can also be used in the Column struct
+	SequenceOwner struct {
+		TableName SchemaQualifiedName
+		// TableUnescapedName is a hackaround until we switch over Tables ot use fully-qualified, escaped names
+		TableUnescapedName string
+		ColumnName         string
+	}
+
+	Sequence struct {
+		SchemaQualifiedName
+		Owner      *SequenceOwner
+		Type       string
+		StartValue int64
+		Increment  int64
+		MaxValue   int64
+		MinValue   int64
+		CacheSize  int64
+		Cycle      bool
+	}
+)
+
 type Function struct {
 	SchemaQualifiedName
 	// FunctionDef is the statement required to completely (re)create
@@ -279,6 +297,11 @@ func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
 		return Schema{}, fmt.Errorf("fetchIndexes: %w", err)
 	}
 
+	sequences, err := fetchSequences(ctx, q)
+	if err != nil {
+		return Schema{}, fmt.Errorf("fetchSequences: %w", err)
+	}
+
 	functions, err := fetchFunctions(ctx, q)
 	if err != nil {
 		return Schema{}, fmt.Errorf("fetchFunctions: %w", err)
@@ -290,9 +313,9 @@ func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
 	}
 
 	return Schema{
-		Name:      "public",
 		Tables:    tables,
 		Indexes:   indexes,
+		Sequences: sequences,
 		Functions: functions,
 		Triggers:  triggers,
 	}, nil
@@ -373,7 +396,7 @@ func fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Context, q *queries.Q
 
 	result := make(map[string][]CheckConstraint)
 	for _, cc := range rawCheckCons {
-		dependsOnFunctions, err := fetchDependsOnFunctions(ctx, q, cc.Oid)
+		dependsOnFunctions, err := fetchDependsOnFunctions(ctx, q, "pg_constraint", cc.Oid)
 		if err != nil {
 			return nil, fmt.Errorf("fetchDependsOnFunctions(%s): %w", cc.Oid, err)
 		}
@@ -422,7 +445,43 @@ func fetchIndexes(ctx context.Context, q *queries.Queries) ([]Index, error) {
 	return indexes, nil
 }
 
-// fetchFunctions fetches the functions required to
+func fetchSequences(ctx context.Context, q *queries.Queries) ([]Sequence, error) {
+	rawSeqs, err := q.GetSequences(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetSequences: %w", err)
+	}
+
+	var seqs []Sequence
+	for _, rawSeq := range rawSeqs {
+		var owner *SequenceOwner
+		if len(rawSeq.OwnerColumnName) > 0 {
+			owner = &SequenceOwner{
+				TableName: SchemaQualifiedName{
+					SchemaName:  rawSeq.OwnerSchemaName,
+					EscapedName: EscapeIdentifier(rawSeq.OwnerTableName),
+				},
+				TableUnescapedName: rawSeq.OwnerTableName,
+				ColumnName:         rawSeq.OwnerColumnName,
+			}
+		}
+		seqs = append(seqs, Sequence{
+			SchemaQualifiedName: SchemaQualifiedName{
+				SchemaName:  rawSeq.SequenceSchemaName,
+				EscapedName: EscapeIdentifier(rawSeq.SequenceName),
+			},
+			Owner:      owner,
+			Type:       rawSeq.Type,
+			StartValue: rawSeq.StartValue,
+			Increment:  rawSeq.Increment,
+			MaxValue:   rawSeq.MaxValue,
+			MinValue:   rawSeq.MinValue,
+			CacheSize:  rawSeq.CacheSize,
+			Cycle:      rawSeq.Cycle,
+		})
+	}
+	return seqs, nil
+}
+
 func fetchFunctions(ctx context.Context, q *queries.Queries) ([]Function, error) {
 	rawFunctions, err := q.GetFunctions(ctx)
 	if err != nil {
@@ -431,7 +490,7 @@ func fetchFunctions(ctx context.Context, q *queries.Queries) ([]Function, error)
 
 	var functions []Function
 	for _, rawFunction := range rawFunctions {
-		dependsOnFunctions, err := fetchDependsOnFunctions(ctx, q, rawFunction.Oid)
+		dependsOnFunctions, err := fetchDependsOnFunctions(ctx, q, "pg_proc", rawFunction.Oid)
 		if err != nil {
 			return nil, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
 		}
@@ -447,8 +506,11 @@ func fetchFunctions(ctx context.Context, q *queries.Queries) ([]Function, error)
 	return functions, nil
 }
 
-func fetchDependsOnFunctions(ctx context.Context, q *queries.Queries, oid any) ([]SchemaQualifiedName, error) {
-	dependsOnFunctions, err := q.GetDependsOnFunctions(ctx, oid)
+func fetchDependsOnFunctions(ctx context.Context, q *queries.Queries, systemCatalog string, oid any) ([]SchemaQualifiedName, error) {
+	dependsOnFunctions, err := q.GetDependsOnFunctions(ctx, queries.GetDependsOnFunctionsParams{
+		SystemCatalog: systemCatalog,
+		ObjectID:      oid,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -493,6 +555,11 @@ func buildNameFromUnescaped(unescapedName, schemaName string) SchemaQualifiedNam
 		EscapedName: EscapeIdentifier(unescapedName),
 		SchemaName:  schemaName,
 	}
+}
+
+// FQEscapedColumnName builds a fully-qualified escape column name
+func FQEscapedColumnName(table SchemaQualifiedName, columnName string) string {
+	return fmt.Sprintf("%s.%s", table.GetFQEscapedName(), EscapeIdentifier(columnName))
 }
 
 func EscapeIdentifier(name string) string {

@@ -27,6 +27,12 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
+		vanillaExpectations: expectations{
+			empty: true,
+		},
+		dataPackingExpectations: expectations{
+			empty: true,
+		},
 	},
 	{
 		name: "Add one column with default",
@@ -78,6 +84,24 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT PRIMARY KEY,
 				my_new_column VARCHAR(255) NOT NULL
+			);
+			`,
+		},
+	},
+	{
+		name: "Add one column with serial",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				my_new_column SERIAL NOT NULL
 			);
 			`,
 		},
@@ -177,12 +201,33 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Modify data type (varchar -> char)",
+		name: "Delete one column with serial",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE "Foobar"(
+			    id BIGSERIAL PRIMARY KEY
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE "Foobar"(
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeIndexDropped,
+		},
+	},
+	{
+		name: "Modify data type (int -> serial)",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
 			    id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
+				foobar INT NOT NULL
 			);
 			`,
 		},
@@ -190,13 +235,31 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT PRIMARY KEY,
-				foobar CHAR NOT NULL
+				foobar SERIAL NOT NULL
+			);
+			`,
+		},
+	},
+	{
+		name: "Modify data type (serial -> int)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar SERIAL NOT NULL
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar INT NOT NULL
 			);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
-			diff.MigrationHazardTypeImpactsDatabasePerformance,
+			diff.MigrationHazardTypeDeletesData,
 		},
 	},
 	{

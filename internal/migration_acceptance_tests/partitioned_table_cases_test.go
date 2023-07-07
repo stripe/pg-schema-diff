@@ -13,7 +13,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT,
 				foo VARCHAR(255),
 				bar TEXT COLLATE "POSIX",
-				fizz INT,
+				fizz SERIAL,
 				CHECK ( fizz > 0 ),
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
@@ -36,7 +36,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT,
 				foo VARCHAR(255),
 				bar TEXT COLLATE "POSIX",
-				fizz INT,
+				fizz SERIAL,
 				CHECK ( fizz > 0 ),
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
@@ -53,6 +53,12 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON foobar_2(foo);
 			`,
 		},
+		vanillaExpectations: expectations{
+			empty: true,
+		},
+		dataPackingExpectations: expectations{
+			empty: true,
+		},
 	},
 	{
 		name:         "Create partitioned table with shared primary key",
@@ -63,7 +69,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT,
 				foo VARCHAR(255),
 				bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
-				fizz INT,
+				fizz SERIAL,
 				CHECK ( fizz > 0 ),
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
@@ -88,7 +94,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				`
 				CREATE TABLE "Foobar"(
 					id INT,
-					fizz INT,
+					fizz SERIAL,
 					foo VARCHAR(255),
 					bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
 					CHECK ( fizz > 0 ),
@@ -121,7 +127,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT,
 				foo VARCHAR(255),
 				bar TEXT,
-				fizz INT,
+				fizz SERIAL,
 				CHECK ( fizz > 0 )
 			) PARTITION BY LIST (foo);
 			CREATE TABLE "FOOBAR_1" PARTITION OF "Foobar"(
@@ -149,7 +155,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				`
 				CREATE TABLE "Foobar"(
 					id INT,
-					fizz INT,
+					fizz SERIAL,
 					foo VARCHAR(255),
 					bar TEXT,
 					CHECK ( fizz > 0 )
@@ -185,7 +191,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT,
 				foo VARCHAR(255),
 				bar TEXT,
-				fizz INT,
+				fizz SERIAL,
 				CHECK ( fizz > 0 ),
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
@@ -218,7 +224,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT,
 				foo VARCHAR(255),
 				bar TEXT COLLATE "C",
-				fizz INT,
+				fizz SERIAL,
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
 
@@ -245,10 +251,10 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    id TEXT,
 				foo VARCHAR(255),
 				bar TEXT COLLATE "POSIX",
-				fizz INT,
+				fizz TEXT,
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
-			ALTER TABLE foobar ADD CONSTRAINT some_check_constraint CHECK ( fizz > 0 );
+			ALTER TABLE foobar ADD CONSTRAINT some_check_constraint CHECK ( LENGTH(fizz) > 0 );
 
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF foobar(
@@ -266,6 +272,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
@@ -311,6 +318,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			);
@@ -338,6 +346,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			) PARTITION BY LIST (foo);
@@ -371,6 +380,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			);
@@ -380,6 +390,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar_1(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			);
@@ -412,6 +423,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			) PARTITION BY LIST (foo);
@@ -446,6 +458,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			) PARTITION BY LIST (foo);
@@ -474,6 +487,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			);
@@ -506,6 +520,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			) PARTITION BY LIST (foo);
@@ -534,6 +549,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			);
@@ -543,6 +559,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar_1(
 			    id INT,
 				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT
 			);
@@ -580,7 +597,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT,
-				fizz INT,
+				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT,
 				CHECK ( fizz > 0 ),
@@ -595,7 +613,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT,
-				fizz INT,
+				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT,
 				CHECK ( fizz > 0 ),
@@ -615,7 +634,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT,
-				fizz INT,
+				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT,
 				CHECK ( fizz > 0 )
@@ -629,7 +649,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT,
-				fizz INT,
+				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT,
 				CHECK ( fizz > 0 )
@@ -650,9 +671,10 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT,
+				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT,
-				fizz INT
+				bar TEXT
 			) PARTITION BY LIST (foo);
 
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -662,9 +684,10 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT,
+				version INT,
+				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT,
-				fizz INT
+				bar TEXT
 			) PARTITION BY LIST (foo);
 			`,
 		},
