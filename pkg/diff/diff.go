@@ -192,7 +192,7 @@ func (ld listDiff[S, D]) resolveToSQLGraph(generator sqlVertexGenerator[S, D]) (
 			ObjId:      vertexId,
 			Statements: statements,
 			DiffType:   diffTypeAddAlter,
-		}, generator.GetAddAlterDependencies(a.GetNew(), a.GetNew())); err != nil {
+		}, generator.GetAddAlterDependencies(a.GetNew(), a.GetOld())); err != nil {
 			return nil, fmt.Errorf("adding SQL Vertex for alter %s: %w", a.GetOld().GetName(), err)
 		}
 	}

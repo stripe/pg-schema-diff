@@ -29,6 +29,8 @@ type (
 		//
 		// If no outputState is specified, the newSchemaDDL will be used
 		outputState []string
+		// empty asserts the plan is empty
+		empty bool
 	}
 
 	acceptanceTestCase struct {
@@ -128,6 +130,10 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	}
 	suite.Require().NoError(err)
 
+	if expects.empty {
+		// It shouldn't be necessary, but we'll run all checks below this point just in case rather than exiting early
+		suite.Empty(plan.Statements)
+	}
 	suite.ElementsMatch(tc.expectedHazardTypes, getUniqueHazardTypesFromStatements(plan.Statements), prettySprintPlan(plan))
 
 	// Apply the plan
