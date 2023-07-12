@@ -44,8 +44,9 @@ func (o SchemaQualifiedName) IsEmpty() bool {
 }
 
 type Schema struct {
-	Tables  []Table
-	Indexes []Index
+	Extensions []Extension
+	Tables     []Table
+	Indexes    []Index
 
 	Sequences []Sequence
 	Functions []Function
@@ -102,6 +103,14 @@ func (s Schema) Hash() (string, error) {
 		return "", fmt.Errorf("hashing schema: %w", err)
 	}
 	return fmt.Sprintf("%x", hashVal), nil
+}
+
+type Extension struct {
+	Name string
+}
+
+func (e Extension) GetName() string {
+	return e.Name
 }
 
 type Table struct {
@@ -283,9 +292,14 @@ func (t Trigger) GetName() string {
 	return t.OwningTable.GetFQEscapedName() + "_" + t.EscapedName
 }
 
-// GetPublicSchema fetches the "public" schema. It is a non-atomic operation
+// GetPublicSchema fetches the "public" schema. It is a non-atomic operation.
 func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
 	q := queries.New(db)
+
+	extensions, err := fetchExtensions(ctx, q)
+	if err != nil {
+		return Schema{}, fmt.Errorf("fetchExtensions: %w", err)
+	}
 
 	tables, err := fetchTables(ctx, q)
 	if err != nil {
@@ -313,12 +327,26 @@ func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
 	}
 
 	return Schema{
-		Tables:    tables,
-		Indexes:   indexes,
-		Sequences: sequences,
-		Functions: functions,
-		Triggers:  triggers,
+		Extensions: extensions,
+		Tables:     tables,
+		Indexes:    indexes,
+		Sequences:  sequences,
+		Functions:  functions,
+		Triggers:   triggers,
 	}, nil
+}
+
+func fetchExtensions(ctx context.Context, q *queries.Queries) ([]Extension, error) {
+	rawExtensions, err := q.GetExtensions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetExtensions(): %w", err)
+	}
+
+	var extensions []Extension
+	for _, e := range rawExtensions {
+		extensions = append(extensions, Extension{Name: e.ExtensionName})
+	}
+	return extensions, nil
 }
 
 func fetchTables(ctx context.Context, q *queries.Queries) ([]Table, error) {

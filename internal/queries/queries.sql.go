@@ -221,6 +221,43 @@ func (q *Queries) GetDependsOnFunctions(ctx context.Context, arg GetDependsOnFun
 	return items, nil
 }
 
+const getExtensions = `-- name: GetExtensions :many
+SELECT b.oid,
+       b.extname::TEXT AS extension_name,
+       a.nspname::TEXT AS schema_name
+FROM pg_catalog.pg_namespace a INNER JOIN pg_catalog.pg_extension b ON b.extnamespace=a.oid
+WHERE a.nspname = 'public'
+`
+
+type GetExtensionsRow struct {
+	Oid           interface{}
+	ExtensionName string
+	SchemaName    string
+}
+
+func (q *Queries) GetExtensions(ctx context.Context) ([]GetExtensionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getExtensions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetExtensionsRow
+	for rows.Next() {
+		var i GetExtensionsRow
+		if err := rows.Scan(&i.Oid, &i.ExtensionName, &i.SchemaName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getFunctions = `-- name: GetFunctions :many
 SELECT
     pg_proc.oid,

@@ -35,6 +35,8 @@ var (
 		{
 			name: "Simple test",
 			ddl: []string{`
+			CREATE EXTENSION pg_trgm;
+
 			CREATE SEQUENCE foobar_sequence
 			    AS BIGINT
 				INCREMENT BY 2
@@ -72,6 +74,7 @@ var (
 			ALTER TABLE foo ADD CONSTRAINT author_check CHECK (author IS NOT NULL AND LENGTH(author) > 0) NO INHERIT NOT VALID;
 			CREATE INDEX some_idx ON foo USING hash (content);
 			CREATE UNIQUE INDEX some_unique_idx ON foo (created_at DESC, author ASC);
+			CREATE INDEX some_gin_idx ON foo USING GIN (author gin_trgm_ops);
 
 			CREATE FUNCTION increment_version() RETURNS TRIGGER AS $$
 				BEGIN
@@ -86,8 +89,13 @@ var (
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE increment_version();
 		`},
-			expectedHash: "bfe91c68ad532e0b",
+			expectedHash: "6b5a6f0c3995363b",
 			expectedSchema: schema.Schema{
+				Extensions: []schema.Extension{
+					{
+						Name: "pg_trgm",
+					},
+				},
 				Tables: []schema.Table{
 					{
 						Name: "foo",
@@ -142,8 +150,12 @@ var (
 				},
 				Indexes: []schema.Index{
 					{
-						TableName: "foo",
-						Name:      "foo_pkey", Columns: []string{"id"}, IsPk: true, IsUnique: true, ConstraintName: "foo_pkey",
+						TableName:       "foo",
+						Name:            "foo_pkey",
+						Columns:         []string{"id"},
+						IsPk:            true,
+						IsUnique:        true,
+						ConstraintName:  "foo_pkey",
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foo USING btree (id)",
 					},
 					{
@@ -152,9 +164,17 @@ var (
 						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foo USING hash (content)",
 					},
 					{
-						TableName: "foo",
-						Name:      "some_unique_idx", Columns: []string{"created_at", "author"}, IsPk: false, IsUnique: true,
+						TableName:       "foo",
+						Name:            "some_unique_idx",
+						Columns:         []string{"created_at", "author"},
+						IsUnique:        true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX some_unique_idx ON public.foo USING btree (created_at DESC, author)",
+					},
+					{
+						TableName:       "foo",
+						Name:            "some_gin_idx",
+						Columns:         []string{"author"},
+						GetIndexDefStmt: "CREATE INDEX some_gin_idx ON public.foo USING gin (author gin_trgm_ops)",
 					},
 				},
 				Functions: []schema.Function{
@@ -243,7 +263,7 @@ var (
 				EXECUTE PROCEDURE increment_version();
 
 		`},
-			expectedHash: "fcc62a48df881935",
+			expectedHash: "58b60e7d949ba226",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -441,7 +461,7 @@ var (
 			    PRIMARY KEY (author, id)
 			) FOR VALUES IN ('some author 1');
 		`},
-			expectedHash: "2019e87411d440c4",
+			expectedHash: "6b678f2eae7b824d",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -490,7 +510,7 @@ var (
 				"serial" SERIAL NOT NULL
 			);
 		`},
-			expectedHash: "d9ce32695f0154de",
+			expectedHash: "fe72d1b3a50d54b9",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -550,7 +570,7 @@ var (
 			ALTER TABLE foobar ADD CONSTRAINT foobar_id_check CHECK (id > 0) NOT VALID;
 			CREATE UNIQUE INDEX foobar_idx ON foobar(content);
 		`},
-			expectedHash: "4bb4902b92bd1baf",
+			expectedHash: "ef43a41b2ac96e18",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -698,7 +718,7 @@ var (
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE test.increment_version();
 		`},
-			expectedHash: "41ccaa5beac7cde0",
+			expectedHash: "72c5e264fb96ed86",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -790,7 +810,7 @@ var (
 		{
 			name:         "Empty Schema",
 			ddl:          nil,
-			expectedHash: "651bc0b5adc6120e",
+			expectedHash: "4cc7f4f2dd81ec29",
 			expectedSchema: schema.Schema{
 				Tables: nil,
 			},
@@ -802,7 +822,7 @@ var (
 				value TEXT
 			);
 		`},
-			expectedHash: "9116df7b20ebce8b",
+			expectedHash: "24b2cd8d56d1cedd",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
