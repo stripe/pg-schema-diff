@@ -10,11 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pg_version: [14, 15]
+        pg_package: ["postgresql14", "postgresql15"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Build Docker image
-        run: docker build -t pg-schema-diff-test-runner -f ./build/Dockerfile.test --build-arg POSTGRES_PACKAGE=postgresql${{ matrix.pg_version }} .
+        run: docker build -t pg-schema-diff-test-runner -f ./build/Dockerfile.test --build-arg POSTGRES_PACKAGE=${{ matrix.pg_package }} .
       - name: Run tests
         run: docker run pg-schema-diff-test-runner
