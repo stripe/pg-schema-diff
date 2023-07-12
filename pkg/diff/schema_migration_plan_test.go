@@ -446,7 +446,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
-						PartitionKeyDef:  "PARTITION BY LIST(foo)",
+						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
 						ParentTableName: "foobar",
@@ -522,7 +522,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
-						PartitionKeyDef:  "PARTITION BY LIST(foo)",
+						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
 						ParentTableName: "foobar",
@@ -701,7 +701,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
-						PartitionKeyDef:  "PARTITION BY LIST(foo)",
+						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
 						ParentTableName: "foobar",
@@ -754,7 +754,7 @@ var (
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
-						PartitionKeyDef:  "PARTITION BY LIST(foo)",
+						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
 						ParentTableName: "foobar",
@@ -819,7 +819,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
-						PartitionKeyDef:  "PARTITION BY LIST(foo)",
+						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
 						ParentTableName: "foobar",
@@ -860,7 +860,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
-						PartitionKeyDef:  "PARTITION BY LIST(foo)",
+						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
 						ParentTableName: "foobar",
