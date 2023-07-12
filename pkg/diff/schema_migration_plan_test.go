@@ -396,6 +396,45 @@ var (
 			},
 		},
 		{
+			name:      "Create partitioned table",
+			oldSchema: schema.Schema{},
+			newSchema: schema.Schema{
+				Tables: []schema.Table{
+					{
+						Name: "foobar",
+						Columns: []schema.Column{
+							{Name: "id", Type: "integer"},
+							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
+						},
+						PartitionKeyDef: "LIST(foo)",
+					},
+					{
+						ParentTableName: "foobar",
+						Name:            "foobar_1",
+						Columns: []schema.Column{
+							{Name: "id", Type: "integer"},
+							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
+						},
+						ForValues: "FOR VALUES IN ('some_val')",
+					},
+				},
+			},
+			expectedStatements: []Statement{
+				{
+					DDL:     "CREATE TABLE \"foobar\" (\n\t\"id\" integer NOT NULL,\n\t\"foo\" character varying(255) COLLATE \"pg_catalog\".\"default\" NOT NULL DEFAULT ''::character varying\n) PARTITION BY LIST(foo)",
+					Timeout: statementTimeoutDefault,
+				},
+				{
+					DDL:     "CREATE TABLE \"foobar_1\" (\n\t\"id\" integer NOT NULL,\n\t\"foo\" character varying(255) COLLATE \"pg_catalog\".\"default\" NOT NULL DEFAULT ''::character varying\n)",
+					Timeout: statementTimeoutDefault,
+				},
+				{
+					DDL:     "ALTER TABLE \"foobar\" ATTACH PARTITION \"foobar_1\" FOR VALUES IN ('some_val')",
+					Timeout: statementTimeoutDefault,
+				},
+			},
+		},
+		{
 			name: "Index replacement on partitioned table",
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
