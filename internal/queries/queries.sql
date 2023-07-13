@@ -163,3 +163,11 @@ WHERE seq_ns.nspname = 'public'
           AND ext_depend.objid = seq.seqrelid
           AND ext_depend.deptype = 'e'
     );
+
+-- name: GetExtensions :many
+SELECT b.oid,
+       b.extname::TEXT AS extension_name,
+       b.extversion    AS extension_version,
+       a.nspname::TEXT AS schema_name
+FROM pg_catalog.pg_namespace a INNER JOIN pg_catalog.pg_extension b ON b.extnamespace=a.oid
+WHERE a.nspname = 'public';
