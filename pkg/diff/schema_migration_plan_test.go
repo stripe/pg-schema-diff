@@ -1118,6 +1118,33 @@ var (
 				},
 			},
 		},
+		{
+			name:      "Extension installation",
+			oldSchema: schema.Schema{},
+			newSchema: schema.Schema{
+				Extensions: []schema.Extension{{Name: "pg_trgm"}},
+			},
+			expectedStatements: []Statement{
+				{
+					DDL:     "CREATE EXTENSION pg_trgm",
+					Timeout: statementTimeoutDefault,
+				},
+			},
+		},
+		{
+			name: "Extension removal",
+			oldSchema: schema.Schema{
+				Extensions: []schema.Extension{{Name: "pg_trgm"}},
+			},
+			newSchema: schema.Schema{},
+			expectedStatements: []Statement{
+				{
+					DDL:     "DROP EXTENSION pg_trgm",
+					Timeout: statementTimeoutDefault,
+					Hazards: []MigrationHazard{migrationHazardExtensionDroppedCannotTrackDependencies},
+				},
+			},
+		},
 	}
 )
 

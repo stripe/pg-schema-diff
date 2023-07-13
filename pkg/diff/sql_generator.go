@@ -51,7 +51,11 @@ var (
 	}
 	migrationHazardSequenceCannotTrackDependencies = MigrationHazard{
 		Type:    MigrationHazardTypeHasUntrackableDependencies,
-		Message: "sequence has no owner, so it can't be tracked. It may be in use by a table or function",
+		Message: "A sequence has no owner, so it can't be tracked. It may be in use by a table or function",
+	}
+	migrationHazardExtensionDroppedCannotTrackDependencies = MigrationHazard{
+		Type:    MigrationHazardTypeHasUntrackableDependencies,
+		Message: "Extensions may be in use by tables, indexes, functions, triggers, etc. Tihs statement will be ran last, so this may be OK.",
 	}
 )
 
@@ -100,15 +104,20 @@ type (
 	triggerDiff struct {
 		oldAndNew[schema.Trigger]
 	}
+
+	extensionDiff struct {
+		oldAndNew[schema.Extension]
+	}
 )
 
 type schemaDiff struct {
 	oldAndNew[schema.Schema]
-	tableDiffs    listDiff[schema.Table, tableDiff]
-	indexDiffs    listDiff[schema.Index, indexDiff]
-	sequenceDiffs listDiff[schema.Sequence, sequenceDiff]
-	functionDiffs listDiff[schema.Function, functionDiff]
-	triggerDiffs  listDiff[schema.Trigger, triggerDiff]
+	extensionDiffs listDiff[schema.Extension, extensionDiff]
+	tableDiffs     listDiff[schema.Table, tableDiff]
+	indexDiffs     listDiff[schema.Index, indexDiff]
+	sequenceDiffs  listDiff[schema.Sequence, sequenceDiff]
+	functionDiffs  listDiff[schema.Function, functionDiff]
+	triggerDiffs   listDiff[schema.Trigger, triggerDiff]
 }
 
 func (sd schemaDiff) resolveToSQL() ([]Statement, error) {
@@ -146,6 +155,21 @@ func (sd schemaDiff) resolveToSQL() ([]Statement, error) {
 // on other schema objects
 
 func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
+	extensionDiffs, err := diffLists(
+		old.Extensions,
+		new.Extensions,
+		func(old, new schema.Extension, _, _ int) (extensionDiff, bool, error) {
+			return extensionDiff{
+				oldAndNew[schema.Extension]{
+					old: old,
+					new: new,
+				},
+			}, false, nil
+		})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing extensions: %w", err)
+	}
+
 	tableDiffs, err := diffLists(old.Tables, new.Tables, buildTableDiff)
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing tables: %w", err)
@@ -215,11 +239,12 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 			old: old,
 			new: new,
 		},
-		tableDiffs:    tableDiffs,
-		indexDiffs:    indexesDiff,
-		sequenceDiffs: sequencesDiffs,
-		functionDiffs: functionDiffs,
-		triggerDiffs:  triggerDiffs,
+		extensionDiffs: extensionDiffs,
+		tableDiffs:     tableDiffs,
+		indexDiffs:     indexesDiff,
+		sequenceDiffs:  sequencesDiffs,
+		functionDiffs:  functionDiffs,
+		triggerDiffs:   triggerDiffs,
 	}, false, nil
 }
 
@@ -394,18 +419,16 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 
 	functionsInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Functions)
 
-	functionSQLVertexGenerator := functionSQLVertexGenerator{
+	functionGraphs, err := diff.functionDiffs.resolveToSQLGraph(&functionSQLVertexGenerator{
 		functionsInNewSchemaByName: functionsInNewSchemaByName,
-	}
-	functionGraphs, err := diff.functionDiffs.resolveToSQLGraph(&functionSQLVertexGenerator)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("resolving function sql graphs: %w", err)
 	}
 
-	triggerSQLVertexGenerator := triggerSQLVertexGenerator{
+	triggerGraphs, err := diff.triggerDiffs.resolveToSQLGraph(&triggerSQLVertexGenerator{
 		functionsInNewSchemaByName: functionsInNewSchemaByName,
-	}
-	triggerGraphs, err := diff.triggerDiffs.resolveToSQLGraph(&triggerSQLVertexGenerator)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("resolving trigger sql graphs: %w", err)
 	}
@@ -432,7 +455,24 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("unioning table and trigger graphs: %w", err)
 	}
 
-	return tableGraphs.toOrderedStatements()
+	extensionStatements, err := diff.extensionDiffs.resolveToSQLGroupedByEffect(&extensionSQLVertexGenerator{})
+	if err != nil {
+		return nil, fmt.Errorf("resolving extension sql graphs: %w", err)
+	}
+
+	var statements []Statement
+	statements = append(statements, extensionStatements.Adds...)
+	statements = append(statements, extensionStatements.Alters...)
+
+	tableGraphStatements, err := tableGraphs.toOrderedStatements()
+	if err != nil {
+		return nil, fmt.Errorf("getting ordered statements from tableGraph: %w", err)
+	}
+
+	statements = append(statements, tableGraphStatements...)
+	statements = append(statements, extensionStatements.Deletes...)
+
+	return statements, nil
 }
 
 func buildSchemaObjByNameMap[S schema.Object](s []S) map[string]S {
@@ -552,7 +592,7 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 	checkConSQLGenerator := checkConstraintSQLGenerator{tableName: diff.new.Name}
 	checkConGeneratedSQL, err := diff.checkConstraintDiff.resolveToSQLGroupedByEffect(&checkConSQLGenerator)
 	if err != nil {
-		return nil, fmt.Errorf("Resolving check constraints diff: %w", err)
+		return nil, fmt.Errorf("resolving check constraints diff: %w", err)
 	}
 
 	var stmts []Statement
@@ -1459,6 +1499,40 @@ func (s sequenceOwnershipSQLVertexGenerator) GetAddAlterDependencies(new schema.
 
 func (s sequenceOwnershipSQLVertexGenerator) GetDeleteDependencies(_ schema.Sequence) []dependency {
 	return nil
+}
+
+type extensionSQLVertexGenerator struct{}
+
+func (e *extensionSQLVertexGenerator) Add(extension schema.Extension) ([]Statement, error) {
+	return []Statement{{
+		DDL:     fmt.Sprintf("CREATE EXTENSION %s", extension.GetName()),
+		Timeout: statementTimeoutDefault,
+		Hazards: nil,
+	}}, nil
+}
+
+func (e *extensionSQLVertexGenerator) Delete(extension schema.Extension) ([]Statement, error) {
+	return []Statement{{
+		DDL:     fmt.Sprintf("DROP EXTENSION %s", extension.GetName()),
+		Timeout: statementTimeoutDefault,
+		Hazards: []MigrationHazard{migrationHazardExtensionDroppedCannotTrackDependencies},
+	}}, nil
+}
+
+func (e *extensionSQLVertexGenerator) Alter(diff extensionDiff) ([]Statement, error) {
+	return nil, nil
+}
+
+func (e *extensionSQLVertexGenerator) GetAddAlterDependencies(new, old schema.Extension) []dependency {
+	return nil
+}
+
+func (e *extensionSQLVertexGenerator) GetDeleteDependencies(extension schema.Extension) []dependency {
+	return nil
+}
+
+func (e *extensionSQLVertexGenerator) GetSQLVertexId(extension schema.Extension) string {
+	return fmt.Sprintf("extension_%s", extension.Name)
 }
 
 type functionSQLVertexGenerator struct {
