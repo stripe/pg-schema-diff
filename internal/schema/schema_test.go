@@ -35,7 +35,7 @@ var (
 		{
 			name: "Simple test",
 			ddl: []string{`
-			CREATE EXTENSION pg_trgm;
+			CREATE EXTENSION pg_trgm WITH VERSION '1.6';
 
 			CREATE SEQUENCE foobar_sequence
 			    AS BIGINT
@@ -89,11 +89,12 @@ var (
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE increment_version();
 		`},
-			expectedHash: "6b5a6f0c3995363b",
+			expectedHash: "b890b13568df1b57",
 			expectedSchema: schema.Schema{
 				Extensions: []schema.Extension{
 					{
-						Name: "pg_trgm",
+						Name:    "pg_trgm",
+						Version: "1.6",
 					},
 				},
 				Tables: []schema.Table{
