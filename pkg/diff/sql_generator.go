@@ -527,7 +527,7 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		strings.Join(columnDefs, ",\n"),
 	))
 	if table.IsPartitioned() {
-		createTableSb.WriteString(fmt.Sprintf("PARTITION BY %s", table.PartitionKeyDef))
+		createTableSb.WriteString(fmt.Sprintf(" PARTITION BY %s", table.PartitionKeyDef))
 	}
 	stmts = append(stmts, Statement{
 		DDL:     createTableSb.String(),
