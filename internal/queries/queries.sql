@@ -240,6 +240,7 @@ AND NOT EXISTS (
 -- name: GetExtensions :many
 SELECT b.oid,
        b.extname::TEXT AS extension_name,
+       b.extversion    AS extension_version,
        a.nspname::TEXT AS schema_name
 FROM pg_catalog.pg_namespace a INNER JOIN pg_catalog.pg_extension b ON b.extnamespace=a.oid
 WHERE a.nspname = 'public';
