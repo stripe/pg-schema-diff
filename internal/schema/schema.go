@@ -106,7 +106,8 @@ func (s Schema) Hash() (string, error) {
 }
 
 type Extension struct {
-	Name string
+	Name    string
+	Version string
 }
 
 func (e Extension) GetName() string {
@@ -344,7 +345,10 @@ func fetchExtensions(ctx context.Context, q *queries.Queries) ([]Extension, erro
 
 	var extensions []Extension
 	for _, e := range rawExtensions {
-		extensions = append(extensions, Extension{Name: e.ExtensionName})
+		extensions = append(extensions, Extension{
+			Name:    e.ExtensionName,
+			Version: e.ExtensionVersion,
+		})
 	}
 	return extensions, nil
 }

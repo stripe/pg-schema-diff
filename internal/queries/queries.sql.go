@@ -203,15 +203,17 @@ func (q *Queries) GetDependsOnFunctions(ctx context.Context, arg GetDependsOnFun
 const getExtensions = `-- name: GetExtensions :many
 SELECT b.oid,
        b.extname::TEXT AS extension_name,
+       b.extversion    AS extension_version,
        a.nspname::TEXT AS schema_name
 FROM pg_catalog.pg_namespace a INNER JOIN pg_catalog.pg_extension b ON b.extnamespace=a.oid
 WHERE a.nspname = 'public'
 `
 
 type GetExtensionsRow struct {
-	Oid           interface{}
-	ExtensionName string
-	SchemaName    string
+	Oid              interface{}
+	ExtensionName    string
+	ExtensionVersion string
+	SchemaName       string
 }
 
 func (q *Queries) GetExtensions(ctx context.Context) ([]GetExtensionsRow, error) {
@@ -223,7 +225,12 @@ func (q *Queries) GetExtensions(ctx context.Context) ([]GetExtensionsRow, error)
 	var items []GetExtensionsRow
 	for rows.Next() {
 		var i GetExtensionsRow
-		if err := rows.Scan(&i.Oid, &i.ExtensionName, &i.SchemaName); err != nil {
+		if err := rows.Scan(
+			&i.Oid,
+			&i.ExtensionName,
+			&i.ExtensionVersion,
+			&i.SchemaName,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

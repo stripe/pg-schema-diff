@@ -1132,6 +1132,22 @@ var (
 			},
 		},
 		{
+			name:      "Extension installation with explicit version",
+			oldSchema: schema.Schema{},
+			newSchema: schema.Schema{
+				Extensions: []schema.Extension{{
+					Name:    "pg_trgm",
+					Version: "1.5",
+				}},
+			},
+			expectedStatements: []Statement{
+				{
+					DDL:     "CREATE EXTENSION pg_trgm WITH VERSION '1.5'",
+					Timeout: statementTimeoutDefault,
+				},
+			},
+		},
+		{
 			name: "Extension removal",
 			oldSchema: schema.Schema{
 				Extensions: []schema.Extension{{Name: "pg_trgm"}},
@@ -1142,6 +1158,49 @@ var (
 					DDL:     "DROP EXTENSION pg_trgm",
 					Timeout: statementTimeoutDefault,
 					Hazards: []MigrationHazard{migrationHazardExtensionDroppedCannotTrackDependencies},
+				},
+			},
+		},
+		{
+			name: "Extension with explicit version upgrade",
+			oldSchema: schema.Schema{
+				Extensions: []schema.Extension{{
+					Name:    "pg_trgm",
+					Version: "1.5",
+				}},
+			},
+			newSchema: schema.Schema{
+				Extensions: []schema.Extension{{
+					Name:    "pg_trgm",
+					Version: "1.6",
+				}},
+			},
+			expectedStatements: []Statement{
+				{
+					DDL:     "ALTER EXTENSION pg_trgm UPDATE TO '1.6'",
+					Timeout: statementTimeoutDefault,
+					Hazards: []MigrationHazard{migrationHazardExtensionAlteredVersionUpgraded},
+				},
+			},
+		},
+		{
+			name: "Extension with implicit version upgrade",
+			oldSchema: schema.Schema{
+				Extensions: []schema.Extension{{
+					Name:    "pg_trgm",
+					Version: "1.5",
+				}},
+			},
+			newSchema: schema.Schema{
+				Extensions: []schema.Extension{{
+					Name: "pg_trgm",
+				}},
+			},
+			expectedStatements: []Statement{
+				{
+					DDL:     "ALTER EXTENSION pg_trgm UPDATE",
+					Timeout: statementTimeoutDefault,
+					Hazards: []MigrationHazard{migrationHazardExtensionAlteredVersionUpgraded},
 				},
 			},
 		},

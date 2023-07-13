@@ -2,6 +2,7 @@ package diff
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,6 +57,10 @@ var (
 	migrationHazardExtensionDroppedCannotTrackDependencies = MigrationHazard{
 		Type:    MigrationHazardTypeHasUntrackableDependencies,
 		Message: "Extensions may be in use by tables, indexes, functions, triggers, etc. Tihs statement will be ran last, so this may be OK.",
+	}
+	migrationHazardExtensionAlteredVersionUpgraded = MigrationHazard{
+		Type:    MigrationHazardTypeVersionUpgrade,
+		Message: "Extension version is being upgraded. Be sure the newer version is backwards compatible with your use case.",
 	}
 )
 
@@ -375,6 +380,11 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving table sql graphs: %w", err)
 	}
 
+	extensionStatements, err := diff.extensionDiffs.resolveToSQLGroupedByEffect(&extensionSQLVertexGenerator{})
+	if err != nil {
+		return nil, fmt.Errorf("resolving extension sql graphs: %w", err)
+	}
+
 	indexesInNewSchemaByTableName := make(map[string][]schema.Index)
 	for _, idx := range diff.new.Indexes {
 		indexesInNewSchemaByTableName[idx.TableName] = append(indexesInNewSchemaByTableName[idx.TableName], idx)
@@ -455,24 +465,27 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("unioning table and trigger graphs: %w", err)
 	}
 
-	extensionStatements, err := diff.extensionDiffs.resolveToSQLGroupedByEffect(&extensionSQLVertexGenerator{})
-	if err != nil {
-		return nil, fmt.Errorf("resolving extension sql graphs: %w", err)
-	}
-
-	var statements []Statement
-	statements = append(statements, extensionStatements.Adds...)
-	statements = append(statements, extensionStatements.Alters...)
-
-	tableGraphStatements, err := tableGraphs.toOrderedStatements()
+	statements, err := tableGraphs.toOrderedStatements()
 	if err != nil {
 		return nil, fmt.Errorf("getting ordered statements from tableGraph: %w", err)
 	}
 
-	statements = append(statements, tableGraphStatements...)
-	statements = append(statements, extensionStatements.Deletes...)
+	return mergeStatementsInOrder(
+		extensionStatements.Adds,
+		extensionStatements.Alters,
+		statements, // these contain every other statement
+		extensionStatements.Deletes,
+	), nil
+}
 
-	return statements, nil
+// mergeStatementsInOrder returns a merged list of the list of statements in the order
+// they're provided.
+func mergeStatementsInOrder(listOfStatements ...[]Statement) []Statement {
+	var result []Statement
+	for _, statements := range listOfStatements {
+		result = append(result, statements...)
+	}
+	return result
 }
 
 func buildSchemaObjByNameMap[S schema.Object](s []S) map[string]S {
@@ -1504,8 +1517,12 @@ func (s sequenceOwnershipSQLVertexGenerator) GetDeleteDependencies(_ schema.Sequ
 type extensionSQLVertexGenerator struct{}
 
 func (e *extensionSQLVertexGenerator) Add(extension schema.Extension) ([]Statement, error) {
+	s := fmt.Sprintf("CREATE EXTENSION %s", extension.GetName())
+	if len(extension.Version) != 0 {
+		s += fmt.Sprintf(" WITH VERSION '%s'", extension.Version)
+	}
 	return []Statement{{
-		DDL:     fmt.Sprintf("CREATE EXTENSION %s", extension.GetName()),
+		DDL:     s,
 		Timeout: statementTimeoutDefault,
 		Hazards: nil,
 	}}, nil
@@ -1520,7 +1537,38 @@ func (e *extensionSQLVertexGenerator) Delete(extension schema.Extension) ([]Stat
 }
 
 func (e *extensionSQLVertexGenerator) Alter(diff extensionDiff) ([]Statement, error) {
-	return nil, nil
+	var statements []Statement
+	if diff.new.Version != diff.old.Version {
+		if len(diff.new.Version) == 0 {
+			// This is an implicit upgrade to the latest extension version.
+			statements = append(statements, Statement{
+				DDL:     fmt.Sprintf("ALTER EXTENSION %s UPDATE", diff.new.Name),
+				Timeout: statementTimeoutDefault,
+				Hazards: []MigrationHazard{migrationHazardExtensionAlteredVersionUpgraded},
+			})
+		} else {
+			oldVersion, err := strconv.ParseFloat(diff.old.Version, 64)
+			if err != nil {
+				return nil, fmt.Errorf("parsing extension version to float: %w", err)
+			}
+
+			newVersion, err := strconv.ParseFloat(diff.new.Version, 64)
+			if err != nil {
+				return nil, fmt.Errorf("parsing extension version to float: %w", err)
+			}
+
+			if newVersion < oldVersion {
+				return nil, fmt.Errorf("new extension version is lower than the old one")
+			}
+			statements = append(statements, Statement{
+				DDL:     fmt.Sprintf("ALTER EXTENSION %s UPDATE TO '%s'", diff.new.Name, diff.new.Version),
+				Timeout: statementTimeoutDefault,
+				Hazards: []MigrationHazard{migrationHazardExtensionAlteredVersionUpgraded},
+			})
+		}
+	}
+
+	return statements, nil
 }
 
 func (e *extensionSQLVertexGenerator) GetAddAlterDependencies(new, old schema.Extension) []dependency {

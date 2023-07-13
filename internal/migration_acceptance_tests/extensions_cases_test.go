@@ -49,6 +49,22 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
+	{
+		name: "upgrade an extension implicitly and explicitly",
+		oldSchemaDDL: []string{
+			`
+			CREATE EXTENSION pg_trgm WITH VERSION '1.5';
+			CREATE EXTENSION amcheck WITH VERSION '1.3';
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE EXTENSION pg_trgm WITH VERSION '1.6';
+			CREATE EXTENSION AMCHECK;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeVersionUpgrade},
+	},
 }
 
 func (suite *acceptanceTestSuite) TestExtensionAcceptanceTestCases() {

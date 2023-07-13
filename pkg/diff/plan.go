@@ -17,6 +17,7 @@ const (
 	MigrationHazardTypeIndexDropped                MigrationHazardType = "INDEX_DROPPED"
 	MigrationHazardTypeImpactsDatabasePerformance  MigrationHazardType = "IMPACTS_DATABASE_PERFORMANCE"
 	MigrationHazardTypeIsUserGenerated             MigrationHazardType = "IS_USER_GENERATED"
+	MigrationHazardTypeVersionUpgrade              MigrationHazardType = "UPGRADING_ENTITY_VERSION"
 )
 
 // MigrationHazard represents a hazard that a statement poses to a database
