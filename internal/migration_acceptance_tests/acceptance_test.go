@@ -82,12 +82,6 @@ func (suite *acceptanceTestSuite) runTestCases(acceptanceTestCases []acceptanceT
 }
 
 func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expectations, planOpts []diff.PlanOpt) {
-	// onDbInitQueries will be run on both the old database before the migration and the new database before pg_dump
-	onDbInitQueries := []string{
-		// Enable an extension to enforce that diffing works with extensions enabled
-		`CREATE EXTENSION amcheck;`,
-	}
-
 	// normalize the subtest
 	if expects.outputState == nil {
 		expects.outputState = tc.newSchemaDDL
@@ -98,7 +92,7 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	suite.Require().NoError(err)
 	defer oldDb.DropDB()
 	// Apply the old schema
-	suite.Require().NoError(applyDDL(oldDb, append(onDbInitQueries, tc.oldSchemaDDL...)))
+	suite.Require().NoError(applyDDL(oldDb, tc.oldSchemaDDL))
 
 	// Migrate the old DB
 	oldDBConnPool, err := sql.Open("pgx", oldDb.GetDSN())
@@ -144,7 +138,7 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	oldDbDump, err := pgdump.GetDump(oldDb, pgdump.WithSchemaOnly())
 	suite.Require().NoError(err)
 
-	newDbDump := suite.directlyRunDDLAndGetDump(append(onDbInitQueries, expects.outputState...))
+	newDbDump := suite.directlyRunDDLAndGetDump(expects.outputState)
 	suite.Equal(newDbDump, oldDbDump, prettySprintPlan(plan))
 
 	// Make sure no diff is found if we try to regenerate a plan

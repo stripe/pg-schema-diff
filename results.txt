@@ -1,0 +1,1448 @@
+=== RUN   TestParseStatementTimeoutModifierStr
+=== RUN   TestParseStatementTimeoutModifierStr/normal_duration=5m
+=== RUN   TestParseStatementTimeoutModifierStr/some_regex_with_a_duration_ending_in_a_period=5.h
+=== RUN   TestParseStatementTimeoutModifierStr/_starts_with_spaces_than_has_a_*=5.5m
+=== RUN   TestParseStatementTimeoutModifierStr/has_a_valid_opt_in_the_regex_something=5.5m_in_the_regex_=15s
+=== RUN   TestParseStatementTimeoutModifierStr/has_multiple_valid_opts_opt=15m5s_in_the_regex_something=5.5m_in_the_regex_and_has_compound_duration=15m1ms2us10ns
+=== RUN   TestParseStatementTimeoutModifierStr/=5m
+=== RUN   TestParseStatementTimeoutModifierStr/15m
+=== RUN   TestParseStatementTimeoutModifierStr/someregex;15m
+=== RUN   TestParseStatementTimeoutModifierStr/someregex=invalid_duration5s
+--- PASS: TestParseStatementTimeoutModifierStr (0.00s)
+    --- PASS: TestParseStatementTimeoutModifierStr/normal_duration=5m (0.00s)
+    --- PASS: TestParseStatementTimeoutModifierStr/some_regex_with_a_duration_ending_in_a_period=5.h (0.00s)
+    --- PASS: TestParseStatementTimeoutModifierStr/_starts_with_spaces_than_has_a_*=5.5m (0.00s)
+    --- PASS: TestParseStatementTimeoutModifierStr/has_a_valid_opt_in_the_regex_something=5.5m_in_the_regex_=15s (0.00s)
+    --- PASS: TestParseStatementTimeoutModifierStr/has_multiple_valid_opts_opt=15m5s_in_the_regex_something=5.5m_in_the_regex_and_has_compound_duration=15m1ms2us10ns (0.00s)
+    --- PASS: TestParseStatementTimeoutModifierStr/=5m (0.00s)
+    --- PASS: TestParseStatementTimeoutModifierStr/15m (0.00s)
+    --- PASS: TestParseStatementTimeoutModifierStr/someregex;15m (0.00s)
+    --- PASS: TestParseStatementTimeoutModifierStr/someregex=invalid_duration5s (0.00s)
+=== RUN   TestParseInsertStatementStr
+=== RUN   TestParseInsertStatementStr/1_0h5.1m:SELECT_*_FROM_:TABLE:0_5m:something
+=== RUN   TestParseInsertStatementStr/0_100ms:SELECT_1;_SELECT_*_FROM_something;
+=== RUN   TestParseInsertStatementStr/_5s:No_index
+=== RUN   TestParseInsertStatementStr/0_5g:Invalid_duration
+=== RUN   TestParseInsertStatementStr/0_5s:
+--- PASS: TestParseInsertStatementStr (0.00s)
+    --- PASS: TestParseInsertStatementStr/1_0h5.1m:SELECT_*_FROM_:TABLE:0_5m:something (0.00s)
+    --- PASS: TestParseInsertStatementStr/0_100ms:SELECT_1;_SELECT_*_FROM_something; (0.00s)
+    --- PASS: TestParseInsertStatementStr/_5s:No_index (0.00s)
+    --- PASS: TestParseInsertStatementStr/0_5g:Invalid_duration (0.00s)
+    --- PASS: TestParseInsertStatementStr/0_5s: (0.00s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/cmd/pg-schema-diff	0.033s
+=== RUN   TestAddGetHasOperations
+--- PASS: TestAddGetHasOperations (0.00s)
+=== RUN   TestReverse
+--- PASS: TestReverse (0.00s)
+=== RUN   TestCopy
+--- PASS: TestCopy (0.00s)
+=== RUN   TestUnion
+--- PASS: TestUnion (0.00s)
+=== RUN   TestUnionFailsIfMergeReturnsDifferentId
+--- PASS: TestUnionFailsIfMergeReturnsDifferentId (0.00s)
+=== RUN   TestTopologicallySort
+--- PASS: TestTopologicallySort (0.00s)
+=== RUN   TestTopologicallySortWithPriority
+=== RUN   TestTopologicallySortWithPriority/largest-numbered_available_vertex_first_(string-based_GetPriority)
+=== RUN   TestTopologicallySortWithPriority/smallest-numbered_available_vertex_first_(numeric-based_GetPriority)
+=== RUN   TestTopologicallySortWithPriority/fewest_edges_first_(prioritize_high_id's_for_tie_breakers)
+--- PASS: TestTopologicallySortWithPriority (0.00s)
+    --- PASS: TestTopologicallySortWithPriority/largest-numbered_available_vertex_first_(string-based_GetPriority) (0.00s)
+    --- PASS: TestTopologicallySortWithPriority/smallest-numbered_available_vertex_first_(numeric-based_GetPriority) (0.00s)
+    --- PASS: TestTopologicallySortWithPriority/fewest_edges_first_(prioritize_high_id's_for_tie_breakers) (0.00s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/internal/graph	0.023s
+=== RUN   TestAcceptanceSuite
+2023-07-13 14:34:04.146 UTC [3099] LOG:  starting PostgreSQL 15.3 on aarch64-alpine-linux-musl, compiled by gcc (Alpine 12.2.1_git20220924-r4) 12.2.1 20220924, 64-bit
+2023-07-13 14:34:04.146 UTC [3099] LOG:  listening on Unix socket "/tmp/pgsock-3430065898/.s.PGSQL.5432"
+2023-07-13 14:34:04.149 UTC [3102] LOG:  database system was shut down at 2023-07-13 14:34:03 UTC
+2023-07-13 14:34:04.152 UTC [3099] LOG:  database system is ready to accept connections
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_UDF_dependency_should_error
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_UDF_dependency_should_error/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_UDF_dependency_should_error/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_system_function_dependency_should_not_error
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_system_function_dependency_should_not_error/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_system_function_dependency_should_not_error/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_multiple_check_constraints
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_multiple_check_constraints/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_multiple_check_constraints/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraints_to_new_column
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraints_to_new_column/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraints_to_new_column/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_quoted_identifiers
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_quoted_identifiers/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_quoted_identifiers/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_no_inherit_check_constraint
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_no_inherit_check_constraint/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_no_inherit_check_constraint/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_No-Inherit,_Not-Valid_check_constraint
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_No-Inherit,_Not-Valid_check_constraint/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_No-Inherit,_Not-Valid_check_constraint/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_quoted_identifiers
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_quoted_identifiers/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_quoted_identifiers/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_column_with_check_constraints
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_column_with_check_constraints/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_column_with_check_constraints/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_UDF_dependency_should_error
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_UDF_dependency_should_error/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_UDF_dependency_should_error/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_system_function_dependency_should_not_error
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_system_function_dependency_should_not_error/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_system_function_dependency_should_not_error/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_invalid_check_constraint_to_be_valid
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_invalid_check_constraint_to_be_valid/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_invalid_check_constraint_to_be_valid/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_valid_check_constraint_to_be_invalid
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_valid_check_constraint_to_be_invalid/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_valid_check_constraint_to_be_invalid/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_No-Inherit_check_constraint_to_be_Inheritable
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_No-Inherit_check_constraint_to_be_Inheritable/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_No-Inherit_check_constraint_to_be_Inheritable/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_Inheritable_check_constraint_to_be_No-Inherit
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_Inheritable_check_constraint_to_be_No-Inherit/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_Inheritable_check_constraint_to_be_No-Inherit/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_check_constraint_expression
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_check_constraint_expression/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_check_constraint_expression/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_UDF_dependency_should_error
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_UDF_dependency_should_error/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_UDF_dependency_should_error/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_system_function_dependency_should_not_error
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_system_function_dependency_should_not_error/vanilla
+=== RUN   TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_system_function_dependency_should_not_error/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_default
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_default/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_default/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_quoted_names
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_quoted_names/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_quoted_names/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_nullability
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_nullability/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_nullability/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_serial
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_serial/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_serial/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_all_options
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_all_options/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_all_options/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_and_change_ordering
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_and_change_ordering/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_and_change_ordering/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_quoted_name
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_quoted_name/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_quoted_name/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_serial
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_serial/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_serial/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(int_->_serial)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(int_->_serial)/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(int_->_serial)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(serial_->_int)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(serial_->_int)/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(serial_->_int)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(varchar_->_TEXT)_with_compatible_default
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(varchar_->_TEXT)_with_compatible_default/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(varchar_->_TEXT)_with_compatible_default/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_and_collation_(varchar_->_char)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_and_collation_(varchar_->_char)/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_and_collation_(varchar_->_char)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_to_incompatible_(bytea_->_char)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_to_incompatible_(bytea_->_char)/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_to_incompatible_(bytea_->_char)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(default_->_non-default)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(default_->_non-default)/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(default_->_non-default)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(non-default_->_non-default)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(non-default_->_non-default)/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(non-default_->_non-default)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_Default
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_Default/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_Default/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_Default
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_Default/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_Default/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_Default
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_Default/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_Default/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Set_NOT_NULL
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Set_NOT_NULL/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Set_NOT_NULL/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_NOT_NULL
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_NOT_NULL/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_NOT_NULL/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_default_and_change_data_type_(new_default_is_incompatible_with_old_type)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_default_and_change_data_type_(new_default_is_incompatible_with_old_type)/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_default_and_change_data_type_(new_default_is_incompatible_with_old_type)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(new_default_is_incompatible_with_old_type)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(new_default_is_incompatible_with_old_type)/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(new_default_is_incompatible_with_old_type)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(old_default_is_incompatible_with_new_type)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(old_default_is_incompatible_with_new_type)/vanilla
+2023-07-13 14:34:55.130 UTC [4575] ERROR:  default for column "foobar" cannot be cast automatically to type integer
+2023-07-13 14:34:55.130 UTC [4575] STATEMENT:  ALTER TABLE "foobar" ALTER COLUMN "foobar" SET DATA TYPE integer using "foobar"::integer;
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(old_default_is_incompatible_with_new_type)/with_data_packing_(and_ignoring_column_order)
+2023-07-13 14:34:55.400 UTC [4582] ERROR:  default for column "foobar" cannot be cast automatically to type integer
+2023-07-13 14:34:55.400 UTC [4582] STATEMENT:  ALTER TABLE "foobar" ALTER COLUMN "foobar" SET DATA TYPE integer using "foobar"::integer;
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_to_not_null
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_to_not_null/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_to_not_null/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NULL_default_to_no_default_and_NOT_NULL
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NULL_default_to_no_default_and_NOT_NULL/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NULL_default_to_no_default_and_NOT_NULL/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NOT_NULL_to_no_NULL_default
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NOT_NULL_to_no_NULL_default/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NOT_NULL_to_no_NULL_default/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_nullable
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_nullable/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_nullable/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_not_nullable
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_not_nullable/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_not_nullable/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type,_nullability_(NOT_NULL),_and_default
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type,_nullability_(NOT_NULL),_and_default/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type,_nullability_(NOT_NULL),_and_default/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_collation,_nullability_(NOT_NULL),_and_default_with_quoted_names
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_collation,_nullability_(NOT_NULL),_and_default_with_quoted_names/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_collation,_nullability_(NOT_NULL),_and_default_with_quoted_names/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_BIGINT_to_TIMESTAMP,_nullability_(NOT_NULL),_and_default_with_current_timestamp
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_BIGINT_to_TIMESTAMP,_nullability_(NOT_NULL),_and_default_with_current_timestamp/vanilla
+=== RUN   TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_BIGINT_to_TIMESTAMP,_nullability_(NOT_NULL),_and_default_with_current_timestamp/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_(with_conflicting_names)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_(with_conflicting_names)/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_with_quoted_names_(with_conflicting_names)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_with_quoted_names_(with_conflicting_names)/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_with_quoted_names_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_non-sql_function
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_non-sql_function/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_non-sql_function/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_function_with_dependencies
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_function_with_dependencies/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_function_with_dependencies/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_(with_conflicting_names)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_(with_conflicting_names)/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_with_quoted_names_(with_conflicting_names)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_with_quoted_names_(with_conflicting_names)/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_with_quoted_names_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_non-sql_function
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_non-sql_function/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_non-sql_function/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_function_with_dependencies
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_function_with_dependencies/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_function_with_dependencies/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_(with_conflicting_names)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_(with_conflicting_names)/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_with_quoted_names_(with_conflicting_names)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_with_quoted_names_(with_conflicting_names)/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_with_quoted_names_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_sql_function_to_be_non-sql_function
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_sql_function_to_be_non-sql_function/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_sql_function_to_be_non-sql_function/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function_to_be_sql_function_(no_dependency_tracking_error)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function_to_be_sql_function_(no_dependency_tracking_error)/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function_to_be_sql_function_(no_dependency_tracking_error)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function's_dependencies
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function's_dependencies/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function's_dependencies/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_dependent_function
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_dependent_function/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_dependent_function/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function_to_no_longer_depend_on_a_function_and_drop_that_function
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function_to_no_longer_depend_on_a_function_and_drop_that_function/vanilla
+=== RUN   TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function_to_no_longer_depend_on_a_function_and_drop_that_function/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_hash_index
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_hash_index/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_hash_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index_with_quoted_names
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index_with_quoted_names/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index_with_quoted_names/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_unique_index
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_unique_index/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_unique_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_on_NOT_NULL_column
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_on_NOT_NULL_column/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_on_NOT_NULL_column/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_has_a_name_different_to_the_constraint
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_has_a_name_different_to_the_constraint/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_has_a_name_different_to_the_constraint/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_is_not_unique
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_is_not_unique/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_is_not_unique/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index_with_quoted_names
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index_with_quoted_names/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index_with_quoted_names/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_unique_index
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_unique_index/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_unique_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_primary_key
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_primary_key/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_primary_key/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_(with_a_really_long_name)_columns
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_(with_a_really_long_name)_columns/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_(with_a_really_long_name)_columns/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_type
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_type/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_type/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_column_ordering
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_column_ordering/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_column_ordering/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_columns_and_associated_index
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_columns_and_associated_index/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_columns_and_associated_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_and_make_old_key_nullable
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_and_make_old_key_nullable/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_and_make_old_key_nullable/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_with_quoted_name
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_with_quoted_name/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_with_quoted_name/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_when_the_original_primary_key_constraint_has_a_non-default_name
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_when_the_original_primary_key_constraint_has_a_non-default_name/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_when_the_original_primary_key_constraint_has_a_non-default_name/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Alter_primary_key_columns_(name_stays_same)
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Alter_primary_key_columns_(name_stays_same)/vanilla
+=== RUN   TestAcceptanceSuite/TestIndexAcceptanceTestCases/Alter_primary_key_columns_(name_stays_same)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_indexes
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_indexes/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_indexes/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_unique_local_index
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_unique_local_index/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_unique_local_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_primary_keys
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_primary_keys/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_primary_keys/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_local_index
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_local_index/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_local_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_unique_local_index
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_unique_local_index/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_unique_local_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_primary_key
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_primary_key/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_primary_key/with_data_packing_(and_ignoring_column_order)
+2023-07-13 14:35:54.372 UTC [6390] FATAL:  database "pgschemadifftmp_928e4b1e_218a_11ee_96f9_0242ac110002" does not exist
+2023-07-13 14:35:54.372 UTC [6390] DETAIL:  It seems to have just been dropped or renamed.
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Change_an_index_columns
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Change_an_index_columns/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Change_an_index_columns/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_columns_and_associated_index
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_columns_and_associated_index/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_columns_and_associated_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_primary_key
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_primary_key/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_primary_key/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_partitioned_index_to_local_index
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_partitioned_index_to_local_index/vanilla
+=== RUN   TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_partitioned_index_to_local_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_hash_index
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_hash_index/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_hash_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_partitioned_index
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_partitioned_index/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_partitioned_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index_with_quotes_names
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index_with_quotes_names/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index_with_quotes_names/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_index_that_is_used_by_a_local_primary_key
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_index_that_is_used_by_a_local_primary_key/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_index_that_is_used_by_a_local_primary_key/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key_with_quoted_names
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key_with_quoted_names/vanilla
+2023-07-13 14:36:09.400 UTC [6824] FATAL:  terminating autovacuum process due to administrator command
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key_with_quoted_names/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_primary_key_when_the_local_index_already_exists
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_primary_key_when_the_local_index_already_exists/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_primary_key_when_the_local_index_already_exists/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_index_when_the_local_index_already_exists
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_index_when_the_local_index_already_exists/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_index_when_the_local_index_already_exists/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_normal_partitioned_index
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_normal_partitioned_index/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_normal_partitioned_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_unique_partitioned_index
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_unique_partitioned_index/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_unique_partitioned_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_primary_key
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_primary_key/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_primary_key/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_columns
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_columns/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_columns/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_type
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_type/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_type/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_column_ordering
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_column_ordering/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_column_ordering/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_columns_and_associated_index
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_columns_and_associated_index/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_columns_and_associated_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Switch_primary_key
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Switch_primary_key/vanilla
+2023-07-13 14:36:21.483 UTC [7154] FATAL:  database "pgschemadifftmp_a2a86341_218a_11ee_96f9_0242ac110002" does not exist
+2023-07-13 14:36:21.483 UTC [7154] DETAIL:  It seems to have just been dropped or renamed.
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Switch_primary_key/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Attach_an_unnattached,_invalid_index
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Attach_an_unnattached,_invalid_index/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Attach_an_unnattached,_invalid_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_shared_primary_key
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_shared_primary_key/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_shared_primary_key/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_local_primary_keys
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_local_primary_keys/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_local_primary_keys/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Drop_table
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Drop_table/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Drop_table/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_partitioned_index_index,_new_partitioned_index,_delete_local_index,_add_local_index,_validate_check_constraint
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_partitioned_index_index,_new_partitioned_index,_delete_local_index,_add_local_index,_validate_check_constraint/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_partitioned_index_index,_new_partitioned_index,_delete_local_index,_add_local_index,_validate_check_constraint/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Changing_partition_key_def_errors
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Changing_partition_key_def_errors/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Changing_partition_key_def_errors/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned_and_child_tables_already_exist
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned_and_child_tables_already_exist/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned_and_child_tables_already_exist/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned_and_child_tables_still_exist
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned_and_child_tables_still_exist/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned_and_child_tables_still_exist/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition_with_local_primary_key_that_can_back_the_unique_index
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition_with_local_primary_key_that_can_back_the_unique_index/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition_with_local_primary_key_that_can_back_the_unique_index/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Deleting_a_partitioning_errors
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Deleting_a_partitioning_errors/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Deleting_a_partitioning_errors/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Altering_a_partition's_'FOR_VALUES'_errors
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Altering_a_partition's_'FOR_VALUES'_errors/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Altering_a_partition's_'FOR_VALUES'_errors/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Re-creating_base_table_causes_partitions_to_be_re-created
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Re-creating_base_table_causes_partitions_to_be_re-created/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Re-creating_base_table_causes_partitions_to_be_re-created/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Can_handle_scenario_where_partition_is_not_attached
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Can_handle_scenario_where_partition_is_not_attached/vanilla
+=== RUN   TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Can_handle_scenario_where_partition_is_not_attached/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_table,_Add_Table,_Drop_seq,_Add_Seq,_Drop_Funcs,_Add_Funcs,_Drop_Triggers,_Add_Triggers
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_table,_Add_Table,_Drop_seq,_Add_Seq,_Drop_Funcs,_Add_Funcs,_Drop_Triggers,_Add_Triggers/vanilla
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_table,_Add_Table,_Drop_seq,_Add_Seq,_Drop_Funcs,_Add_Funcs,_Drop_Triggers,_Add_Triggers/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_partitioned_table,_Add_partitioned_table_with_local_keys
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_partitioned_table,_Add_partitioned_table_with_local_keys/vanilla
+=== RUN   TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_partitioned_table,_Add_partitioned_table_with_local_keys/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence_via_serial
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence_via_serial/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence_via_serial/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column_(partitioned_table)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column_(partitioned_table)/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column_(partitioned_table)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type_(partitioned)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type_(partitioned)/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type_(partitioned)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop_(partitioned)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop_(partitioned)/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop_(partitioned)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_data_type
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_data_type/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_data_type/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_increment
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_increment/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_increment/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_min_value
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_min_value/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_min_value/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_max_value
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_max_value/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_max_value/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_start_with
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_start_with/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_start_with/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cache
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cache/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cache/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cycle
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cycle/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cycle/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_none_to_table)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_none_to_table)/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_none_to_table)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_none)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_none)/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_none)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table)/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_column_dropped)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_column_dropped)/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_column_dropped)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_table_dropped)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_table_dropped)/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_table_dropped)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_partitioned_table_dropped)
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_partitioned_table_dropped)/vanilla
+=== RUN   TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_partitioned_table_dropped)/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table/vanilla
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table_with_quoted_names
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table_with_quoted_names/vanilla
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table_with_quoted_names/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_table
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_table/vanilla
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_table/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_a_table_with_quoted_names
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_a_table_with_quoted_names/vanilla
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_a_table_with_quoted_names/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_index,_new_index,_validate_check_constraint
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_index,_new_index,_validate_check_constraint/vanilla
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_index,_new_index,_validate_check_constraint/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_column,_new_primary_key,_alter_column_to_nullable,_alter_column_types,_drop_column,_drop_index,_drop_check_constraints
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_column,_new_primary_key,_alter_column_to_nullable,_alter_column_types,_drop_column,_drop_index,_drop_check_constraints/vanilla
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_column,_new_primary_key,_alter_column_to_nullable,_alter_column_types,_drop_column,_drop_index,_drop_check_constraints/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_effectively_drop_by_changing_everything
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_effectively_drop_by_changing_everything/vanilla
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_effectively_drop_by_changing_everything/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_translate_BIGINT_type_to_TIMESTAMP,_set_to_not_null,_set_default
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_translate_BIGINT_type_to_TIMESTAMP,_set_to_not_null,_set_default/vanilla
+=== RUN   TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_translate_BIGINT_type_to_TIMESTAMP,_set_to_not_null,_set_default/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/No-op
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/No-op/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_trigger_with_quoted_name
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_trigger_with_quoted_name/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_trigger_with_quoted_name/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_triggers_with_quoted_names_on_partitioned_table_and_partition
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_triggers_with_quoted_names_on_partitioned_table_and_partition/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_triggers_with_quoted_names_on_partitioned_table_and_partition/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_depending_on_the_same_function
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_depending_on_the_same_function/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_depending_on_the_same_function/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_with_the_same_name
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_with_the_same_name/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_with_the_same_name/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_trigger_with_quoted_names
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_trigger_with_quoted_names/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_trigger_with_quoted_names/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_triggers_with_quoted_names_on_partitioned_table_and_partition
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_triggers_with_quoted_names_on_partitioned_table_and_partition/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_triggers_with_quoted_names_on_partitioned_table_and_partition/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_two_triggers_with_the_same_name
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_two_triggers_with_the_same_name/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_two_triggers_with_the_same_name/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_when_clause
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_when_clause/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_when_clause/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_table
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_table/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_table/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_keep_old_function
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_keep_old_function/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_keep_old_function/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_drop_old_function
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_drop_old_function/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_drop_old_function/with_data_packing_(and_ignoring_column_order)
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Trigger_on_re-created_table_is_re-created
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Trigger_on_re-created_table_is_re-created/vanilla
+=== RUN   TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Trigger_on_re-created_table_is_re-created/with_data_packing_(and_ignoring_column_order)
+2023-07-13 14:37:33.327 UTC [3099] LOG:  received fast shutdown request
+2023-07-13 14:37:33.328 UTC [3099] LOG:  aborting any active transactions
+2023-07-13 14:37:33.331 UTC [3099] LOG:  background worker "logical replication launcher" (PID 3105) exited with exit code 1
+2023-07-13 14:37:33.331 UTC [3100] LOG:  shutting down
+2023-07-13 14:37:33.345 UTC [3099] LOG:  database system is shut down
+--- PASS: TestAcceptanceSuite (210.05s)
+    --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases (21.72s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/No-op (1.07s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/No-op/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.51s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint (1.09s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_UDF_dependency_should_error (0.47s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_UDF_dependency_should_error/vanilla (0.24s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_UDF_dependency_should_error/with_data_packing_(and_ignoring_column_order) (0.24s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_system_function_dependency_should_not_error (1.15s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_system_function_dependency_should_not_error/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_system_function_dependency_should_not_error/with_data_packing_(and_ignoring_column_order) (0.61s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_multiple_check_constraints (1.27s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_multiple_check_constraints/vanilla (0.63s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_multiple_check_constraints/with_data_packing_(and_ignoring_column_order) (0.64s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraints_to_new_column (1.24s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraints_to_new_column/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraints_to_new_column/with_data_packing_(and_ignoring_column_order) (0.62s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_quoted_identifiers (1.17s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_quoted_identifiers/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_check_constraint_with_quoted_identifiers/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_no_inherit_check_constraint (1.21s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_no_inherit_check_constraint/vanilla (0.63s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_no_inherit_check_constraint/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_No-Inherit,_Not-Valid_check_constraint (1.04s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_No-Inherit,_Not-Valid_check_constraint/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Add_No-Inherit,_Not-Valid_check_constraint/with_data_packing_(and_ignoring_column_order) (0.51s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint (1.04s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint/with_data_packing_(and_ignoring_column_order) (0.51s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_quoted_identifiers (1.10s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_quoted_identifiers/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_quoted_identifiers/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_column_with_check_constraints (1.08s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_column_with_check_constraints/vanilla (0.56s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_column_with_check_constraints/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_UDF_dependency_should_error (0.45s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_UDF_dependency_should_error/vanilla (0.23s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_UDF_dependency_should_error/with_data_packing_(and_ignoring_column_order) (0.22s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_system_function_dependency_should_not_error (1.24s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_system_function_dependency_should_not_error/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Drop_check_constraint_with_system_function_dependency_should_not_error/with_data_packing_(and_ignoring_column_order) (0.66s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_invalid_check_constraint_to_be_valid (1.07s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_invalid_check_constraint_to_be_valid/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_invalid_check_constraint_to_be_valid/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_valid_check_constraint_to_be_invalid (1.09s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_valid_check_constraint_to_be_invalid/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_valid_check_constraint_to_be_invalid/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_No-Inherit_check_constraint_to_be_Inheritable (1.09s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_No-Inherit_check_constraint_to_be_Inheritable/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_No-Inherit_check_constraint_to_be_Inheritable/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_Inheritable_check_constraint_to_be_No-Inherit (1.11s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_Inheritable_check_constraint_to_be_No-Inherit/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_an_Inheritable_check_constraint_to_be_No-Inherit/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_check_constraint_expression (1.07s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_check_constraint_expression/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_a_check_constraint_expression/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_UDF_dependency_should_error (0.49s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_UDF_dependency_should_error/vanilla (0.25s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_UDF_dependency_should_error/with_data_packing_(and_ignoring_column_order) (0.23s)
+        --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_system_function_dependency_should_not_error (1.17s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_system_function_dependency_should_not_error/vanilla (0.60s)
+            --- PASS: TestAcceptanceSuite/TestCheckConstraintAcceptanceTestCases/Alter_check_constraint_with_system_function_dependency_should_not_error/with_data_packing_(and_ignoring_column_order) (0.57s)
+    --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases (37.28s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/No-op (1.18s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/No-op/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.66s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_default (1.24s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_default/vanilla (0.61s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_default/with_data_packing_(and_ignoring_column_order) (0.63s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_quoted_names (1.19s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_quoted_names/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_quoted_names/with_data_packing_(and_ignoring_column_order) (0.60s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_nullability (1.13s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_nullability/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_nullability/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_serial (1.18s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_serial/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_serial/with_data_packing_(and_ignoring_column_order) (0.61s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_all_options (1.11s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_all_options/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_with_all_options/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_and_change_ordering (1.20s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_and_change_ordering/vanilla (0.61s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_one_column_and_change_ordering/with_data_packing_(and_ignoring_column_order) (0.59s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column (1.19s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column/with_data_packing_(and_ignoring_column_order) (0.63s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_quoted_name (1.39s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_quoted_name/vanilla (0.60s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_quoted_name/with_data_packing_(and_ignoring_column_order) (0.78s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_serial (1.23s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_serial/vanilla (0.64s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Delete_one_column_with_serial/with_data_packing_(and_ignoring_column_order) (0.59s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(int_->_serial) (1.16s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(int_->_serial)/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(int_->_serial)/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(serial_->_int) (1.20s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(serial_->_int)/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(serial_->_int)/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(varchar_->_TEXT)_with_compatible_default (1.17s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(varchar_->_TEXT)_with_compatible_default/vanilla (0.60s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_(varchar_->_TEXT)_with_compatible_default/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_and_collation_(varchar_->_char) (1.05s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_and_collation_(varchar_->_char)/vanilla (0.51s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_and_collation_(varchar_->_char)/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_to_incompatible_(bytea_->_char) (1.05s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_to_incompatible_(bytea_->_char)/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_data_type_to_incompatible_(bytea_->_char)/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(default_->_non-default) (1.10s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(default_->_non-default)/vanilla (0.57s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(default_->_non-default)/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(non-default_->_non-default) (1.05s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(non-default_->_non-default)/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Modify_collation_(non-default_->_non-default)/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_Default (1.08s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_Default/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_Default/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_Default (1.23s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_Default/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_Default/with_data_packing_(and_ignoring_column_order) (0.64s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_Default (1.26s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_Default/vanilla (0.63s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_Default/with_data_packing_(and_ignoring_column_order) (0.63s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Set_NOT_NULL (1.24s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Set_NOT_NULL/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Set_NOT_NULL/with_data_packing_(and_ignoring_column_order) (0.62s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_NOT_NULL (1.19s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_NOT_NULL/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Remove_NOT_NULL/with_data_packing_(and_ignoring_column_order) (0.66s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_default_and_change_data_type_(new_default_is_incompatible_with_old_type) (1.06s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_default_and_change_data_type_(new_default_is_incompatible_with_old_type)/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Add_default_and_change_data_type_(new_default_is_incompatible_with_old_type)/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(new_default_is_incompatible_with_old_type) (1.09s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(new_default_is_incompatible_with_old_type)/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(new_default_is_incompatible_with_old_type)/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(old_default_is_incompatible_with_new_type) (0.55s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(old_default_is_incompatible_with_new_type)/vanilla (0.28s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_default_and_data_type_(old_default_is_incompatible_with_new_type)/with_data_packing_(and_ignoring_column_order) (0.27s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_to_not_null (1.05s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_to_not_null/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_to_not_null/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NULL_default_to_no_default_and_NOT_NULL (1.05s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NULL_default_to_no_default_and_NOT_NULL/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NULL_default_to_no_default_and_NOT_NULL/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NOT_NULL_to_no_NULL_default (1.05s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NOT_NULL_to_no_NULL_default/vanilla (0.51s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_from_NOT_NULL_to_no_NULL_default/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_nullable (1.09s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_nullable/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_nullable/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_not_nullable (1.09s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_not_nullable/vanilla (0.56s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_to_not_nullable/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type,_nullability_(NOT_NULL),_and_default (1.15s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type,_nullability_(NOT_NULL),_and_default/vanilla (0.57s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type,_nullability_(NOT_NULL),_and_default/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_collation,_nullability_(NOT_NULL),_and_default_with_quoted_names (1.14s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_collation,_nullability_(NOT_NULL),_and_default_with_quoted_names/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_data_type_and_collation,_nullability_(NOT_NULL),_and_default_with_quoted_names/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_BIGINT_to_TIMESTAMP,_nullability_(NOT_NULL),_and_default_with_current_timestamp (1.13s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_BIGINT_to_TIMESTAMP,_nullability_(NOT_NULL),_and_default_with_current_timestamp/vanilla (0.56s)
+            --- PASS: TestAcceptanceSuite/TestColumnAcceptanceTestCases/Change_BIGINT_to_TIMESTAMP,_nullability_(NOT_NULL),_and_default_with_current_timestamp/with_data_packing_(and_ignoring_column_order) (0.57s)
+    --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases (18.62s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/No-op (1.09s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/No-op/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_(with_conflicting_names) (1.04s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_(with_conflicting_names)/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order) (0.51s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_with_quoted_names_(with_conflicting_names) (1.11s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_with_quoted_names_(with_conflicting_names)/vanilla (0.51s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_functions_with_quoted_names_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order) (0.60s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_non-sql_function (1.14s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_non-sql_function/vanilla (0.57s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_non-sql_function/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_function_with_dependencies (1.21s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_function_with_dependencies/vanilla (0.64s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Create_function_with_dependencies/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_(with_conflicting_names) (1.11s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_(with_conflicting_names)/vanilla (0.57s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_with_quoted_names_(with_conflicting_names) (1.18s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_with_quoted_names_(with_conflicting_names)/vanilla (0.57s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_functions_with_quoted_names_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order) (0.61s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_non-sql_function (1.21s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_non-sql_function/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_non-sql_function/with_data_packing_(and_ignoring_column_order) (0.68s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_function_with_dependencies (1.03s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_function_with_dependencies/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Drop_function_with_dependencies/with_data_packing_(and_ignoring_column_order) (0.51s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_(with_conflicting_names) (1.04s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_(with_conflicting_names)/vanilla (0.50s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_with_quoted_names_(with_conflicting_names) (1.03s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_with_quoted_names_(with_conflicting_names)/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_functions_with_quoted_names_(with_conflicting_names)/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function (1.03s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function/vanilla (0.50s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_sql_function_to_be_non-sql_function (1.02s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_sql_function_to_be_non-sql_function/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_sql_function_to_be_non-sql_function/with_data_packing_(and_ignoring_column_order) (0.50s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function_to_be_sql_function_(no_dependency_tracking_error) (1.06s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function_to_be_sql_function_(no_dependency_tracking_error)/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_non-sql_function_to_be_sql_function_(no_dependency_tracking_error)/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function's_dependencies (1.11s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function's_dependencies/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function's_dependencies/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_dependent_function (1.09s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_dependent_function/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_dependent_function/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function_to_no_longer_depend_on_a_function_and_drop_that_function (1.11s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function_to_no_longer_depend_on_a_function_and_drop_that_function/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestFunctionAcceptanceTestCases/Alter_a_function_to_no_longer_depend_on_a_function_and_drop_that_function/with_data_packing_(and_ignoring_column_order) (0.56s)
+    --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases (23.67s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/No-op (1.10s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/No-op/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index (1.09s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_hash_index (1.06s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_hash_index/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_hash_index/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index_with_quoted_names (1.12s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index_with_quoted_names/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_normal_index_with_quoted_names/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_unique_index (1.12s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_unique_index/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_unique_index/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key (1.02s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key/vanilla (0.51s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_on_NOT_NULL_column (1.05s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_on_NOT_NULL_column/vanilla (0.51s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_on_NOT_NULL_column/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists (1.15s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists/vanilla (0.63s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_has_a_name_different_to_the_constraint (1.07s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_has_a_name_different_to_the_constraint/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_has_a_name_different_to_the_constraint/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_is_not_unique (1.06s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_is_not_unique/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists_but_is_not_unique/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index (1.05s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index_with_quoted_names (1.08s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index_with_quoted_names/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_normal_index_with_quoted_names/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_unique_index (1.09s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_unique_index/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_unique_index/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_primary_key (1.03s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_primary_key/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_a_primary_key/with_data_packing_(and_ignoring_column_order) (0.50s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_(with_a_really_long_name)_columns (1.07s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_(with_a_really_long_name)_columns/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_(with_a_really_long_name)_columns/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_type (1.07s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_type/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_type/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_column_ordering (1.07s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_column_ordering/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Change_an_index_column_ordering/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_columns_and_associated_index (1.03s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_columns_and_associated_index/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Delete_columns_and_associated_index/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_and_make_old_key_nullable (1.08s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_and_make_old_key_nullable/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_and_make_old_key_nullable/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_with_quoted_name (1.08s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_with_quoted_name/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_with_quoted_name/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_when_the_original_primary_key_constraint_has_a_non-default_name (1.08s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_when_the_original_primary_key_constraint_has_a_non-default_name/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Switch_primary_key_when_the_original_primary_key_constraint_has_a_non-default_name/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Alter_primary_key_columns_(name_stays_same) (1.07s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Alter_primary_key_columns_(name_stays_same)/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestIndexAcceptanceTestCases/Alter_primary_key_columns_(name_stays_same)/with_data_packing_(and_ignoring_column_order) (0.54s)
+    --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases (13.87s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/No-op (1.18s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/No-op/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.60s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_indexes (1.18s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_indexes/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_indexes/with_data_packing_(and_ignoring_column_order) (0.59s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_unique_local_index (1.10s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_unique_local_index/vanilla (0.55s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_unique_local_index/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_primary_keys (1.20s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_primary_keys/vanilla (0.60s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_local_primary_keys/with_data_packing_(and_ignoring_column_order) (0.60s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_local_index (1.26s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_local_index/vanilla (0.69s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_local_index/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_unique_local_index (1.09s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_unique_local_index/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_unique_local_index/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_primary_key (1.21s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_primary_key/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_a_primary_key/with_data_packing_(and_ignoring_column_order) (0.59s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Change_an_index_columns (1.16s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Change_an_index_columns/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Change_an_index_columns/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_columns_and_associated_index (1.08s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_columns_and_associated_index/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Delete_columns_and_associated_index/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_primary_key (1.24s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_primary_key/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_primary_key/with_data_packing_(and_ignoring_column_order) (0.61s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists (1.08s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Add_a_primary_key_when_the_index_already_exists/with_data_packing_(and_ignoring_column_order) (0.55s)
+        --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_partitioned_index_to_local_index (1.10s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_partitioned_index_to_local_index/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestLocalPartitionIndexAcceptanceTestCases/Switch_partitioned_index_to_local_index/with_data_packing_(and_ignoring_column_order) (0.56s)
+    --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases (23.42s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/No-op (1.32s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/No-op/vanilla (0.66s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.66s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index (1.15s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_hash_index (1.17s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_hash_index/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_hash_index/with_data_packing_(and_ignoring_column_order) (0.59s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_partitioned_index (1.28s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_partitioned_index/vanilla (0.60s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_partitioned_index/with_data_packing_(and_ignoring_column_order) (0.67s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index_with_quotes_names (1.18s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index_with_quotes_names/vanilla (0.60s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_normal_partitioned_index_with_quotes_names/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key (1.19s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key/vanilla (0.61s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_index_that_is_used_by_a_local_primary_key (1.12s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_index_that_is_used_by_a_local_primary_key/vanilla (0.56s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_index_that_is_used_by_a_local_primary_key/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key_with_quoted_names (1.27s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key_with_quoted_names/vanilla (0.69s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_primary_key_with_quoted_names/with_data_packing_(and_ignoring_column_order) (0.59s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_primary_key_when_the_local_index_already_exists (1.28s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_primary_key_when_the_local_index_already_exists/vanilla (0.61s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_partitioned_primary_key_when_the_local_index_already_exists/with_data_packing_(and_ignoring_column_order) (0.68s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_index_when_the_local_index_already_exists (1.22s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_index_when_the_local_index_already_exists/vanilla (0.63s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Add_a_unique_index_when_the_local_index_already_exists/with_data_packing_(and_ignoring_column_order) (0.59s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_normal_partitioned_index (1.26s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_normal_partitioned_index/vanilla (0.70s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_normal_partitioned_index/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_unique_partitioned_index (1.18s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_unique_partitioned_index/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_unique_partitioned_index/with_data_packing_(and_ignoring_column_order) (0.60s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_primary_key (1.22s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_primary_key/vanilla (0.60s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_a_primary_key/with_data_packing_(and_ignoring_column_order) (0.62s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_columns (1.33s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_columns/vanilla (0.67s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_columns/with_data_packing_(and_ignoring_column_order) (0.66s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_type (1.23s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_type/vanilla (0.61s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_type/with_data_packing_(and_ignoring_column_order) (0.63s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_column_ordering (1.35s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_column_ordering/vanilla (0.69s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Change_an_index_column_ordering/with_data_packing_(and_ignoring_column_order) (0.66s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_columns_and_associated_index (1.17s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_columns_and_associated_index/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Delete_columns_and_associated_index/with_data_packing_(and_ignoring_column_order) (0.60s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Switch_primary_key (1.26s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Switch_primary_key/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Switch_primary_key/with_data_packing_(and_ignoring_column_order) (0.64s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Attach_an_unnattached,_invalid_index (1.24s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Attach_an_unnattached,_invalid_index/vanilla (0.64s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedIndexAcceptanceTestCases/Attach_an_unnattached,_invalid_index/with_data_packing_(and_ignoring_column_order) (0.60s)
+    --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases (17.94s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/No-op (1.36s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/No-op/vanilla (0.66s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.70s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_shared_primary_key (1.37s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_shared_primary_key/vanilla (0.69s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_shared_primary_key/with_data_packing_(and_ignoring_column_order) (0.68s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_local_primary_keys (1.44s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_local_primary_keys/vanilla (0.72s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Create_partitioned_table_with_local_primary_keys/with_data_packing_(and_ignoring_column_order) (0.72s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Drop_table (1.13s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Drop_table/vanilla (0.56s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Drop_table/with_data_packing_(and_ignoring_column_order) (0.57s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_partitioned_index_index,_new_partitioned_index,_delete_local_index,_add_local_index,_validate_check_constraint (1.68s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_partitioned_index_index,_new_partitioned_index,_delete_local_index,_add_local_index,_validate_check_constraint/vanilla (0.84s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_partitioned_index_index,_new_partitioned_index,_delete_local_index,_add_local_index,_validate_check_constraint/with_data_packing_(and_ignoring_column_order) (0.84s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Changing_partition_key_def_errors (0.47s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Changing_partition_key_def_errors/vanilla (0.24s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Changing_partition_key_def_errors/with_data_packing_(and_ignoring_column_order) (0.23s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned (1.29s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned/with_data_packing_(and_ignoring_column_order) (0.67s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned_and_child_tables_already_exist (1.28s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned_and_child_tables_already_exist/vanilla (0.64s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Unpartitioned_to_partitioned_and_child_tables_already_exist/with_data_packing_(and_ignoring_column_order) (0.64s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned (1.18s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned/with_data_packing_(and_ignoring_column_order) (0.60s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned_and_child_tables_still_exist (1.25s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned_and_child_tables_still_exist/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Partitioned_to_unpartitioned_and_child_tables_still_exist/with_data_packing_(and_ignoring_column_order) (0.63s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition (1.16s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition_with_local_primary_key_that_can_back_the_unique_index (1.13s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition_with_local_primary_key_that_can_back_the_unique_index/vanilla (0.57s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Adding_a_partition_with_local_primary_key_that_can_back_the_unique_index/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Deleting_a_partitioning_errors (0.44s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Deleting_a_partitioning_errors/vanilla (0.22s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Deleting_a_partitioning_errors/with_data_packing_(and_ignoring_column_order) (0.23s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Altering_a_partition's_'FOR_VALUES'_errors (0.45s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Altering_a_partition's_'FOR_VALUES'_errors/vanilla (0.23s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Altering_a_partition's_'FOR_VALUES'_errors/with_data_packing_(and_ignoring_column_order) (0.22s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Re-creating_base_table_causes_partitions_to_be_re-created (1.17s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Re-creating_base_table_causes_partitions_to_be_re-created/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Re-creating_base_table_causes_partitions_to_be_re-created/with_data_packing_(and_ignoring_column_order) (0.59s)
+        --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Can_handle_scenario_where_partition_is_not_attached (1.12s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Can_handle_scenario_where_partition_is_not_attached/vanilla (0.56s)
+            --- PASS: TestAcceptanceSuite/TestPartitionedTableAcceptanceTestCases/Can_handle_scenario_where_partition_is_not_attached/with_data_packing_(and_ignoring_column_order) (0.56s)
+    --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases (4.51s)
+        --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases/No-op (1.48s)
+            --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases/No-op/vanilla (0.73s)
+            --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.74s)
+        --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_table,_Add_Table,_Drop_seq,_Add_Seq,_Drop_Funcs,_Add_Funcs,_Drop_Triggers,_Add_Triggers (1.55s)
+            --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_table,_Add_Table,_Drop_seq,_Add_Seq,_Drop_Funcs,_Add_Funcs,_Drop_Triggers,_Add_Triggers/vanilla (0.77s)
+            --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_table,_Add_Table,_Drop_seq,_Add_Seq,_Drop_Funcs,_Add_Funcs,_Drop_Triggers,_Add_Triggers/with_data_packing_(and_ignoring_column_order) (0.78s)
+        --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_partitioned_table,_Add_partitioned_table_with_local_keys (1.48s)
+            --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_partitioned_table,_Add_partitioned_table_with_local_keys/vanilla (0.75s)
+            --- PASS: TestAcceptanceSuite/TestSchemaAcceptanceTestCases/Drop_partitioned_table,_Add_partitioned_table_with_local_keys/with_data_packing_(and_ignoring_column_order) (0.73s)
+    --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases (20.08s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/No-op (0.98s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/No-op/vanilla (0.49s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.50s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence (0.99s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence/vanilla (0.49s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence/with_data_packing_(and_ignoring_column_order) (0.50s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence_via_serial (1.05s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence_via_serial/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Add_sequence_via_serial/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence (0.97s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence/vanilla (0.48s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence/with_data_packing_(and_ignoring_column_order) (0.49s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column (1.01s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column/vanilla (0.51s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column/with_data_packing_(and_ignoring_column_order) (0.51s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column_(partitioned_table) (1.09s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column_(partitioned_table)/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_deleting_column_(partitioned_table)/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type (1.11s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type/vanilla (0.56s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type_(partitioned) (1.15s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type_(partitioned)/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_changing_column_type_(partitioned)/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop (0.99s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop/vanilla (0.50s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop/with_data_packing_(and_ignoring_column_order) (0.49s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop_(partitioned) (1.05s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop_(partitioned)/vanilla (0.51s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Drop_sequence_via_table_drop_(partitioned)/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_data_type (0.46s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_data_type/vanilla (0.23s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_data_type/with_data_packing_(and_ignoring_column_order) (0.23s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_increment (0.44s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_increment/vanilla (0.22s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_increment/with_data_packing_(and_ignoring_column_order) (0.22s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_min_value (0.43s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_min_value/vanilla (0.21s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_min_value/with_data_packing_(and_ignoring_column_order) (0.22s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_max_value (0.44s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_max_value/vanilla (0.22s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_max_value/with_data_packing_(and_ignoring_column_order) (0.22s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_start_with (0.45s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_start_with/vanilla (0.23s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_start_with/with_data_packing_(and_ignoring_column_order) (0.23s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cache (0.44s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cache/vanilla (0.23s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cache/with_data_packing_(and_ignoring_column_order) (0.21s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cycle (0.43s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cycle/vanilla (0.21s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_cycle/with_data_packing_(and_ignoring_column_order) (0.21s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_none_to_table) (1.04s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_none_to_table)/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_none_to_table)/with_data_packing_(and_ignoring_column_order) (0.52s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_none) (1.08s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_none)/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_none)/with_data_packing_(and_ignoring_column_order) (0.53s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table) (1.06s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table)/vanilla (0.52s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table)/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_column_dropped) (1.09s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_column_dropped)/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_column_dropped)/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_table_dropped) (1.12s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_table_dropped)/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_table_dropped)/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_partitioned_table_dropped) (1.20s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_partitioned_table_dropped)/vanilla (0.61s)
+            --- PASS: TestAcceptanceSuite/TestSequenceAcceptanceTestCases/Alter_ownership_(from_table_to_table;_original_partitioned_table_dropped)/with_data_packing_(and_ignoring_column_order) (0.59s)
+    --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases (10.84s)
+        --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/No-op (1.19s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/No-op/vanilla (0.58s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.62s)
+        --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table (1.28s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table/vanilla (0.69s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table/with_data_packing_(and_ignoring_column_order) (0.59s)
+        --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table_with_quoted_names (1.13s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table_with_quoted_names/vanilla (0.56s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Create_table_with_quoted_names/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_table (1.07s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_table/vanilla (0.53s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_table/with_data_packing_(and_ignoring_column_order) (0.54s)
+        --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_a_table_with_quoted_names (1.02s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_a_table_with_quoted_names/vanilla (0.51s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Drop_a_table_with_quoted_names/with_data_packing_(and_ignoring_column_order) (0.51s)
+        --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_index,_new_index,_validate_check_constraint (1.28s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_index,_new_index,_validate_check_constraint/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_primary_key,_change_column_types,_delete_unique_index,_new_index,_validate_check_constraint/with_data_packing_(and_ignoring_column_order) (0.66s)
+        --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_column,_new_primary_key,_alter_column_to_nullable,_alter_column_types,_drop_column,_drop_index,_drop_check_constraints (1.25s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_column,_new_primary_key,_alter_column_to_nullable,_alter_column_types,_drop_column,_drop_index,_drop_check_constraints/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_New_column,_new_primary_key,_alter_column_to_nullable,_alter_column_types,_drop_column,_drop_index,_drop_check_constraints/with_data_packing_(and_ignoring_column_order) (0.63s)
+        --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_effectively_drop_by_changing_everything (1.42s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_effectively_drop_by_changing_everything/vanilla (0.76s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_effectively_drop_by_changing_everything/with_data_packing_(and_ignoring_column_order) (0.66s)
+        --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_translate_BIGINT_type_to_TIMESTAMP,_set_to_not_null,_set_default (1.19s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_translate_BIGINT_type_to_TIMESTAMP,_set_to_not_null,_set_default/vanilla (0.54s)
+            --- PASS: TestAcceptanceSuite/TestTableAcceptanceTestCases/Alter_table:_translate_BIGINT_type_to_TIMESTAMP,_set_to_not_null,_set_default/with_data_packing_(and_ignoring_column_order) (0.65s)
+    --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases (16.21s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/No-op (1.12s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/No-op/vanilla (0.56s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/No-op/with_data_packing_(and_ignoring_column_order) (0.56s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_trigger_with_quoted_name (1.23s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_trigger_with_quoted_name/vanilla (0.61s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_trigger_with_quoted_name/with_data_packing_(and_ignoring_column_order) (0.62s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_triggers_with_quoted_names_on_partitioned_table_and_partition (1.20s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_triggers_with_quoted_names_on_partitioned_table_and_partition/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_triggers_with_quoted_names_on_partitioned_table_and_partition/with_data_packing_(and_ignoring_column_order) (0.61s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_depending_on_the_same_function (1.20s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_depending_on_the_same_function/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_depending_on_the_same_function/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_with_the_same_name (1.35s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_with_the_same_name/vanilla (0.73s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Create_two_triggers_with_the_same_name/with_data_packing_(and_ignoring_column_order) (0.62s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_trigger_with_quoted_names (1.18s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_trigger_with_quoted_names/vanilla (0.59s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_trigger_with_quoted_names/with_data_packing_(and_ignoring_column_order) (0.58s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_triggers_with_quoted_names_on_partitioned_table_and_partition (1.17s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_triggers_with_quoted_names_on_partitioned_table_and_partition/vanilla (0.57s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_triggers_with_quoted_names_on_partitioned_table_and_partition/with_data_packing_(and_ignoring_column_order) (0.60s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_two_triggers_with_the_same_name (1.31s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_two_triggers_with_the_same_name/vanilla (0.67s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Drop_two_triggers_with_the_same_name/with_data_packing_(and_ignoring_column_order) (0.63s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_when_clause (1.23s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_when_clause/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_when_clause/with_data_packing_(and_ignoring_column_order) (0.60s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_table (1.34s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_table/vanilla (0.67s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Alter_trigger_table/with_data_packing_(and_ignoring_column_order) (0.67s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_keep_old_function (1.24s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_keep_old_function/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_keep_old_function/with_data_packing_(and_ignoring_column_order) (0.62s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_drop_old_function (1.32s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_drop_old_function/vanilla (0.62s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Change_trigger_function_and_drop_old_function/with_data_packing_(and_ignoring_column_order) (0.70s)
+        --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Trigger_on_re-created_table_is_re-created (1.33s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Trigger_on_re-created_table_is_re-created/vanilla (0.66s)
+            --- PASS: TestAcceptanceSuite/TestTriggerAcceptanceTestCases/Trigger_on_re-created_table_is_re-created/with_data_packing_(and_ignoring_column_order) (0.67s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/internal/migration_acceptance_tests	210.090s
+=== RUN   TestGetDump
+2023-07-13 14:37:34.819 UTC [9183] LOG:  starting PostgreSQL 15.3 on aarch64-alpine-linux-musl, compiled by gcc (Alpine 12.2.1_git20220924-r4) 12.2.1 20220924, 64-bit
+2023-07-13 14:37:34.820 UTC [9183] LOG:  listening on Unix socket "/tmp/pgsock-3578570725/.s.PGSQL.5432"
+2023-07-13 14:37:34.824 UTC [9186] LOG:  database system was shut down at 2023-07-13 14:37:34 UTC
+2023-07-13 14:37:34.827 UTC [9183] LOG:  database system is ready to accept connections
+2023-07-13 14:37:36.050 UTC [9183] LOG:  received fast shutdown request
+2023-07-13 14:37:36.050 UTC [9183] LOG:  aborting any active transactions
+2023-07-13 14:37:36.052 UTC [9183] LOG:  background worker "logical replication launcher" (PID 9189) exited with exit code 1
+2023-07-13 14:37:36.054 UTC [9184] LOG:  shutting down
+2023-07-13 14:37:36.063 UTC [9183] LOG:  database system is shut down
+--- PASS: TestGetDump (2.21s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/internal/pgdump	2.241s
+=== RUN   TestPgEngine
+2023-07-13 14:37:37.262 UTC [9239] LOG:  starting PostgreSQL 15.3 on aarch64-alpine-linux-musl, compiled by gcc (Alpine 12.2.1_git20220924-r4) 12.2.1 20220924, 64-bit
+2023-07-13 14:37:37.263 UTC [9239] LOG:  listening on Unix socket "/tmp/pgsock-429680302/.s.PGSQL.5432"
+2023-07-13 14:37:37.265 UTC [9242] LOG:  database system was shut down at 2023-07-13 14:37:36 UTC
+2023-07-13 14:37:37.268 UTC [9239] LOG:  database system is ready to accept connections
+2023-07-13 14:37:38.363 UTC [9252] FATAL:  terminating connection due to administrator command
+2023-07-13 14:37:38.527 UTC [9239] LOG:  received fast shutdown request
+2023-07-13 14:37:38.529 UTC [9239] LOG:  aborting any active transactions
+2023-07-13 14:37:38.531 UTC [9239] LOG:  background worker "logical replication launcher" (PID 9245) exited with exit code 1
+2023-07-13 14:37:38.531 UTC [9240] LOG:  shutting down
+2023-07-13 14:37:38.545 UTC [9239] LOG:  database system is shut down
+--- PASS: TestPgEngine (2.23s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/internal/pgengine	2.259s
+=== RUN   Test_IsSimpleIdentifier
+=== RUN   Test_IsSimpleIdentifier/starts_with_letter
+=== RUN   Test_IsSimpleIdentifier/starts_with_underscore
+=== RUN   Test_IsSimpleIdentifier/start_with_number
+=== RUN   Test_IsSimpleIdentifier/contains_all_possible_characters
+=== RUN   Test_IsSimpleIdentifier/empty
+=== RUN   Test_IsSimpleIdentifier/contains_upper_case_letter
+=== RUN   Test_IsSimpleIdentifier/contains_spaces
+--- PASS: Test_IsSimpleIdentifier (0.00s)
+    --- PASS: Test_IsSimpleIdentifier/starts_with_letter (0.00s)
+    --- PASS: Test_IsSimpleIdentifier/starts_with_underscore (0.00s)
+    --- PASS: Test_IsSimpleIdentifier/start_with_number (0.00s)
+    --- PASS: Test_IsSimpleIdentifier/contains_all_possible_characters (0.00s)
+    --- PASS: Test_IsSimpleIdentifier/empty (0.00s)
+    --- PASS: Test_IsSimpleIdentifier/contains_upper_case_letter (0.00s)
+    --- PASS: Test_IsSimpleIdentifier/contains_spaces (0.00s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/internal/pgidentifier	0.021s
+?   	github.com/stripe/pg-schema-diff/internal/queries	[no test files]
+=== RUN   TestSchemaTestCases
+2023-07-13 14:37:39.906 UTC [9322] LOG:  starting PostgreSQL 15.3 on aarch64-alpine-linux-musl, compiled by gcc (Alpine 12.2.1_git20220924-r4) 12.2.1 20220924, 64-bit
+2023-07-13 14:37:39.907 UTC [9322] LOG:  listening on Unix socket "/tmp/pgsock-2110561768/.s.PGSQL.5432"
+2023-07-13 14:37:39.911 UTC [9325] LOG:  database system was shut down at 2023-07-13 14:37:39 UTC
+2023-07-13 14:37:39.914 UTC [9322] LOG:  database system is ready to accept connections
+=== RUN   TestSchemaTestCases/Simple_test
+=== RUN   TestSchemaTestCases/Simple_partition_test
+=== RUN   TestSchemaTestCases/Partition_test_local_primary_key
+=== RUN   TestSchemaTestCases/Common_Data_Types
+=== RUN   TestSchemaTestCases/Multi-Table
+=== RUN   TestSchemaTestCases/Multi-Schema
+=== RUN   TestSchemaTestCases/Empty_Schema
+=== RUN   TestSchemaTestCases/No_Indexes_or_constraints
+2023-07-13 14:37:41.592 UTC [9322] LOG:  received fast shutdown request
+2023-07-13 14:37:41.593 UTC [9322] LOG:  aborting any active transactions
+2023-07-13 14:37:41.594 UTC [9322] LOG:  background worker "logical replication launcher" (PID 9328) exited with exit code 1
+2023-07-13 14:37:41.596 UTC [9323] LOG:  shutting down
+2023-07-13 14:37:41.606 UTC [9322] LOG:  database system is shut down
+--- PASS: TestSchemaTestCases (2.61s)
+    --- PASS: TestSchemaTestCases/Simple_test (0.10s)
+    --- PASS: TestSchemaTestCases/Simple_partition_test (0.12s)
+    --- PASS: TestSchemaTestCases/Partition_test_local_primary_key (0.08s)
+    --- PASS: TestSchemaTestCases/Common_Data_Types (0.07s)
+    --- PASS: TestSchemaTestCases/Multi-Table (0.08s)
+    --- PASS: TestSchemaTestCases/Multi-Schema (0.09s)
+    --- PASS: TestSchemaTestCases/Empty_Schema (0.06s)
+    --- PASS: TestSchemaTestCases/No_Indexes_or_constraints (0.07s)
+=== RUN   TestIdxDefStmtToCreateIdxConcurrently
+=== RUN   TestIdxDefStmtToCreateIdxConcurrently/simple_index
+=== RUN   TestIdxDefStmtToCreateIdxConcurrently/unique_index
+=== RUN   TestIdxDefStmtToCreateIdxConcurrently/malicious_name_index
+=== RUN   TestIdxDefStmtToCreateIdxConcurrently/case_sensitive
+=== RUN   TestIdxDefStmtToCreateIdxConcurrently/errors_with_random_start_character
+--- PASS: TestIdxDefStmtToCreateIdxConcurrently (0.00s)
+    --- PASS: TestIdxDefStmtToCreateIdxConcurrently/simple_index (0.00s)
+    --- PASS: TestIdxDefStmtToCreateIdxConcurrently/unique_index (0.00s)
+    --- PASS: TestIdxDefStmtToCreateIdxConcurrently/malicious_name_index (0.00s)
+    --- PASS: TestIdxDefStmtToCreateIdxConcurrently/case_sensitive (0.00s)
+    --- PASS: TestIdxDefStmtToCreateIdxConcurrently/errors_with_random_start_character (0.00s)
+=== RUN   TestTriggerDefStmtToCreateOrReplace
+=== RUN   TestTriggerDefStmtToCreateOrReplace/simple_trigger
+=== RUN   TestTriggerDefStmtToCreateOrReplace/malicious_name_trigger
+=== RUN   TestTriggerDefStmtToCreateOrReplace/case_sensitive
+=== RUN   TestTriggerDefStmtToCreateOrReplace/errors_with_random_start_character
+--- PASS: TestTriggerDefStmtToCreateOrReplace (0.00s)
+    --- PASS: TestTriggerDefStmtToCreateOrReplace/simple_trigger (0.00s)
+    --- PASS: TestTriggerDefStmtToCreateOrReplace/malicious_name_trigger (0.00s)
+    --- PASS: TestTriggerDefStmtToCreateOrReplace/case_sensitive (0.00s)
+    --- PASS: TestTriggerDefStmtToCreateOrReplace/errors_with_random_start_character (0.00s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/internal/schema	2.641s
+=== RUN   TestSchemaMigrationPlanTest
+=== RUN   TestSchemaMigrationPlanTest/No-op
+=== RUN   TestSchemaMigrationPlanTest/Index_replacement
+=== RUN   TestSchemaMigrationPlanTest/Index_dropped_concurrently_before_columns_dropped
+=== RUN   TestSchemaMigrationPlanTest/Invalid_index_re-created
+=== RUN   TestSchemaMigrationPlanTest/Index_replacement_on_partitioned_table
+=== RUN   TestSchemaMigrationPlanTest/Local_Index_dropped_concurrently_before_columns_dropped;_partitioned_index_just_dropped
+=== RUN   TestSchemaMigrationPlanTest/Invalid_index_of_partitioned_index_re-created_but_original_index_remains_untouched
+=== RUN   TestSchemaMigrationPlanTest/Fails_on_duplicate_column_in_old_schema
+=== RUN   TestSchemaMigrationPlanTest/Invalid_check_constraint_made_valid
+=== RUN   TestSchemaMigrationPlanTest/Invalid_check_constraint_re-created_if_expression_changes
+=== RUN   TestSchemaMigrationPlanTest/BIGINT_to_TIMESTAMP_type_conversion
+=== RUN   TestSchemaMigrationPlanTest/Collation_migration_and_Type_Migration
+=== RUN   TestSchemaMigrationPlanTest/Extension_installation
+=== RUN   TestSchemaMigrationPlanTest/Extension_removal
+--- PASS: TestSchemaMigrationPlanTest (0.02s)
+    --- PASS: TestSchemaMigrationPlanTest/No-op (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Index_replacement (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Index_dropped_concurrently_before_columns_dropped (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Invalid_index_re-created (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Index_replacement_on_partitioned_table (0.01s)
+    --- PASS: TestSchemaMigrationPlanTest/Local_Index_dropped_concurrently_before_columns_dropped;_partitioned_index_just_dropped (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Invalid_index_of_partitioned_index_re-created_but_original_index_remains_untouched (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Fails_on_duplicate_column_in_old_schema (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Invalid_check_constraint_made_valid (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Invalid_check_constraint_re-created_if_expression_changes (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/BIGINT_to_TIMESTAMP_type_conversion (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Collation_migration_and_Type_Migration (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Extension_installation (0.00s)
+    --- PASS: TestSchemaMigrationPlanTest/Extension_removal (0.00s)
+=== RUN   TestTransformDiffDataPackNewTables
+=== RUN   TestTransformDiffDataPackNewTables/No_new_tables
+=== RUN   TestTransformDiffDataPackNewTables/New_table_with_no_columns
+=== RUN   TestTransformDiffDataPackNewTables/Standard
+--- PASS: TestTransformDiffDataPackNewTables (0.00s)
+    --- PASS: TestTransformDiffDataPackNewTables/No_new_tables (0.00s)
+    --- PASS: TestTransformDiffDataPackNewTables/New_table_with_no_columns (0.00s)
+    --- PASS: TestTransformDiffDataPackNewTables/Standard (0.00s)
+=== RUN   TestTransformDiffRemoveChangesToColumnOrdering
+=== RUN   TestTransformDiffRemoveChangesToColumnOrdering/No_altered_tables
+=== RUN   TestTransformDiffRemoveChangesToColumnOrdering/Altered_table_with_no_columns
+=== RUN   TestTransformDiffRemoveChangesToColumnOrdering/Standard
+--- PASS: TestTransformDiffRemoveChangesToColumnOrdering (0.00s)
+    --- PASS: TestTransformDiffRemoveChangesToColumnOrdering/No_altered_tables (0.00s)
+    --- PASS: TestTransformDiffRemoveChangesToColumnOrdering/Altered_table_with_no_columns (0.00s)
+    --- PASS: TestTransformDiffRemoveChangesToColumnOrdering/Standard (0.00s)
+=== RUN   TestSimpleMigratorTestSuite
+2023-07-13 14:37:43.418 UTC [9408] LOG:  starting PostgreSQL 15.3 on aarch64-alpine-linux-musl, compiled by gcc (Alpine 12.2.1_git20220924-r4) 12.2.1 20220924, 64-bit
+2023-07-13 14:37:43.419 UTC [9408] LOG:  listening on Unix socket "/tmp/pgsock-1408443930/.s.PGSQL.5432"
+2023-07-13 14:37:43.422 UTC [9411] LOG:  database system was shut down at 2023-07-13 14:37:43 UTC
+2023-07-13 14:37:43.425 UTC [9408] LOG:  database system is ready to accept connections
+=== RUN   TestSimpleMigratorTestSuite/TestCannotPackNewTablesWithoutIgnoringChangesToColumnOrder
+=== RUN   TestSimpleMigratorTestSuite/TestPlanAndApplyMigration
+2023-07-13 14:37:45.043 UTC [9408] LOG:  received fast shutdown request
+2023-07-13 14:37:45.043 UTC [9408] LOG:  aborting any active transactions
+2023-07-13 14:37:45.045 UTC [9408] LOG:  background worker "logical replication launcher" (PID 9414) exited with exit code 1
+2023-07-13 14:37:45.046 UTC [9409] LOG:  shutting down
+2023-07-13 14:37:45.059 UTC [9408] LOG:  database system is shut down
+--- PASS: TestSimpleMigratorTestSuite (2.61s)
+    --- PASS: TestSimpleMigratorTestSuite/TestCannotPackNewTablesWithoutIgnoringChangesToColumnOrder (0.27s)
+    --- PASS: TestSimpleMigratorTestSuite/TestPlanAndApplyMigration (0.33s)
+=== RUN   TestPlan_ApplyStatementTimeoutModifier
+=== RUN   TestPlan_ApplyStatementTimeoutModifier/no_matches
+=== RUN   TestPlan_ApplyStatementTimeoutModifier/some_match
+--- PASS: TestPlan_ApplyStatementTimeoutModifier (0.00s)
+    --- PASS: TestPlan_ApplyStatementTimeoutModifier/no_matches (0.00s)
+    --- PASS: TestPlan_ApplyStatementTimeoutModifier/some_match (0.00s)
+=== RUN   TestPlan_InsertStatement
+=== RUN   TestPlan_InsertStatement/empty_plan
+=== RUN   TestPlan_InsertStatement/insert_at_start
+=== RUN   TestPlan_InsertStatement/insert_after_first_statement
+=== RUN   TestPlan_InsertStatement/insert_after_last_statement_statement
+=== RUN   TestPlan_InsertStatement/errors_on_negative_index
+=== RUN   TestPlan_InsertStatement/errors_on_index_greater_than_len
+--- PASS: TestPlan_InsertStatement (0.00s)
+    --- PASS: TestPlan_InsertStatement/empty_plan (0.00s)
+    --- PASS: TestPlan_InsertStatement/insert_at_start (0.00s)
+    --- PASS: TestPlan_InsertStatement/insert_after_first_statement (0.00s)
+    --- PASS: TestPlan_InsertStatement/insert_after_last_statement_statement (0.00s)
+    --- PASS: TestPlan_InsertStatement/errors_on_negative_index (0.00s)
+    --- PASS: TestPlan_InsertStatement/errors_on_index_greater_than_len (0.00s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/pkg/diff	2.664s
+?   	github.com/stripe/pg-schema-diff/pkg/log	[no test files]
+=== RUN   TestSchemaTestSuite
+2023-07-13 14:37:46.397 UTC [9475] LOG:  starting PostgreSQL 15.3 on aarch64-alpine-linux-musl, compiled by gcc (Alpine 12.2.1_git20220924-r4) 12.2.1 20220924, 64-bit
+2023-07-13 14:37:46.398 UTC [9475] LOG:  listening on Unix socket "/tmp/pgsock-1888538904/.s.PGSQL.5432"
+2023-07-13 14:37:46.401 UTC [9478] LOG:  database system was shut down at 2023-07-13 14:37:45 UTC
+2023-07-13 14:37:46.405 UTC [9475] LOG:  database system is ready to accept connections
+=== RUN   TestSchemaTestSuite/TestGetPublicSchemaHash
+2023-07-13 14:37:47.510 UTC [9475] LOG:  received fast shutdown request
+2023-07-13 14:37:47.511 UTC [9475] LOG:  aborting any active transactions
+2023-07-13 14:37:47.513 UTC [9475] LOG:  background worker "logical replication launcher" (PID 9481) exited with exit code 1
+2023-07-13 14:37:47.513 UTC [9476] LOG:  shutting down
+2023-07-13 14:37:47.524 UTC [9475] LOG:  database system is shut down
+--- PASS: TestSchemaTestSuite (2.09s)
+    --- PASS: TestSchemaTestSuite/TestGetPublicSchemaHash (0.10s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/pkg/schema	2.114s
+=== RUN   TestOnInstanceFactorySuite
+2023-07-13 14:37:48.829 UTC [9525] LOG:  starting PostgreSQL 15.3 on aarch64-alpine-linux-musl, compiled by gcc (Alpine 12.2.1_git20220924-r4) 12.2.1 20220924, 64-bit
+2023-07-13 14:37:48.830 UTC [9525] LOG:  listening on Unix socket "/tmp/pgsock-4032617132/.s.PGSQL.5432"
+2023-07-13 14:37:48.833 UTC [9528] LOG:  database system was shut down at 2023-07-13 14:37:48 UTC
+2023-07-13 14:37:48.836 UTC [9525] LOG:  database system is ready to accept connections
+=== RUN   TestOnInstanceFactorySuite/TestCreate_ConnectsToWrongDatabase
+=== RUN   TestOnInstanceFactorySuite/TestCreate_CreateAndDropFlow
+2023-07-13 14:37:49.986 UTC [9538] FATAL:  database "some_prefixd77507fe_218a_11ee_a1e6_0242ac110002" does not exist
+=== RUN   TestOnInstanceFactorySuite/TestDropTempDB_CannotDropNonTempDb
+=== RUN   TestOnInstanceFactorySuite/TestNew_ConnectsToWrongDatabase
+=== RUN   TestOnInstanceFactorySuite/TestNew_ErrorsOnNonSimpleDbPrefix
+2023-07-13 14:37:50.045 UTC [9525] LOG:  received fast shutdown request
+2023-07-13 14:37:50.046 UTC [9525] LOG:  aborting any active transactions
+2023-07-13 14:37:50.048 UTC [9525] LOG:  background worker "logical replication launcher" (PID 9531) exited with exit code 1
+2023-07-13 14:37:50.049 UTC [9526] LOG:  shutting down
+2023-07-13 14:37:50.059 UTC [9525] LOG:  database system is shut down
+--- PASS: TestOnInstanceFactorySuite (2.16s)
+    --- PASS: TestOnInstanceFactorySuite/TestCreate_ConnectsToWrongDatabase (0.05s)
+    --- PASS: TestOnInstanceFactorySuite/TestCreate_CreateAndDropFlow (0.09s)
+    --- PASS: TestOnInstanceFactorySuite/TestDropTempDB_CannotDropNonTempDb (0.01s)
+    --- PASS: TestOnInstanceFactorySuite/TestNew_ConnectsToWrongDatabase (0.05s)
+    --- PASS: TestOnInstanceFactorySuite/TestNew_ErrorsOnNonSimpleDbPrefix (0.00s)
+PASS
+ok  	github.com/stripe/pg-schema-diff/pkg/tempdb	2.189s
