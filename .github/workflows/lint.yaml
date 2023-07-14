@@ -15,7 +15,8 @@ jobs:
         run: docker build -t pg-schema-diff-lint-runner -f ./build/Dockerfile.lint .
       - name: Run lint
         run: docker run pg-schema-diff-lint-runner
-  # The "lint" job will lint go (and SQL), but the "go_lint" job will also highlight specific go errors in the PR
+  # The "lint" job will lint go (and SQL). The "go_lint" job will also lint go but adds comments to the PR on the lines
+  # containing the linting errors
   go_lint:
     runs-on: ubuntu-latest
     steps:

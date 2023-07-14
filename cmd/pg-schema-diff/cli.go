@@ -9,7 +9,7 @@ import (
 )
 
 func header(header string) string {
-const headerTargetWidth = 80
+	const headerTargetWidth = 80
 
 	if len(header) > headerTargetWidth {
 		return header
