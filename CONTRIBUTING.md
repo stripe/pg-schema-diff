@@ -4,6 +4,13 @@ This project is in its early stages. We appreciate all the feature/bug requests 
 to review direct code contributions at this time. We will try and respond to any bug reports, feature requests, and 
 questions within one week.
 
+## Set-up
+1. Install Docker
+2. [Setup GPG key signing](https://docs.github.com/en/authentication/managing-commit-signature-verification/adding-a-gpg-key-to-your-github-account)
+3. *(Optional)* Install Postgres locally
+4. *(Optional)* Install [golangci-lint (go linting)](https://github.com/golangci/golangci-lint)
+5. *(Optional)* Install [sqlfluff (sql linting)](https://github.com/sqlfluff/sqlfluff)
+
 If you want to make changes yourself, follow these steps:
 
 1. [Fork](https://help.github.com/articles/fork-a-repo/) this repository and [clone](https://help.github.com/articles/cloning-a-repository/) it locally.

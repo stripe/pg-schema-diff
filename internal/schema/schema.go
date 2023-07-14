@@ -402,8 +402,8 @@ func fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Context, q *queries.Q
 		}
 
 		checkCon := CheckConstraint{
-			Name:               cc.Name,
-			Expression:         cc.Expression,
+			Name:               cc.ConstraintName,
+			Expression:         cc.ConstraintExpression,
 			IsValid:            cc.IsValid,
 			IsInheritable:      !cc.IsNotInheritable,
 			DependsOnFunctions: dependsOnFunctions,
@@ -470,13 +470,13 @@ func fetchSequences(ctx context.Context, q *queries.Queries) ([]Sequence, error)
 				EscapedName: EscapeIdentifier(rawSeq.SequenceName),
 			},
 			Owner:      owner,
-			Type:       rawSeq.Type,
+			Type:       rawSeq.DataType,
 			StartValue: rawSeq.StartValue,
-			Increment:  rawSeq.Increment,
+			Increment:  rawSeq.IncrementValue,
 			MaxValue:   rawSeq.MaxValue,
 			MinValue:   rawSeq.MinValue,
 			CacheSize:  rawSeq.CacheSize,
-			Cycle:      rawSeq.Cycle,
+			Cycle:      rawSeq.IsCycle,
 		})
 	}
 	return seqs, nil
