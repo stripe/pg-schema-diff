@@ -222,12 +222,16 @@ func (q *Queries) GetDependsOnFunctions(ctx context.Context, arg GetDependsOnFun
 }
 
 const getExtensions = `-- name: GetExtensions :many
-SELECT b.oid,
-       b.extname::TEXT AS extension_name,
-       b.extversion    AS extension_version,
-       a.nspname::TEXT AS schema_name
-FROM pg_catalog.pg_namespace a INNER JOIN pg_catalog.pg_extension b ON b.extnamespace=a.oid
-WHERE a.nspname = 'public'
+SELECT
+    ext.oid,
+    ext.extname::TEXT AS extension_name,
+    ext.extversion AS extension_version,
+    extension_namespace.nspname::TEXT AS schema_name
+FROM pg_catalog.pg_namespace AS extension_namespace
+INNER JOIN
+    pg_catalog.pg_extension AS ext
+    ON ext.extnamespace = extension_namespace.oid
+WHERE extension_namespace.nspname = 'public'
 `
 
 type GetExtensionsRow struct {

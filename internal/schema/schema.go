@@ -71,8 +71,8 @@ func (s Schema) Normalize() Schema {
 	s.Tables = normTables
 
 	s.Indexes = sortSchemaObjectsByName(s.Indexes)
-
 	s.Sequences = sortSchemaObjectsByName(s.Sequences)
+	s.Extensions = sortSchemaObjectsByName(s.Extensions)
 
 	var normFunctions []Function
 	for _, function := range sortSchemaObjectsByName(s.Functions) {
@@ -106,12 +106,8 @@ func (s Schema) Hash() (string, error) {
 }
 
 type Extension struct {
-	Name    string
+	SchemaQualifiedName
 	Version string
-}
-
-func (e Extension) GetName() string {
-	return e.Name
 }
 
 type Table struct {
@@ -346,7 +342,10 @@ func fetchExtensions(ctx context.Context, q *queries.Queries) ([]Extension, erro
 	var extensions []Extension
 	for _, e := range rawExtensions {
 		extensions = append(extensions, Extension{
-			Name:    e.ExtensionName,
+			SchemaQualifiedName: SchemaQualifiedName{
+				EscapedName: EscapeIdentifier(e.ExtensionName),
+				SchemaName:  e.SchemaName,
+			},
 			Version: e.ExtensionVersion,
 		})
 	}

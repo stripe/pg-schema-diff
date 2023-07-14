@@ -63,7 +63,7 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 			CREATE EXTENSION AMCHECK;
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeVersionUpgrade},
+		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeExtensionVersionUpgrade},
 	},
 }
 

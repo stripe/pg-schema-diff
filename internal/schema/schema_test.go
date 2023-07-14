@@ -89,11 +89,14 @@ var (
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE increment_version();
 		`},
-			expectedHash: "b890b13568df1b57",
+			expectedHash: "59c2e1ea7460fbbb",
 			expectedSchema: schema.Schema{
 				Extensions: []schema.Extension{
 					{
-						Name:    "pg_trgm",
+						SchemaQualifiedName: schema.SchemaQualifiedName{
+							EscapedName: schema.EscapeIdentifier("pg_trgm"),
+							SchemaName:  "public",
+						},
 						Version: "1.6",
 					},
 				},
