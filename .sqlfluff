@@ -1,0 +1,9 @@
+[sqlfluff]
+dialect = postgres
+templater = placeholder
+
+[sqlfluff:templater:placeholder]
+param_regex = sqlc.arg\(.*\)
+# Dummy values that are substituted in for the sqlc variables to allow the formatter to parse the SQL
+1 = 'pg_proc'
+2 = '1'
