@@ -128,7 +128,7 @@ INNER JOIN
     ON proc_lang.oid = pg_proc.prolang
 WHERE
     proc_namespace.nspname = 'public'
-    AND pg_proc.prokind = 'f'
+AND pg_proc.prokind = 'f'
     -- Exclude functions belonging to extensions
     AND NOT EXISTS (
         SELECT depend.objid
