@@ -1560,10 +1560,6 @@ func (e *extensionSQLGenerator) Alter(diff extensionDiff) ([]Statement, error) {
 	return statements, nil
 }
 
-func (e *extensionSQLGenerator) GetSQLVertexId(extension schema.Extension) string {
-	return fmt.Sprintf("extension_%s", extension.GetName())
-}
-
 type functionSQLVertexGenerator struct {
 	// functionsInNewSchemaByName is a map of function new to functions in the new schema.
 	// These functions are not necessarily new
