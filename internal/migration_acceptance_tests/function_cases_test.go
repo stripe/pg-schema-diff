@@ -126,6 +126,25 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
 	{
+		name: "Create function with an extensinon that also creates functions installed",
+		oldSchemaDDL: []string{
+			`
+			CREATE EXTENSION amcheck;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE EXTENSION amcheck;
+
+			CREATE FUNCTION add(a integer, b integer) RETURNS integer
+				LANGUAGE SQL
+				IMMUTABLE
+				RETURNS NULL ON NULL INPUT
+				RETURN a + b;
+			`,
+		},
+	},
+	{
 		name: "Drop functions (with conflicting names)",
 		oldSchemaDDL: []string{
 			`

@@ -28,6 +28,7 @@ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres"
 - Partitions
 - Functions/Triggers  (functions created by extensions are ignored)
 - Sequences
+- Extensions
 
 *A comprehensive set of features to ensure the safety of planned migrations:*
 - Dangerous operations are flagged as hazards and must be approved before a migration can be applied.
@@ -142,5 +143,3 @@ an object, it will be treated as a drop and an add
 # Contributing
 This project is in its early stages. We appreciate all the feature/bug requests we receive, but we have limited cycles
 to review direct code contributions at this time. See [Contributing](CONTRIBUTING.md) to learn more.
-
-
