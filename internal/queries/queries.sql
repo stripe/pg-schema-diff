@@ -217,7 +217,6 @@ LEFT JOIN
     pg_catalog.pg_namespace AS owner_ns
     ON owner_c.relnamespace = owner_ns.oid
 WHERE seq_ns.nspname = 'public'
-<<<<<<< HEAD
 -- It doesn't belong to an extension
 AND NOT EXISTS (
     SELECT ext_depend.objid
@@ -227,15 +226,6 @@ AND NOT EXISTS (
         AND ext_depend.objid = pg_seq.seqrelid
         AND ext_depend.deptype = 'e'
 );
-=======
-  -- It doesn't belong to an extension
-  AND NOT EXISTS(
-        SELECT objid
-        FROM pg_catalog.pg_depend ext_depend
-        WHERE ext_depend.classid = 'pg_class'::regclass
-          AND ext_depend.objid = seq.seqrelid
-          AND ext_depend.deptype = 'e'
-    );
 
 -- name: GetExtensions :many
 SELECT
