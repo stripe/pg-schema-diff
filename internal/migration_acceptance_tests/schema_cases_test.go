@@ -10,6 +10,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		name: "No-op",
 		oldSchemaDDL: []string{
 			`
+			CREATE EXTENSION amcheck;
+
 			CREATE TABLE fizz(
 			);
 
@@ -71,6 +73,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		},
 		newSchemaDDL: []string{
 			`
+			CREATE EXTENSION amcheck;
+
 			CREATE TABLE fizz(
 			);
 
@@ -138,9 +142,11 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Drop table, Add Table, Drop seq, Add Seq, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers",
+		name: "Drop table, Add Table, Drop Seq, Add Seq, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers, Create Extension, Drop Extension, Create Index Using Extension",
 		oldSchemaDDL: []string{
 			`
+			CREATE EXTENSION amcheck;
+
 			CREATE TABLE fizz(
 			);
 
@@ -206,6 +212,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		},
 		newSchemaDDL: []string{
 			`
+			CREATE EXTENSION pg_trgm;
+
 			CREATE TABLE fizz(
 			);
 
@@ -262,12 +270,14 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    foo INT,
 			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
 			    fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL
+			    buzz REAL NOT NULL,
+				quux TEXT
 			);
 			ALTER TABLE bar ADD CONSTRAINT "FOO_CHECK" CHECK ( foo < bar );
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar DESC, fizz DESC);
-			CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
+			CREATE UNIQUE INDEX bar_unique_idx ON bar(fizz, buzz);
+			CREATE INDEX gin_index ON bar USING gin (quux gin_trgm_ops);
 
 			CREATE FUNCTION check_content() RETURNS TRIGGER AS $$
 				BEGIN
@@ -286,15 +296,18 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeHasUntrackableDependencies,
+			diff.MigrationHazardTypeIndexBuild,
 		},
 		dataPackingExpectations: expectations{
 			outputState: []string{
 				`
+			CREATE EXTENSION pg_trgm;
+
 			CREATE TABLE fizz(
 			);
 
 			CREATE SEQUENCE new_foobar_sequence
-			    AS SMALLINT
+				AS SMALLINT
 				INCREMENT BY 4
 				MINVALUE 10 MAXVALUE 200
 				START WITH 20 CACHE 10 NO CYCLE
@@ -346,12 +359,14 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				foo INT,
 				bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
 				fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
-				buzz REAL NOT NULL
+				buzz REAL NOT NULL,
+				quux TEXT
 			);
 			ALTER TABLE bar ADD CONSTRAINT "FOO_CHECK" CHECK ( foo < bar );
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar DESC, fizz DESC);
 			CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
+			CREATE INDEX gin_index ON bar USING gin (quux gin_trgm_ops);
 
 			CREATE FUNCTION check_content() RETURNS TRIGGER AS $$
 				BEGIN

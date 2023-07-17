@@ -28,6 +28,8 @@ func (suite *schemaTestSuite) TearDownSuite() {
 func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 	const (
 		ddl = `
+			CREATE EXTENSION pg_trgm WITH VERSION '1.6';
+
 			CREATE FUNCTION add(a integer, b integer) RETURNS integer
 				LANGUAGE SQL
 				IMMUTABLE
@@ -73,7 +75,7 @@ func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 				EXECUTE PROCEDURE increment_version();
 	`
 
-		expectedHash = "5fc27d73cebea55"
+		expectedHash = "7c9c30dde1b65875"
 	)
 	db, err := suite.pgEngine.CreateDatabase()
 	suite.Require().NoError(err)
