@@ -9,7 +9,9 @@ RUN apk update && \
 # Install golang-ci-lint
 RUN wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.53.3
 # Install sqlfluff
-RUN pip install sqlfluff
+RUN pip install wheel
+RUN pip install wheel "Cython<3.0" pyyaml --no-build-isolation # Fix for https://github.com/yaml/pyyaml/issues/601
+RUN pip install "sqlfluff==2.1.2"
 
 WORKDIR /pg-schema-diff
 COPY . .
