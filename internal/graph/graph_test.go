@@ -425,7 +425,7 @@ func (v vertex) GetId() string {
 
 func getVertexIds(g *Graph[vertex]) []string {
 	var output []string
-	for id, _ := range g.verticesById {
+	for id := range g.verticesById {
 		output = append(output, id)
 	}
 	return output
