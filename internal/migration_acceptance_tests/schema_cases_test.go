@@ -42,9 +42,9 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE TABLE foobar(
 			    id INT,
-			    fizz SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			    bar SERIAL NOT NULL,
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST(foo);
 
@@ -53,22 +53,23 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
 
 			-- partitioned indexes
-			CREATE INDEX foobar_normal_idx ON foobar(foo DESC, fizz);
+			CREATE INDEX foobar_normal_idx ON foobar(foo DESC, bar);
 			CREATE INDEX foobar_hash_idx ON foobar USING hash (foo);
-			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, fizz);
 			-- local indexes
 			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, fizz);
 
 			CREATE table bar(
-			    id VARCHAR(255) PRIMARY KEY,
-			    foo INT DEFAULT 0 CHECK (foo > 0 AND foo > bar),
+			    id  INT PRIMARY KEY,
+			    foo VARCHAR(255),
 			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL)
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
+				FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
 			);
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
-			CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
+			CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);
 			`,
 		},
 		newSchemaDDL: []string{
@@ -104,10 +105,10 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				RETURN add(a, b) + increment(a);
 
 			CREATE TABLE foobar(
-				id INT,
-			    fizz SERIAL NOT NULL,
+			    id INT,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			    bar SERIAL NOT NULL,
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST(foo);
 
@@ -116,22 +117,23 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
 
 			-- partitioned indexes
-			CREATE INDEX foobar_normal_idx ON foobar(foo DESC, fizz);
+			CREATE INDEX foobar_normal_idx ON foobar(foo DESC, bar);
 			CREATE INDEX foobar_hash_idx ON foobar USING hash (foo);
-			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, fizz);
 			-- local indexes
 			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, fizz);
 
 			CREATE table bar(
-			    id VARCHAR(255) PRIMARY KEY,
-			    foo INT DEFAULT 0 CHECK (foo > 0 AND foo > bar),
+			    id  INT PRIMARY KEY,
+			    foo VARCHAR(255),
 			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
 			    fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL)
+			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
+				FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
 			);
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
-			CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
+			CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);
 			`,
 		},
 		vanillaExpectations: expectations{
@@ -184,12 +186,12 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE TABLE foobar(
 			    id INT PRIMARY KEY,
-			    fizz SERIAL NOT NULL,
+			    bar SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL,
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 			);
 			CREATE INDEX foobar_normal_idx ON foobar USING hash (fizz);
-			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar DESC);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, fizz DESC);
 
 			CREATE TRIGGER "some trigger"
 				BEFORE UPDATE ON foobar
@@ -199,12 +201,13 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE table bar(
 			    id VARCHAR(255) PRIMARY KEY,
-			    foo INT DEFAULT 0,
+			    foo VARCHAR(255),
 			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			    buzz REAL NOT NULL,
+				FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
 			);
-			ALTER TABLE bar ADD CONSTRAINT "FOO_CHECK" CHECK (foo < bar) NOT VALID;
+			ALTER TABLE bar ADD CONSTRAINT "FOO_CHECK" CHECK (LENGTH(foo) < bar) NOT VALID;
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar DESC, fizz DESC);
 			CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
@@ -251,13 +254,13 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE TABLE "New_table"(
 			    id INT PRIMARY KEY,
-			    new_fizz SMALLSERIAL NOT NULL,
+			    new_bar SMALLSERIAL NOT NULL,
 				new_foo VARCHAR(255) DEFAULT '' NOT NULL CHECK ( new_foo IS NOT NULL),
-			    new_bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			    new_fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			    version INT NOT NULL DEFAULT 0
 			);
-			ALTER TABLE "New_table" ADD CONSTRAINT "new_bar_check" CHECK ( new_bar < CURRENT_TIMESTAMP - interval '1 month' ) NO INHERIT NOT VALID;
-			CREATE UNIQUE INDEX foobar_unique_idx ON "New_table"(new_foo, new_bar);
+			ALTER TABLE "New_table" ADD CONSTRAINT "new_fzz_check" CHECK ( new_fizz < CURRENT_TIMESTAMP - interval '1 month' ) NO INHERIT NOT VALID;
+			CREATE UNIQUE INDEX foobar_unique_idx ON "New_table"(new_foo, new_fizz);
 
 			CREATE TRIGGER "some trigger"
 				BEFORE UPDATE ON "New_table"
@@ -267,13 +270,14 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE TABLE bar(
 			    id VARCHAR(255) PRIMARY KEY,
-			    foo INT,
+			    foo VARCHAR(255),
 			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			    buzz REAL NOT NULL,
-				quux TEXT
+				quux TEXT,
+				FOREIGN KEY (foo, fizz) REFERENCES "New_table" (new_foo, new_fizz)
 			);
-			ALTER TABLE bar ADD CONSTRAINT "FOO_CHECK" CHECK ( foo < bar );
+			ALTER TABLE bar ADD CONSTRAINT "FOO_CHECK" CHECK ( LENGTH(foo) < bar );
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar DESC, fizz DESC);
 			CREATE UNIQUE INDEX bar_unique_idx ON bar(fizz, buzz);
@@ -294,6 +298,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeHasUntrackableDependencies,
 			diff.MigrationHazardTypeIndexBuild,
@@ -307,7 +312,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			);
 
 			CREATE SEQUENCE new_foobar_sequence
-				AS SMALLINT
+			    AS SMALLINT
 				INCREMENT BY 4
 				MINVALUE 10 MAXVALUE 200
 				START WITH 20 CACHE 10 NO CYCLE
@@ -339,14 +344,14 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			$$ language 'plpgsql';
 
 			CREATE TABLE "New_table"(
-				new_bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				id INT PRIMARY KEY,
-				version INT NOT NULL DEFAULT 0,
-				new_fizz SMALLSERIAL NOT NULL,
-				new_foo VARCHAR(255) DEFAULT '' NOT NULL CHECK (new_foo IS NOT NULL)
+			    new_fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			    id INT PRIMARY KEY,
+			    version INT NOT NULL DEFAULT 0,
+			    new_bar SMALLSERIAL NOT NULL,
+				new_foo VARCHAR(255) DEFAULT '' NOT NULL CHECK ( new_foo IS NOT NULL)
 			);
-			ALTER TABLE "New_table" ADD CONSTRAINT "new_bar_check" CHECK ( new_bar < CURRENT_TIMESTAMP - interval '1 month' ) NO INHERIT NOT VALID;
-			CREATE UNIQUE INDEX foobar_unique_idx ON "New_table"(new_foo, new_bar);
+			ALTER TABLE "New_table" ADD CONSTRAINT "new_fzz_check" CHECK ( new_fizz < CURRENT_TIMESTAMP - interval '1 month' ) NO INHERIT NOT VALID;
+			CREATE UNIQUE INDEX foobar_unique_idx ON "New_table"(new_foo, new_fizz);
 
 			CREATE TRIGGER "some trigger"
 				BEFORE UPDATE ON "New_table"
@@ -355,17 +360,18 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				EXECUTE PROCEDURE "increment version"();
 
 			CREATE TABLE bar(
-				id VARCHAR(255) PRIMARY KEY,
-				foo INT,
-				bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-				fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
-				buzz REAL NOT NULL,
-				quux TEXT
+			    id VARCHAR(255) PRIMARY KEY,
+			    foo VARCHAR(255),
+			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			    buzz REAL NOT NULL,
+				quux TEXT,
+				FOREIGN KEY (foo, fizz) REFERENCES "New_table" (new_foo, new_fizz)
 			);
-			ALTER TABLE bar ADD CONSTRAINT "FOO_CHECK" CHECK ( foo < bar );
+			ALTER TABLE bar ADD CONSTRAINT "FOO_CHECK" CHECK ( LENGTH(foo) < bar );
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar DESC, fizz DESC);
-			CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
+			CREATE UNIQUE INDEX bar_unique_idx ON bar(fizz, buzz);
 			CREATE INDEX gin_index ON bar USING gin (quux gin_trgm_ops);
 
 			CREATE FUNCTION check_content() RETURNS TRIGGER AS $$
@@ -390,9 +396,9 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT,
-			    fizz SERIAL NOT NULL,
+			    bar SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST(foo);
 
@@ -401,17 +407,18 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
 
 			-- partitioned indexes
-			CREATE INDEX foobar_normal_idx ON foobar(foo, fizz);
-			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
+			CREATE INDEX foobar_normal_idx ON foobar(foo, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, fizz);
 			-- local indexes
-			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, fizz);
+			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, bar);
 
 			CREATE table bar(
 			    id VARCHAR(255) PRIMARY KEY,
-			    foo INT DEFAULT 0 CHECK (foo > 0 AND foo > bar),
+			    foo VARCHAR(255),
 			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL)
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
+			    FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
 			);
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
@@ -425,9 +432,9 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			`
 			CREATE TABLE new_foobar(
 			    id INT,
-				fizz SERIAL NOT NULL,
+				bar TIMESTAMPTZ NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of new_foobar(
@@ -436,17 +443,18 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
 
 			-- local indexes
-			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, fizz);
+			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, bar);
 			-- partitioned indexes
-			CREATE INDEX foobar_normal_idx ON new_foobar(foo, fizz);
-			CREATE UNIQUE INDEX foobar_unique_idx ON new_foobar(foo, bar);
+			CREATE INDEX foobar_normal_idx ON new_foobar(foo, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON new_foobar(foo, fizz);
 
 			CREATE table bar(
 			    id VARCHAR(255) PRIMARY KEY,
-			    foo INT DEFAULT 0 CHECK (foo > 0 AND foo > bar),
+			    foo VARCHAR(255),
 			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL)
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
+			   	FOREIGN KEY (foo, fizz) REFERENCES new_foobar (foo, fizz)
 			);
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
@@ -457,43 +465,45 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeDeletesData,
 		},
 		dataPackingExpectations: expectations{
 			outputState: []string{
 				`
-				CREATE TABLE new_foobar(
-					bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-					id INT,
-					fizz SERIAL NOT NULL,
-					foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0)
-				) PARTITION BY LIST(foo);
+			CREATE TABLE new_foobar(
+				bar TIMESTAMPTZ NOT NULL,
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			    id INT,
+				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0)
+			) PARTITION BY LIST(foo);
 
-				CREATE TABLE foobar_1 PARTITION of new_foobar(
-					fizz NOT NULL,
-					PRIMARY KEY (foo, bar)
-				) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
+			CREATE TABLE foobar_1 PARTITION of new_foobar(
+			    fizz NOT NULL,
+			    PRIMARY KEY (foo, bar)
+			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
 
-				-- local indexes
-				CREATE INDEX foobar_1_local_idx ON foobar_1(foo, fizz);
-				-- partitioned indexes
-				CREATE INDEX foobar_normal_idx ON new_foobar(foo, fizz);
-				CREATE UNIQUE INDEX foobar_unique_idx ON new_foobar(foo, bar);
+			-- local indexes
+			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, bar);
+			-- partitioned indexes
+			CREATE INDEX foobar_normal_idx ON new_foobar(foo, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON new_foobar(foo, fizz);
 
-				CREATE table bar(
-					id VARCHAR(255) PRIMARY KEY,
-					foo INT DEFAULT 0 CHECK (foo > 0 AND foo > bar),
-					bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-					fizz timestamptz DEFAULT CURRENT_TIMESTAMP,
-					buzz REAL NOT NULL CHECK (buzz IS NOT NULL)
-				);
-				CREATE INDEX bar_normal_idx ON bar(bar);
-				CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
-				CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
+			CREATE table bar(
+			    id VARCHAR(255) PRIMARY KEY,
+			    foo VARCHAR(255),
+			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
+			   	FOREIGN KEY (foo, fizz) REFERENCES new_foobar (foo, fizz)
+			);
+			CREATE INDEX bar_normal_idx ON bar(bar);
+			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
+			CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
 
-				CREATE TABLE fizz(
-				);
-				`,
+			CREATE TABLE fizz(
+			);
+			`,
 			},
 		},
 	},

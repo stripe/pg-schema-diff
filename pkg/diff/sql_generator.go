@@ -97,6 +97,10 @@ type (
 		oldAndNew[schema.Index]
 	}
 
+	foreignKeyConstraintDiff struct {
+		oldAndNew[schema.ForeignKeyConstraint]
+	}
+
 	sequenceDiff struct {
 		oldAndNew[schema.Sequence]
 	}
@@ -116,12 +120,13 @@ type (
 
 type schemaDiff struct {
 	oldAndNew[schema.Schema]
-	extensionDiffs listDiff[schema.Extension, extensionDiff]
-	tableDiffs     listDiff[schema.Table, tableDiff]
-	indexDiffs     listDiff[schema.Index, indexDiff]
-	sequenceDiffs  listDiff[schema.Sequence, sequenceDiff]
-	functionDiffs  listDiff[schema.Function, functionDiff]
-	triggerDiffs   listDiff[schema.Trigger, triggerDiff]
+	extensionDiffs            listDiff[schema.Extension, extensionDiff]
+	tableDiffs                listDiff[schema.Table, tableDiff]
+	indexDiffs                listDiff[schema.Index, indexDiff]
+	foreignKeyConstraintDiffs listDiff[schema.ForeignKeyConstraint, foreignKeyConstraintDiff]
+	sequenceDiffs             listDiff[schema.Sequence, sequenceDiff]
+	functionDiffs             listDiff[schema.Function, functionDiff]
+	triggerDiffs              listDiff[schema.Trigger, triggerDiff]
 }
 
 func (sd schemaDiff) resolveToSQL() ([]Statement, error) {
@@ -188,6 +193,41 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing indexes: %w", err)
 	}
 
+	foreignKeyConstraintDiffs, err := diffLists(old.ForeignKeyConstraints, new.ForeignKeyConstraints, func(old, new schema.ForeignKeyConstraint, _, _ int) (foreignKeyConstraintDiff, bool, error) {
+		if _, isOnNewTable := addedTablesByName[new.OwningTableUnescapedName]; isOnNewTable {
+			// If the owning table is new, then it must be re-created (this occurs if the base table has been
+			// re-created). In other words, a foreign key constraint must be re-created if the owning table or referenced
+			// table is re-created
+			return foreignKeyConstraintDiff{}, true, nil
+		} else if _, isReferencingNewTable := addedTablesByName[new.ForeignTableUnescapedName]; isReferencingNewTable {
+			// Same as above, but for the referenced table
+			return foreignKeyConstraintDiff{}, true, nil
+		}
+
+		// Set the new clone to be equal to the old for all fields that can actually be altered
+		newClone := new
+		if !old.IsValid && new.IsValid {
+			// We only support alter from NOT VALID to VALID and no other alterations.
+			// Instead of checking that each individual property is equal (that's a lot of parsing), we will just
+			// assert that the constraint definitions are equal if we append "NOT VALID" to the new constraint def
+			newClone.IsValid = old.IsValid
+			newClone.ConstraintDef = fmt.Sprintf("%s NOT VALID", newClone.ConstraintDef)
+		}
+		if !cmp.Equal(old, newClone) {
+			return foreignKeyConstraintDiff{}, true, nil
+		}
+
+		return foreignKeyConstraintDiff{
+			oldAndNew[schema.ForeignKeyConstraint]{
+				old: old,
+				new: new,
+			},
+		}, false, nil
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing foreign key constraints: %w", err)
+	}
+
 	sequencesDiffs, err := diffLists(old.Sequences, new.Sequences, func(old, new schema.Sequence, oldIndex, newIndex int) (diff sequenceDiff, requiresRecreation bool, error error) {
 		seqDiff := sequenceDiff{
 			oldAndNew[schema.Sequence]{
@@ -243,12 +283,13 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 			old: old,
 			new: new,
 		},
-		extensionDiffs: extensionDiffs,
-		tableDiffs:     tableDiffs,
-		indexDiffs:     indexesDiff,
-		sequenceDiffs:  sequencesDiffs,
-		functionDiffs:  functionDiffs,
-		triggerDiffs:   triggerDiffs,
+		extensionDiffs:            extensionDiffs,
+		tableDiffs:                tableDiffs,
+		indexDiffs:                indexesDiff,
+		foreignKeyConstraintDiffs: foreignKeyConstraintDiffs,
+		sequenceDiffs:             sequencesDiffs,
+		functionDiffs:             functionDiffs,
+		triggerDiffs:              triggerDiffs,
 	}, false, nil
 }
 
@@ -369,12 +410,21 @@ type schemaSQLGenerator struct{}
 func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	tablesInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Tables)
 	deletedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.deletes)
+	addedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.adds)
 
-	tableSQLVertexGenerator := tableSQLVertexGenerator{
+	indexesOldSchemaByTableName := make(map[string][]schema.Index)
+	for _, idx := range diff.old.Indexes {
+		indexesOldSchemaByTableName[idx.TableName] = append(indexesOldSchemaByTableName[idx.TableName], idx)
+	}
+	indexesInNewSchemaByTableName := make(map[string][]schema.Index)
+	for _, idx := range diff.new.Indexes {
+		indexesInNewSchemaByTableName[idx.TableName] = append(indexesInNewSchemaByTableName[idx.TableName], idx)
+	}
+
+	tableGraphs, err := diff.tableDiffs.resolveToSQLGraph(&tableSQLVertexGenerator{
 		deletedTablesByName:     deletedTablesByName,
 		tablesInNewSchemaByName: tablesInNewSchemaByName,
-	}
-	tableGraphs, err := diff.tableDiffs.resolveToSQLGraph(&tableSQLVertexGenerator)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("resolving table sql graphs: %w", err)
 	}
@@ -384,14 +434,9 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving extension sql graphs: %w", err)
 	}
 
-	indexesInNewSchemaByTableName := make(map[string][]schema.Index)
-	for _, idx := range diff.new.Indexes {
-		indexesInNewSchemaByTableName[idx.TableName] = append(indexesInNewSchemaByTableName[idx.TableName], idx)
-	}
-	attachPartitionSQLVertexGenerator := attachPartitionSQLVertexGenerator{
+	attachPartitionGraphs, err := diff.tableDiffs.resolveToSQLGraph(&attachPartitionSQLVertexGenerator{
 		indexesInNewSchemaByTableName: indexesInNewSchemaByTableName,
-	}
-	attachPartitionGraphs, err := diff.tableDiffs.resolveToSQLGraph(&attachPartitionSQLVertexGenerator)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("resolving attach partition sql graphs: %w", err)
 	}
@@ -402,16 +447,25 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving renaming conflicting indexes: %w", err)
 	}
 
-	indexSQLVertexGenerator := indexSQLVertexGenerator{
+	indexGraphs, err := diff.indexDiffs.resolveToSQLGraph(&indexSQLVertexGenerator{
 		deletedTablesByName:      deletedTablesByName,
-		addedTablesByName:        buildSchemaObjByNameMap(diff.tableDiffs.adds),
+		addedTablesByName:        addedTablesByName,
 		tablesInNewSchemaByName:  tablesInNewSchemaByName,
 		indexesInNewSchemaByName: buildSchemaObjByNameMap(diff.new.Indexes),
 		indexRenamesByOldName:    renameConflictingIndexSQLVertexGenerator.getRenames(),
-	}
-	indexGraphs, err := diff.indexDiffs.resolveToSQLGraph(&indexSQLVertexGenerator)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("resolving index sql graphs: %w", err)
+	}
+
+	fkConsGraphs, err := diff.foreignKeyConstraintDiffs.resolveToSQLGraph(&foreignKeyConstraintSQLVertexGenerator{
+		deletedTablesByName:           deletedTablesByName,
+		addedTablesByName:             addedTablesByName,
+		indexInOldSchemaByTableName:   indexesInNewSchemaByTableName,
+		indexesInNewSchemaByTableName: indexesInNewSchemaByTableName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolving foreign key constraint sql graphs: %w", err)
 	}
 
 	sequenceGraphs, err := diff.sequenceDiffs.resolveToSQLGraph(&sequenceSQLVertexGenerator{
@@ -427,7 +481,6 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	}
 
 	functionsInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Functions)
-
 	functionGraphs, err := diff.functionDiffs.resolveToSQLGraph(&functionSQLVertexGenerator{
 		functionsInNewSchemaByName: functionsInNewSchemaByName,
 	})
@@ -448,14 +501,17 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	if err := tableGraphs.union(indexGraphs); err != nil {
 		return nil, fmt.Errorf("unioning table and index graphs: %w", err)
 	}
+	if err := tableGraphs.union(renameConflictingIndexGraphs); err != nil {
+		return nil, fmt.Errorf("unioning table and rename conflicting index graphs: %w", err)
+	}
+	if err := tableGraphs.union(fkConsGraphs); err != nil {
+		return nil, fmt.Errorf("unioning table and foreign key constraint graphs: %w", err)
+	}
 	if err := tableGraphs.union(sequenceGraphs); err != nil {
 		return nil, fmt.Errorf("unioning table and sequence graphs: %w", err)
 	}
 	if err := tableGraphs.union(sequenceOwnershipGraphs); err != nil {
 		return nil, fmt.Errorf("unioning table and sequence ownership graphs: %w", err)
-	}
-	if err := tableGraphs.union(renameConflictingIndexGraphs); err != nil {
-		return nil, fmt.Errorf("unioning table and rename conflicting index graphs: %w", err)
 	}
 	if err := tableGraphs.union(functionGraphs); err != nil {
 		return nil, fmt.Errorf("unioning table and function graphs: %w", err)
@@ -624,7 +680,7 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 		if colDiff.old.IsNullable == colDiff.new.IsNullable {
 			continue
 		}
-		alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(diff.new.Name), schema.EscapeIdentifier(colDiff.new.Name))
+		alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", publicTableAlterPrefix(diff.new.Name), schema.EscapeIdentifier(colDiff.new.Name))
 		if colDiff.new.IsNullable {
 			stmts = append(stmts, Statement{
 				DDL:     fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
@@ -681,14 +737,14 @@ type columnSQLGenerator struct {
 
 func (csg *columnSQLGenerator) Add(column schema.Column) ([]Statement, error) {
 	return []Statement{{
-		DDL:     fmt.Sprintf("%s ADD COLUMN %s", alterTablePrefix(csg.tableName), buildColumnDefinition(column)),
+		DDL:     fmt.Sprintf("%s ADD COLUMN %s", publicTableAlterPrefix(csg.tableName), buildColumnDefinition(column)),
 		Timeout: statementTimeoutDefault,
 	}}, nil
 }
 
 func (csg *columnSQLGenerator) Delete(column schema.Column) ([]Statement, error) {
 	return []Statement{{
-		DDL:     fmt.Sprintf("%s DROP COLUMN %s", alterTablePrefix(csg.tableName), schema.EscapeIdentifier(column.Name)),
+		DDL:     fmt.Sprintf("%s DROP COLUMN %s", publicTableAlterPrefix(csg.tableName), schema.EscapeIdentifier(column.Name)),
 		Timeout: statementTimeoutDefault,
 		Hazards: []MigrationHazard{
 			{
@@ -705,7 +761,7 @@ func (csg *columnSQLGenerator) Alter(diff columnDiff) ([]Statement, error) {
 	}
 	oldColumn, newColumn := diff.old, diff.new
 	var stmts []Statement
-	alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(csg.tableName), schema.EscapeIdentifier(newColumn.Name))
+	alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", publicTableAlterPrefix(csg.tableName), schema.EscapeIdentifier(newColumn.Name))
 
 	if oldColumn.IsNullable != newColumn.IsNullable {
 		if newColumn.IsNullable {
@@ -966,9 +1022,12 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 			// with a similar strategy to adding indexes to a partitioned table
 			return []Statement{
 				{
-					DDL: fmt.Sprintf("%s ADD CONSTRAINT %s PRIMARY KEY (%s)",
-						alterTablePrefix(index.TableName),
-						schema.EscapeIdentifier(index.Name),
+					DDL: fmt.Sprintf("%s PRIMARY KEY (%s)",
+						addConstraintPrefix(schema.SchemaQualifiedName{
+							// Assumes public
+							SchemaName:  "public",
+							EscapedName: schema.EscapeIdentifier(index.TableName),
+						}, schema.EscapeIdentifier(index.ConstraintName)),
 						strings.Join(formattedNamesForSQL(index.Columns), ", "),
 					),
 					Timeout: statementTimeoutDefault,
@@ -1052,7 +1111,12 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 		// the constraint without dropping the index
 		return []Statement{
 			{
-				DDL:     dropConstraintDDL(index.TableName, constraintName),
+				DDL: dropConstraintDDL(schema.SchemaQualifiedName{
+					// Assumes public
+					SchemaName:  "public",
+					EscapedName: schema.EscapeIdentifier(index.TableName),
+				}, schema.EscapeIdentifier(constraintName)),
+
 				Timeout: statementTimeoutDefault,
 				Hazards: []MigrationHazard{
 					migrationHazardIndexDroppedAcquiresLock,
@@ -1133,7 +1197,13 @@ func isOnPartitionedTable(tablesInNewSchemaByName map[string]schema.Table, index
 
 func (isg *indexSQLVertexGenerator) addPkConstraintUsingIdx(index schema.Index) Statement {
 	return Statement{
-		DDL:     fmt.Sprintf("%s ADD CONSTRAINT %s PRIMARY KEY USING INDEX %s", alterTablePrefix(index.TableName), schema.EscapeIdentifier(index.ConstraintName), schema.EscapeIdentifier(index.Name)),
+		DDL: fmt.Sprintf("%s PRIMARY KEY USING INDEX %s",
+			addConstraintPrefix(schema.SchemaQualifiedName{
+				// Assumes public
+				SchemaName:  "public",
+				EscapedName: schema.EscapeIdentifier(index.TableName),
+			}, schema.EscapeIdentifier(index.ConstraintName)),
+			schema.EscapeIdentifier(index.Name)),
 		Timeout: statementTimeoutDefault,
 	}
 }
@@ -1236,11 +1306,17 @@ func (csg *checkConstraintSQLGenerator) Add(con schema.CheckConstraint) ([]State
 	}
 
 	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("%s ADD CONSTRAINT %s CHECK(%s)", alterTablePrefix(csg.tableName), schema.EscapeIdentifier(con.Name), con.Expression))
+	sb.WriteString(fmt.Sprintf("%s CHECK(%s)",
+		addConstraintPrefix(schema.SchemaQualifiedName{
+			// Assumes public
+			SchemaName:  "public",
+			EscapedName: schema.EscapeIdentifier(csg.tableName),
+		}, schema.EscapeIdentifier(con.Name)), con.Expression))
 	if !con.IsInheritable {
 		sb.WriteString(" NO INHERIT")
 	}
 
+	// TODO: We should have a hazard here when adding a check constraint that is valid
 	if !con.IsValid {
 		sb.WriteString(" NOT VALID")
 	}
@@ -1259,7 +1335,11 @@ func (csg *checkConstraintSQLGenerator) Delete(con schema.CheckConstraint) ([]St
 	}
 
 	return []Statement{{
-		DDL:     dropConstraintDDL(csg.tableName, con.Name),
+		DDL: dropConstraintDDL(schema.SchemaQualifiedName{
+			// Assumes public
+			SchemaName:  "public",
+			EscapedName: schema.EscapeIdentifier(csg.tableName),
+		}, schema.EscapeIdentifier(con.Name)),
 		Timeout: statementTimeoutDefault,
 	}}, nil
 }
@@ -1273,7 +1353,7 @@ func (csg *checkConstraintSQLGenerator) Alter(diff checkConstraintDiff) ([]State
 	oldCopy.IsValid = diff.new.IsValid
 	if !cmp.Equal(oldCopy, diff.new) {
 		// Technically, we could support altering expression, but I don't see the use case for it. it would require more test
-		// cases than forceReadding it, and I'm not convinced it unlocks any functionality
+		// cases than force readding it, and I'm not convinced it unlocks any functionality
 		return nil, fmt.Errorf("altering check constraint to resolve the following diff %s: %w", cmp.Diff(oldCopy, diff.new), ErrNotImplemented)
 	} else if diff.old.IsValid && !diff.new.IsValid {
 		return nil, fmt.Errorf("check constraint can't go from invalid to valid")
@@ -1281,10 +1361,11 @@ func (csg *checkConstraintSQLGenerator) Alter(diff checkConstraintDiff) ([]State
 		return nil, fmt.Errorf("check constraints that depend on UDFs: %w", ErrNotImplemented)
 	}
 
-	return []Statement{{
-		DDL:     fmt.Sprintf("%s VALIDATE CONSTRAINT %s", alterTablePrefix(csg.tableName), schema.EscapeIdentifier(diff.old.Name)),
-		Timeout: statementTimeoutDefault,
-	}}, nil
+	return []Statement{validateConstraintStatement(schema.SchemaQualifiedName{
+		// Assumes public
+		SchemaName:  "public",
+		EscapedName: schema.EscapeIdentifier(csg.tableName),
+	}, schema.EscapeIdentifier(diff.new.Name))}, nil
 }
 
 type attachPartitionSQLVertexGenerator struct {
@@ -1304,7 +1385,7 @@ func (*attachPartitionSQLVertexGenerator) Alter(_ tableDiff) ([]Statement, error
 
 func buildAttachPartitionStatement(table schema.Table) Statement {
 	return Statement{
-		DDL:     fmt.Sprintf("%s ATTACH PARTITION %s %s", alterTablePrefix(table.ParentTableName), schema.EscapeIdentifier(table.Name), table.ForValues),
+		DDL:     fmt.Sprintf("%s ATTACH PARTITION %s %s", publicTableAlterPrefix(table.ParentTableName), schema.EscapeIdentifier(table.Name), table.ForValues),
 		Timeout: statementTimeoutDefault,
 	}
 }
@@ -1330,6 +1411,102 @@ func (a *attachPartitionSQLVertexGenerator) GetAddAlterDependencies(table, _ sch
 
 func (a *attachPartitionSQLVertexGenerator) GetDeleteDependencies(_ schema.Table) []dependency {
 	return nil
+}
+
+type foreignKeyConstraintSQLVertexGenerator struct {
+	// deletedTablesByName is a map of table name to tables (and partitions) that are deleted
+	// This is used to identify if the owning table is being dropped (meaning
+	// the foreign key can be implicitly dropped)
+	deletedTablesByName map[string]schema.Table
+	// addedTablesByName is a map of table name to the added tables
+	// This is used to identify if hazards are necessary
+	addedTablesByName map[string]schema.Table
+	// indexInOldSchemaByTableName is a map of index name to the index in the old schema
+	// This is used to force the foreign key constraint to be dropped before the index it depends on is dropped
+	indexInOldSchemaByTableName map[string][]schema.Index
+	// indexesInNewSchemaByTableName is a map of index name to the index
+	// Same as above but for adds and after
+	indexesInNewSchemaByTableName map[string][]schema.Index
+}
+
+func (f *foreignKeyConstraintSQLVertexGenerator) Add(con schema.ForeignKeyConstraint) ([]Statement, error) {
+	var hazards []MigrationHazard
+	_, isOnNewTable := f.addedTablesByName[con.OwningTableUnescapedName]
+	_, isReferencedTableNew := f.addedTablesByName[con.ForeignTableUnescapedName]
+	if con.IsValid && (!isOnNewTable || !isReferencedTableNew) {
+		hazards = append(hazards, MigrationHazard{
+			Type: MigrationHazardTypeAcquiresShareRowExclusiveLock,
+			Message: "This will lock writes to the owning table and referenced table while the constraint is being added. " +
+				"Instead, consider adding the constraint as NOT VALID and validating it later.",
+		})
+	}
+	return []Statement{{
+		DDL:     fmt.Sprintf("%s %s", addConstraintPrefix(con.OwningTable, con.EscapedName), con.ConstraintDef),
+		Timeout: statementTimeoutDefault,
+		Hazards: hazards,
+	}}, nil
+}
+
+func (f *foreignKeyConstraintSQLVertexGenerator) Delete(con schema.ForeignKeyConstraint) ([]Statement, error) {
+	// Always generate a drop statement even if the owning table is being deleted. This simplifies the logic a bit because
+	// if the owning table has a circular FK dependency with another table being dropped, we will need to explicitly drop
+	// one of the FK's first
+	return []Statement{{
+		DDL:     dropConstraintDDL(con.OwningTable, con.EscapedName),
+		Timeout: statementTimeoutDefault,
+	}}, nil
+}
+
+func (f *foreignKeyConstraintSQLVertexGenerator) Alter(diff foreignKeyConstraintDiff) ([]Statement, error) {
+	var stmts []Statement
+	if !diff.old.IsValid && diff.new.IsValid {
+		diff.old.IsValid = diff.new.IsValid
+		// We're not keeping track of the other FK attributes, so it's easiest to ensure all other properties are equal
+		// by just modifying the old constraint diff to exclude "NOT VALID", which should make the diffs equal if no
+		// other properties have changed
+		if !strings.HasSuffix(diff.old.ConstraintDef, " NOT VALID") {
+			return nil, fmt.Errorf("expected the old constraint def to be suffixed with NOT VALID: %q", diff.old.ConstraintDef)
+		}
+		diff.old.ConstraintDef = strings.TrimSuffix(diff.old.ConstraintDef, " NOT VALID")
+		stmts = append(stmts, validateConstraintStatement(diff.new.OwningTable, diff.new.EscapedName))
+	}
+	if !cmp.Equal(diff.old, diff.new) {
+		return nil, fmt.Errorf("altering foreign key constraint to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
+	}
+
+	return stmts, nil
+}
+
+func (*foreignKeyConstraintSQLVertexGenerator) GetSQLVertexId(con schema.ForeignKeyConstraint) string {
+	return buildVertexId("fkconstraint", con.GetName())
+}
+
+func (f *foreignKeyConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ schema.ForeignKeyConstraint) []dependency {
+	deps := []dependency{
+		mustRun(f.GetSQLVertexId(con), diffTypeAddAlter).after(f.GetSQLVertexId(con), diffTypeDelete),
+		mustRun(f.GetSQLVertexId(con), diffTypeAddAlter).after(buildTableVertexId(con.OwningTableUnescapedName), diffTypeAddAlter),
+		mustRun(f.GetSQLVertexId(con), diffTypeAddAlter).after(buildTableVertexId(con.ForeignTableUnescapedName), diffTypeAddAlter),
+	}
+	// This is the slightly lazy way of ensuring the foreign key constraint is added after the requisite index is build.
+	// We __could__ due this just for the index fk depends on, but that's slightly more wiring than we need right now
+	for _, i := range f.indexesInNewSchemaByTableName[con.ForeignTableUnescapedName] {
+		deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeAddAlter).after(buildIndexVertexId(i.Name), diffTypeAddAlter))
+	}
+
+	return deps
+}
+
+func (f *foreignKeyConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.ForeignKeyConstraint) []dependency {
+	deps := []dependency{
+		mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildTableVertexId(con.OwningTableUnescapedName), diffTypeDelete),
+		mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildTableVertexId(con.ForeignTableUnescapedName), diffTypeDelete),
+	}
+	// This is the slightly lazy way of ensuring the foreign key constraint is dropped before the requisite index is dropped.
+	// We __could__ due this just for the index the fk depends on, but that's slightly more wiring than we need right now
+	for _, i := range f.indexInOldSchemaByTableName[con.ForeignTableUnescapedName] {
+		deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildIndexVertexId(i.Name), diffTypeDelete))
+	}
+	return deps
 }
 
 type sequenceSQLVertexGenerator struct {
@@ -1733,12 +1910,31 @@ func stripMigrationHazards(stmts []Statement) []Statement {
 	return noHazardsStmts
 }
 
-func dropConstraintDDL(tableName, constraintName string) string {
-	return fmt.Sprintf("%s DROP CONSTRAINT %s", alterTablePrefix(tableName), schema.EscapeIdentifier(constraintName))
+func addConstraintPrefix(table schema.SchemaQualifiedName, escapedConstraintName string) string {
+	return fmt.Sprintf("%s ADD CONSTRAINT %s", alterTablePrefix(table), escapedConstraintName)
 }
 
-func alterTablePrefix(tableName string) string {
-	return fmt.Sprintf("ALTER TABLE %s", schema.EscapeIdentifier(tableName))
+func dropConstraintDDL(table schema.SchemaQualifiedName, escapedConstraintName string) string {
+	return fmt.Sprintf("%s DROP CONSTRAINT %s", alterTablePrefix(table), escapedConstraintName)
+}
+
+func validateConstraintStatement(owningTable schema.SchemaQualifiedName, escapedConstraintName string) Statement {
+	return Statement{
+		DDL:     fmt.Sprintf("%s VALIDATE CONSTRAINT %s", alterTablePrefix(owningTable), escapedConstraintName),
+		Timeout: statementTimeoutDefault,
+	}
+}
+
+func publicTableAlterPrefix(tableName string) string {
+	return alterTablePrefix(schema.SchemaQualifiedName{
+		// Assumes public
+		SchemaName:  "public",
+		EscapedName: schema.EscapeIdentifier(tableName),
+	})
+}
+
+func alterTablePrefix(table schema.SchemaQualifiedName) string {
+	return fmt.Sprintf("ALTER TABLE %s", table.GetFQEscapedName())
 }
 
 func buildColumnDefinition(column schema.Column) string {

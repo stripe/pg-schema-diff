@@ -9,15 +9,16 @@ import (
 type MigrationHazardType = string
 
 const (
-	MigrationHazardTypeAcquiresAccessExclusiveLock MigrationHazardType = "ACQUIRES_ACCESS_EXCLUSIVE_LOCK"
-	MigrationHazardTypeAcquiresShareLock           MigrationHazardType = "ACQUIRES_SHARE_LOCK"
-	MigrationHazardTypeDeletesData                 MigrationHazardType = "DELETES_DATA"
-	MigrationHazardTypeHasUntrackableDependencies  MigrationHazardType = "HAS_UNTRACKABLE_DEPENDENCIES"
-	MigrationHazardTypeIndexBuild                  MigrationHazardType = "INDEX_BUILD"
-	MigrationHazardTypeIndexDropped                MigrationHazardType = "INDEX_DROPPED"
-	MigrationHazardTypeImpactsDatabasePerformance  MigrationHazardType = "IMPACTS_DATABASE_PERFORMANCE"
-	MigrationHazardTypeIsUserGenerated             MigrationHazardType = "IS_USER_GENERATED"
-	MigrationHazardTypeExtensionVersionUpgrade     MigrationHazardType = "UPGRADING_EXTENSION_VERSION"
+	MigrationHazardTypeAcquiresAccessExclusiveLock   MigrationHazardType = "ACQUIRES_ACCESS_EXCLUSIVE_LOCK"
+	MigrationHazardTypeAcquiresShareLock             MigrationHazardType = "ACQUIRES_SHARE_LOCK"
+	MigrationHazardTypeAcquiresShareRowExclusiveLock MigrationHazardType = "ACQUIRES_SHARE_ROW_EXCLUSIVE_LOCK"
+	MigrationHazardTypeDeletesData                   MigrationHazardType = "DELETES_DATA"
+	MigrationHazardTypeHasUntrackableDependencies    MigrationHazardType = "HAS_UNTRACKABLE_DEPENDENCIES"
+	MigrationHazardTypeIndexBuild                    MigrationHazardType = "INDEX_BUILD"
+	MigrationHazardTypeIndexDropped                  MigrationHazardType = "INDEX_DROPPED"
+	MigrationHazardTypeImpactsDatabasePerformance    MigrationHazardType = "IMPACTS_DATABASE_PERFORMANCE"
+	MigrationHazardTypeIsUserGenerated               MigrationHazardType = "IS_USER_GENERATED"
+	MigrationHazardTypeExtensionVersionUpgrade       MigrationHazardType = "UPGRADING_EXTENSION_VERSION"
 )
 
 // MigrationHazard represents a hazard that a statement poses to a database

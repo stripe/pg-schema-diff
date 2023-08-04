@@ -3,10 +3,6 @@ package migration_acceptance_tests
 import "github.com/stripe/pg-schema-diff/pkg/diff"
 
 var sequenceAcceptanceTests = []acceptanceTestCase{
-	// Write test case for ownership change between two separate tables and from none to something
-
-	// write acceptance test cases for sequences
-	// Write noop test case
 	{
 		name: "No-op",
 		oldSchemaDDL: []string{

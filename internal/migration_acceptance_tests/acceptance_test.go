@@ -17,6 +17,10 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
+var (
+	errValidatingPlan = fmt.Errorf("validating migration plan")
+)
+
 type (
 	expectations struct {
 		planErrorIs       error

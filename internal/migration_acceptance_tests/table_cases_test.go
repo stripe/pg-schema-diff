@@ -18,6 +18,15 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX unique_idx ON foobar(foo, bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		newSchemaDDL: []string{
@@ -31,6 +40,15 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX unique_idx ON foobar(foo, bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		vanillaExpectations: expectations{
@@ -53,7 +71,16 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
-			CREATE UNIQUE INDEX unique_idx ON foobar(foo, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		dataPackingExpectations: expectations{
@@ -66,8 +93,18 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
-			CREATE UNIQUE INDEX unique_idx ON foobar(foo, bar);
-				`},
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			`,
+			},
 		},
 	},
 	{
@@ -112,7 +149,16 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
-			CREATE UNIQUE INDEX unique_idx ON foobar(foo, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -140,7 +186,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter table: New primary key, change column types, delete unique index, new index, validate check constraint",
+		name: "Alter table: New primary key, change column types, delete unique index, delete FK's, new index, validate check constraint",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -153,7 +199,16 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			);
 			ALTER TABLE foobar ADD CONSTRAINT buzz_check CHECK (buzz IS NOT NULL) NOT VALID;
 			CREATE INDEX normal_idx ON foobar(fizz);
-			CREATE UNIQUE INDEX unique_idx ON foobar(foo, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		newSchemaDDL: []string{
@@ -169,6 +224,11 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT buzz_check CHECK (buzz IS NOT NULL);
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE INDEX other_idx ON foobar(bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -179,7 +239,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter table: New column, new primary key, alter column to nullable, alter column types, drop column, drop index, drop check constraints",
+		name: "Alter table: New column, new primary key, new FK, drop FK, alter column to nullable, alter column types, drop column, drop index, drop check constraints",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -191,6 +251,13 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX unique_idx ON foobar(foo DESC, bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
 			`,
 		},
 		newSchemaDDL: []string{
@@ -202,10 +269,19 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    new_fizz DECIMAL(65, 10) DEFAULT 5.25 NOT NULL PRIMARY KEY
 			);
 			CREATE INDEX other_idx ON foobar(bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo CHAR
+			);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeIndexDropped,
@@ -224,7 +300,16 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar USING hash (fizz);
-			CREATE UNIQUE INDEX unique_idx ON foobar(foo DESC, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		newSchemaDDL: []string{
@@ -237,11 +322,21 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 				new_buzz REAL CHECK (new_buzz IS NOT NULL)
 			);
 			CREATE INDEX normal_idx ON foobar USING hash (new_fizz);
-			CREATE UNIQUE INDEX unique_idx ON foobar(new_foo DESC, new_bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(new_foo, new_bar);
+
+			CREATE TABLE foobar_fk(
+			    bar TIMESTAMP,
+			    foo VARCHAR(255)
+			);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			-- create a circular dependency of foreign keys (this is allowed)
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(new_foo, new_bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (new_foo, new_bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
