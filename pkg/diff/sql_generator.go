@@ -594,7 +594,7 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		Timeout: statementTimeoutDefault,
 	})
 
-	csg := checkConstraintSQLGenerator{tableName: table.Name}
+	csg := checkConstraintSQLGenerator{tableName: table.Name, isNewTable: true}
 	for _, checkCon := range table.CheckConstraints {
 		addConStmts, err := csg.Add(checkCon)
 		if err != nil {
@@ -649,7 +649,7 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving index diff: %w", err)
 	}
 
-	checkConSQLGenerator := checkConstraintSQLGenerator{tableName: diff.new.Name}
+	checkConSQLGenerator := checkConstraintSQLGenerator{tableName: diff.new.Name, isNewTable: false}
 	checkConGeneratedSQL, err := diff.checkConstraintDiff.resolveToSQLGroupedByEffect(&checkConSQLGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("resolving check constraints diff: %w", err)
@@ -1295,10 +1295,13 @@ func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index sche
 }
 
 type checkConstraintSQLGenerator struct {
-	tableName string
+	tableName  string
+	isNewTable bool
 }
 
 func (csg *checkConstraintSQLGenerator) Add(con schema.CheckConstraint) ([]Statement, error) {
+	var hazards []MigrationHazard
+
 	// UDF's in check constraints are a bad idea. Check constraints are not re-validated
 	// if the UDF changes, so it's not really a safe practice. We won't support it for now
 	if len(con.DependsOnFunctions) > 0 {
@@ -1316,14 +1319,20 @@ func (csg *checkConstraintSQLGenerator) Add(con schema.CheckConstraint) ([]State
 		sb.WriteString(" NO INHERIT")
 	}
 
-	// TODO: We should have a hazard here when adding a check constraint that is valid
 	if !con.IsValid {
 		sb.WriteString(" NOT VALID")
+	} else if !csg.isNewTable {
+		hazards = append(hazards, MigrationHazard{
+			Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
+			Message: "This will lock reads and writes to the owning table while the constraint is being added. " +
+				"Instead, consider adding the constraint as NOT VALID and validating it later.",
+		})
 	}
 
 	return []Statement{{
 		DDL:     sb.String(),
 		Timeout: statementTimeoutDefault,
+		Hazards: hazards,
 	}}, nil
 }
 
