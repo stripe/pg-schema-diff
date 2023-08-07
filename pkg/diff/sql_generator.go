@@ -1362,7 +1362,7 @@ func (csg *checkConstraintSQLGenerator) Alter(diff checkConstraintDiff) ([]State
 	oldCopy.IsValid = diff.new.IsValid
 	if !cmp.Equal(oldCopy, diff.new) {
 		// Technically, we could support altering expression, but I don't see the use case for it. it would require more test
-		// cases than force readding it, and I'm not convinced it unlocks any functionality
+		// cases than force re-adding it, and I'm not convinced it unlocks any functionality
 		return nil, fmt.Errorf("altering check constraint to resolve the following diff %s: %w", cmp.Diff(oldCopy, diff.new), ErrNotImplemented)
 	} else if diff.old.IsValid && !diff.new.IsValid {
 		return nil, fmt.Errorf("check constraint can't go from invalid to valid")
@@ -1496,8 +1496,10 @@ func (f *foreignKeyConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ 
 		mustRun(f.GetSQLVertexId(con), diffTypeAddAlter).after(buildTableVertexId(con.OwningTableUnescapedName), diffTypeAddAlter),
 		mustRun(f.GetSQLVertexId(con), diffTypeAddAlter).after(buildTableVertexId(con.ForeignTableUnescapedName), diffTypeAddAlter),
 	}
-	// This is the slightly lazy way of ensuring the foreign key constraint is added after the requisite index is build.
-	// We __could__ due this just for the index fk depends on, but that's slightly more wiring than we need right now
+	// This is the slightly lazy way of ensuring the foreign key constraint is added after the requisite index is
+	// built and marked as valid.
+	// We __could__ do this just for the index the fk depends on, but that's slightly more wiring than we need right now
+	// because of partitioned indexes, which are only valid when all child indexes have been built
 	for _, i := range f.indexesInNewSchemaByTableName[con.ForeignTableUnescapedName] {
 		deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeAddAlter).after(buildIndexVertexId(i.Name), diffTypeAddAlter))
 	}
@@ -1510,8 +1512,10 @@ func (f *foreignKeyConstraintSQLVertexGenerator) GetDeleteDependencies(con schem
 		mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildTableVertexId(con.OwningTableUnescapedName), diffTypeDelete),
 		mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildTableVertexId(con.ForeignTableUnescapedName), diffTypeDelete),
 	}
-	// This is the slightly lazy way of ensuring the foreign key constraint is dropped before the requisite index is dropped.
-	// We __could__ due this just for the index the fk depends on, but that's slightly more wiring than we need right now
+	// This is the slightly lazy way of ensuring the foreign key constraint is added after the requisite index is
+	// built and marked as valid.
+	// We __could__ do this just for the index the fk depends on, but that's slightly more wiring than we need right now
+	// because of partitioned indexes, which are only valid when all child indexes have been built
 	for _, i := range f.indexInOldSchemaByTableName[con.ForeignTableUnescapedName] {
 		deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildIndexVertexId(i.Name), diffTypeDelete))
 	}
@@ -1569,7 +1573,7 @@ func (s *sequenceSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, erro
 	diff.old.Owner = diff.new.Owner
 	if !cmp.Equal(diff.old, diff.new) {
 		// Technically, we could support altering expression, but I don't see the use case for it. it would require more test
-		// cases than forceReadding it, and I'm not convinced it unlocks any functionality
+		// cases than force re-adding it, and I'm not convinced it unlocks any functionality
 		return nil, fmt.Errorf("altering sequence to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
 	}
 
