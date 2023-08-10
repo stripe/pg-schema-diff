@@ -44,13 +44,13 @@ func (o SchemaQualifiedName) IsEmpty() bool {
 }
 
 type Schema struct {
-	Extensions []Extension
-	Tables     []Table
-	Indexes    []Index
-
-	Sequences []Sequence
-	Functions []Function
-	Triggers  []Trigger
+	Extensions            []Extension
+	Tables                []Table
+	Indexes               []Index
+	ForeignKeyConstraints []ForeignKeyConstraint
+	Sequences             []Sequence
+	Functions             []Function
+	Triggers              []Trigger
 }
 
 // Normalize normalizes the schema (alphabetically sorts tables and columns in tables)
@@ -71,6 +71,7 @@ func (s Schema) Normalize() Schema {
 	s.Tables = normTables
 
 	s.Indexes = sortSchemaObjectsByName(s.Indexes)
+	s.ForeignKeyConstraints = sortSchemaObjectsByName(s.ForeignKeyConstraints)
 	s.Sequences = sortSchemaObjectsByName(s.Sequences)
 	s.Extensions = sortSchemaObjectsByName(s.Extensions)
 
@@ -221,12 +222,28 @@ func (c CheckConstraint) GetName() string {
 	return c.Name
 }
 
+type ForeignKeyConstraint struct {
+	EscapedName string
+	OwningTable SchemaQualifiedName
+	// TableUnescapedName is a hackaround until we switch over Tables to use fully-qualified, escaped names
+	OwningTableUnescapedName string
+	ForeignTable             SchemaQualifiedName
+	// ForeignTableUnescapedName is hackaround for the same as above
+	ForeignTableUnescapedName string
+	ConstraintDef             string
+	IsValid                   bool
+}
+
+func (f ForeignKeyConstraint) GetName() string {
+	return f.OwningTable.GetFQEscapedName() + "_" + f.EscapedName
+}
+
 type (
 	// SequenceOwner represents the owner of a sequence. Once we remove TableUnescapedName, we can replace it with
 	// ColumnIdentifier struct that can also be used in the Column struct
 	SequenceOwner struct {
 		TableName SchemaQualifiedName
-		// TableUnescapedName is a hackaround until we switch over Tables ot use fully-qualified, escaped names
+		// TableUnescapedName is a hackaround until we switch over Tables to use fully-qualified, escaped names
 		TableUnescapedName string
 		ColumnName         string
 	}
@@ -308,6 +325,11 @@ func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
 		return Schema{}, fmt.Errorf("fetchIndexes: %w", err)
 	}
 
+	fkCons, err := fetchForeignKeyCons(ctx, q)
+	if err != nil {
+		return Schema{}, fmt.Errorf("fetchForeignKeyCons: %w", err)
+	}
+
 	sequences, err := fetchSequences(ctx, q)
 	if err != nil {
 		return Schema{}, fmt.Errorf("fetchSequences: %w", err)
@@ -324,12 +346,13 @@ func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
 	}
 
 	return Schema{
-		Extensions: extensions,
-		Tables:     tables,
-		Indexes:    indexes,
-		Sequences:  sequences,
-		Functions:  functions,
-		Triggers:   triggers,
+		Extensions:            extensions,
+		Tables:                tables,
+		Indexes:               indexes,
+		ForeignKeyConstraints: fkCons,
+		Sequences:             sequences,
+		Functions:             functions,
+		Triggers:              triggers,
 	}, nil
 }
 
@@ -474,6 +497,33 @@ func fetchIndexes(ctx context.Context, q *queries.Queries) ([]Index, error) {
 	}
 
 	return indexes, nil
+}
+
+func fetchForeignKeyCons(ctx context.Context, q *queries.Queries) ([]ForeignKeyConstraint, error) {
+	rawFkCons, err := q.GetForeignKeyConstraints(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetForeignKeyConstraints: %w", err)
+	}
+
+	var fkCons []ForeignKeyConstraint
+	for _, rawFkCon := range rawFkCons {
+		fkCons = append(fkCons, ForeignKeyConstraint{
+			EscapedName: EscapeIdentifier(rawFkCon.ConstraintName),
+			OwningTable: SchemaQualifiedName{
+				SchemaName:  rawFkCon.OwningTableSchemaName,
+				EscapedName: EscapeIdentifier(rawFkCon.OwningTableName),
+			},
+			OwningTableUnescapedName: rawFkCon.OwningTableName,
+			ForeignTable: SchemaQualifiedName{
+				SchemaName:  rawFkCon.ForeignTableSchemaName,
+				EscapedName: EscapeIdentifier(rawFkCon.ForeignTableName),
+			},
+			ForeignTableUnescapedName: rawFkCon.ForeignTableName,
+			ConstraintDef:             rawFkCon.ConstraintDef,
+			IsValid:                   rawFkCon.IsValid,
+		})
+	}
+	return fkCons, nil
 }
 
 func fetchSequences(ctx context.Context, q *queries.Queries) ([]Sequence, error) {

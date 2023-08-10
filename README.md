@@ -130,7 +130,6 @@ Postgres v13 and below are not supported. Use at your own risk.
 Note, the library only currently supports diffing the *public* schema. Support for diffing other schemas is on the roadmap
 
 *Unsupported*:
-- (On roadmap) Foreign key constraints
 - (On roadmap) Diffing schemas other than "public"
 - (On roadmap) Unique constraints (unique indexes are supported but not unique constraints)
 - (On roadmap) Adding and remove partitions from an existing partitioned table

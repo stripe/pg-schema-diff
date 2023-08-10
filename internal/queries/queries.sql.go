@@ -269,6 +269,77 @@ func (q *Queries) GetExtensions(ctx context.Context) ([]GetExtensionsRow, error)
 	return items, nil
 }
 
+const getForeignKeyConstraints = `-- name: GetForeignKeyConstraints :many
+SELECT
+    pg_constraint.conname::TEXT AS constraint_name,
+    constraint_c.relname::TEXT AS owning_table_name,
+    constraint_namespace.nspname::TEXT AS owning_table_schema_name,
+    foreign_table_c.relname::TEXT AS foreign_table_name,
+    foreign_table_namespace.nspname::TEXT AS foreign_table_schema_name,
+    pg_constraint.convalidated AS is_valid,
+    pg_catalog.pg_get_constraintdef(pg_constraint.oid) AS constraint_def
+FROM pg_catalog.pg_constraint
+INNER JOIN
+    pg_catalog.pg_class AS constraint_c
+    ON pg_constraint.conrelid = constraint_c.oid
+INNER JOIN pg_catalog.pg_namespace AS constraint_namespace
+    ON pg_constraint.connamespace = constraint_namespace.oid
+INNER JOIN
+    pg_catalog.pg_class AS foreign_table_c
+    ON pg_constraint.confrelid = foreign_table_c.oid
+INNER JOIN pg_catalog.pg_namespace AS foreign_table_namespace
+    ON
+        foreign_table_c.relnamespace = foreign_table_namespace.oid
+INNER JOIN
+    pg_catalog.pg_class AS index_c
+    ON pg_constraint.conindid = index_c.oid
+WHERE
+    constraint_namespace.nspname = 'public'
+    AND pg_constraint.contype = 'f'
+    AND pg_constraint.conislocal
+`
+
+type GetForeignKeyConstraintsRow struct {
+	ConstraintName         string
+	OwningTableName        string
+	OwningTableSchemaName  string
+	ForeignTableName       string
+	ForeignTableSchemaName string
+	IsValid                bool
+	ConstraintDef          string
+}
+
+func (q *Queries) GetForeignKeyConstraints(ctx context.Context) ([]GetForeignKeyConstraintsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getForeignKeyConstraints)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetForeignKeyConstraintsRow
+	for rows.Next() {
+		var i GetForeignKeyConstraintsRow
+		if err := rows.Scan(
+			&i.ConstraintName,
+			&i.OwningTableName,
+			&i.OwningTableSchemaName,
+			&i.ForeignTableName,
+			&i.ForeignTableSchemaName,
+			&i.IsValid,
+			&i.ConstraintDef,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getFunctions = `-- name: GetFunctions :many
 SELECT
     pg_proc.oid,
@@ -354,7 +425,9 @@ SELECT
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_index AS i ON (i.indexrelid = c.oid)
 INNER JOIN pg_catalog.pg_class AS table_c ON (table_c.oid = i.indrelid)
-LEFT JOIN pg_catalog.pg_constraint AS con ON (con.conindid = c.oid)
+LEFT JOIN
+    pg_catalog.pg_constraint AS con
+    ON (con.conindid = c.oid AND con.contype IN ('p', 'u', NULL))
 LEFT JOIN
     pg_catalog.pg_inherits AS idx_inherits
     ON (c.oid = idx_inherits.inhrelid)
