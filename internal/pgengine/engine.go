@@ -116,7 +116,7 @@ func StartEngineUsingPgDir(pgDir string) (_ *Engine, retErr error) {
 	return pgEngine, nil
 }
 
-func initDB(initDbPath, dbPath string, superuser string) error {
+func initDB(initDbPath, dbPath, superuser string) error {
 	cmd := exec.Command(initDbPath, []string{
 		"-U", superuser,
 		"-D", dbPath,
