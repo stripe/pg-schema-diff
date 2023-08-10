@@ -52,6 +52,9 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
 	},
 	{
 		name: "Add check constraint with UDF dependency should error",
@@ -106,6 +109,9 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
 	},
 	{
 		name: "Add multiple check constraints",
@@ -128,6 +134,9 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
 	},
 	{
 		name: "Add check constraints to new column",
@@ -147,6 +156,9 @@ var checkConstraintCases = []acceptanceTestCase{
 				bar BIGINT CHECK ( bar > id ), CHECK ( bar IS NOT NULL ), CHECK (bar > 0)
 			);
 			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{
@@ -170,6 +182,9 @@ var checkConstraintCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT "BAR_CHECK" CHECK ( "Bar" < "ID" );
 			`,
 		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
 	},
 	{
 		name: "Add no inherit check constraint",
@@ -191,6 +206,9 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			ALTER TABLE foobar ADD CONSTRAINT bar_check CHECK ( bar > id ) NO INHERIT;
 			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{
@@ -381,7 +399,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter a No-Inherit check constraint to be Inheritable",
+		name: "Alter a no-Inherit check constraint to be Inheritable",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -401,10 +419,13 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			ALTER TABLE foobar ADD CONSTRAINT bar_check CHECK ( bar > id );
 			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{
-		name: "Alter an Inheritable check constraint to be No-Inherit",
+		name: "Alter an Inheritable check constraint to be no-inherit",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -424,6 +445,9 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			ALTER TABLE foobar ADD CONSTRAINT bar_check CHECK ( bar > id ) NO INHERIT;
 			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{
@@ -445,6 +469,9 @@ var checkConstraintCases = []acceptanceTestCase{
 				bar BIGINT CHECK (bar < id)
 			);
 			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{

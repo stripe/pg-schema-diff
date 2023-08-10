@@ -543,8 +543,12 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
-		vanillaExpectations:     expectations{planErrorContains: "validating migration plan"},
-		dataPackingExpectations: expectations{planErrorContains: "validating migration plan"},
+		vanillaExpectations: expectations{
+			planErrorContains: errValidatingPlan.Error(),
+		},
+		dataPackingExpectations: expectations{
+			planErrorContains: errValidatingPlan.Error(),
+		},
 	},
 	{
 		name: "Change to not null",

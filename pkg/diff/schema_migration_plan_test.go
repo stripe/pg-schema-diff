@@ -43,150 +43,6 @@ var (
 
 	schemaMigrationPlanTestCases = []schemaMigrationPlanTestCase{
 		{
-			name: "No-op",
-			oldSchema: schema.Schema{
-				Tables: []schema.Table{
-					{
-						Name: "foobar",
-						Columns: []schema.Column{
-							{Name: "id", Type: "integer"},
-							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
-							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
-							{Name: "fizz", Type: "boolean", Default: "CURRENT_TIMESTAMP"},
-						},
-						CheckConstraints: []schema.CheckConstraint{
-							{Name: "id_check", Expression: "(id > 0)", IsInheritable: true},
-							{Name: "bar_check", Expression: "(id > LENGTH(foo))", IsValid: true},
-						},
-					},
-					{
-						Name: "bar",
-						Columns: []schema.Column{
-							{Name: "id", Type: "character varying(255)", Default: "", IsNullable: false, Collation: defaultCollation},
-							{Name: "foo", Type: "integer", Default: "", IsNullable: true},
-							{Name: "bar", Type: "double precision", Default: "8.8", IsNullable: false},
-							{Name: "fizz", Type: "timestamp with time zone", Default: "CURRENT_TIMESTAMP", IsNullable: true},
-							{Name: "buzz", Type: "real", Default: "", IsNullable: false},
-						},
-						CheckConstraints: []schema.CheckConstraint{
-							{Name: "id_check", Expression: "(id + 10 > 0 )", IsValid: true},
-							{Name: "bar_check", Expression: "(foo > buzz)", IsInheritable: true},
-						},
-					},
-					{
-						Name:             "fizz",
-						Columns:          nil,
-						CheckConstraints: nil,
-					},
-				},
-				Indexes: []schema.Index{
-					// bar indexes
-					{
-						TableName: "bar",
-						Name:      "bar_pkey", Columns: []string{"bar"}, IsPk: true, IsUnique: true, ConstraintName: "bar_pkey_non_default_name",
-						GetIndexDefStmt: "CREATE UNIQUE INDEX bar_pkey ON public.bar USING btree (bar)",
-					},
-					{
-						TableName: "bar",
-						Name:      "bar_normal_idx", Columns: []string{"fizz"},
-						GetIndexDefStmt: "CREATE INDEX bar_normal_idx ON public.bar USING btree (fizz)",
-					},
-					{
-						TableName: "bar",
-						Name:      "bar_unique_idx", IsUnique: true, Columns: []string{"fizz", "buzz"},
-						GetIndexDefStmt: "CREATE UNIQUE INDEX bar_unique_idx ON public.bar USING btree (fizz, buzz)",
-					},
-					// foobar indexes
-					{
-						TableName: "foobar",
-						Name:      "foobar_pkey", Columns: []string{"id"}, IsPk: true, IsUnique: true, ConstraintName: "foobar_pkey",
-						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foobar USING btree (id)",
-					},
-					{
-						TableName: "foobar",
-						Name:      "foobar_normal_idx", Columns: []string{"fizz"},
-						GetIndexDefStmt: "CREATE INDEX foobar_normal_idx ON public.foobar USING btree (fizz)",
-					},
-					{
-						TableName: "foobar",
-						Name:      "foobar_unique_idx", IsUnique: true, Columns: []string{"foo", "bar"},
-						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_unique_idx ON public.foobar USING btree (foo, bar)",
-					},
-				},
-			},
-			newSchema: schema.Schema{
-				Tables: []schema.Table{
-					{
-						Name: "foobar",
-						Columns: []schema.Column{
-							{Name: "id", Type: "integer"},
-							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
-							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
-							{Name: "fizz", Type: "boolean", Default: "CURRENT_TIMESTAMP"},
-						},
-						CheckConstraints: []schema.CheckConstraint{
-							{Name: "id_check", Expression: "(id > 0)", IsInheritable: true},
-							{Name: "bar_check", Expression: "(id > LENGTH(foo))", IsValid: true},
-						},
-					},
-					{
-						Name: "bar",
-						Columns: []schema.Column{
-							{Name: "id", Type: "character varying(255)", Default: "", IsNullable: false, Collation: defaultCollation},
-							{Name: "foo", Type: "integer", Default: "", IsNullable: true},
-							{Name: "bar", Type: "double precision", Default: "8.8", IsNullable: false},
-							{Name: "fizz", Type: "timestamp with time zone", Default: "CURRENT_TIMESTAMP", IsNullable: true},
-							{Name: "buzz", Type: "real", Default: "", IsNullable: false},
-						},
-						CheckConstraints: []schema.CheckConstraint{
-							{Name: "id_check", Expression: "(id + 10 > 0 )", IsValid: true},
-							{Name: "bar_check", Expression: "(foo > buzz)", IsInheritable: true},
-						},
-					},
-					{
-						Name:             "fizz",
-						Columns:          nil,
-						CheckConstraints: nil,
-					},
-				},
-				Indexes: []schema.Index{
-					// bar indexes
-					{
-						TableName: "bar",
-						Name:      "bar_pkey", Columns: []string{"bar"}, IsPk: true, IsUnique: true, ConstraintName: "bar_pkey_non_default_name",
-						GetIndexDefStmt: "CREATE UNIQUE INDEX bar_pkey ON public.bar USING btree (bar)",
-					},
-					{
-						TableName: "bar",
-						Name:      "bar_normal_idx", Columns: []string{"fizz"},
-						GetIndexDefStmt: "CREATE INDEX bar_normal_idx ON public.bar USING btree (fizz)",
-					},
-					{
-						TableName: "bar",
-						Name:      "bar_unique_idx", IsUnique: true, Columns: []string{"fizz", "buzz"},
-						GetIndexDefStmt: "CREATE UNIQUE INDEX bar_unique_idx ON public.bar USING btree (fizz, buzz)",
-					},
-					// foobar indexes
-					{
-						TableName: "foobar",
-						Name:      "foobar_pkey", Columns: []string{"id"}, IsPk: true, IsUnique: true, ConstraintName: "foobar_pkey",
-						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foobar USING btree (id)",
-					},
-					{
-						TableName: "foobar",
-						Name:      "foobar_normal_idx", Columns: []string{"fizz"},
-						GetIndexDefStmt: "CREATE INDEX foobar_normal_idx ON public.foobar USING btree (fizz)",
-					},
-					{
-						TableName: "foobar",
-						Name:      "foobar_unique_idx", IsUnique: true, Columns: []string{"foo", "bar"},
-						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_unique_idx ON public.foobar USING btree (foo, bar)",
-					},
-				},
-			},
-			expectedStatements: nil,
-		},
-		{
 			name: "Index replacement",
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
@@ -322,12 +178,12 @@ var (
 					Hazards: []MigrationHazard{buildIndexDroppedQueryPerfHazard()},
 				},
 				{
-					DDL:     "ALTER TABLE \"foobar\" DROP COLUMN \"bar\"",
+					DDL:     "ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"bar\"",
 					Timeout: statementTimeoutDefault,
 					Hazards: []MigrationHazard{buildColumnDataDeletionHazard()},
 				},
 				{
-					DDL:     "ALTER TABLE \"foobar\" DROP COLUMN \"foo\"",
+					DDL:     "ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"foo\"",
 					Timeout: statementTimeoutDefault,
 					Hazards: []MigrationHazard{buildColumnDataDeletionHazard()},
 				},
@@ -429,7 +285,7 @@ var (
 					Timeout: statementTimeoutDefault,
 				},
 				{
-					DDL:     "ALTER TABLE \"foobar\" ATTACH PARTITION \"foobar_1\" FOR VALUES IN ('some_val')",
+					DDL:     "ALTER TABLE \"public\".\"foobar\" ATTACH PARTITION \"foobar_1\" FOR VALUES IN ('some_val')",
 					Timeout: statementTimeoutDefault,
 				},
 			},
@@ -799,7 +655,7 @@ var (
 					},
 				},
 				{
-					DDL:     "ALTER TABLE \"foobar\" DROP COLUMN \"bar\"",
+					DDL:     "ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"bar\"",
 					Timeout: statementTimeoutDefault,
 					Hazards: []MigrationHazard{
 						buildColumnDataDeletionHazard(),
@@ -973,48 +829,121 @@ var (
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:     "ALTER TABLE \"foobar\" VALIDATE CONSTRAINT \"id_check\"",
+					DDL:     "ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"id_check\"",
 					Timeout: statementTimeoutDefault,
 					Hazards: nil,
 				},
 			},
 		},
 		{
-			name: "Invalid check constraint re-created if expression changes",
+			name: "Invalid foreign key constraint constraint made valid",
 			oldSchema: schema.Schema{
+				Extensions: []schema.Extension{
+					{
+						SchemaQualifiedName: schema.SchemaQualifiedName{
+							EscapedName: schema.EscapeIdentifier("pg_trgm"),
+							SchemaName:  "public",
+						},
+						Version: "1.6",
+					},
+				},
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name: "foo",
 						Columns: []schema.Column{
-							{Name: "id", Type: "integer"},
+							{Name: "id", Type: "integer", Size: 4},
 						},
-						CheckConstraints: []schema.CheckConstraint{
-							{Name: "id_check", Expression: "(id > 0)", IsInheritable: true},
+					},
+					{
+						Name:    "foo_fk",
+						Columns: []schema.Column{{Name: "id", Type: "integer", Size: 4}},
+					},
+				},
+				ForeignKeyConstraints: []schema.ForeignKeyConstraint{
+					{
+						EscapedName: "\"foo_fk_fk\"",
+						OwningTable: schema.SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"foo_fk\"",
 						},
+						OwningTableUnescapedName: "foo_fk",
+						ForeignTable: schema.SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"foo\"",
+						},
+						ForeignTableUnescapedName: "foo",
+						ConstraintDef:             "FOREIGN KEY (id) REFERENCES foo(id) ON UPDATE CASCADE ON DELETE CASCADE NOT VALID",
+						IsValid:                   false,
+					},
+				},
+				Indexes: []schema.Index{
+					{
+						TableName:       "foo",
+						Name:            "foo_pkey",
+						Columns:         []string{"id"},
+						IsPk:            true,
+						IsUnique:        true,
+						ConstraintName:  "foo_pkey",
+						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foo USING btree (id)",
 					},
 				},
 			},
 			newSchema: schema.Schema{
+				Extensions: []schema.Extension{
+					{
+						SchemaQualifiedName: schema.SchemaQualifiedName{
+							EscapedName: schema.EscapeIdentifier("pg_trgm"),
+							SchemaName:  "public",
+						},
+						Version: "1.6",
+					},
+				},
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name: "foo",
 						Columns: []schema.Column{
-							{Name: "id", Type: "integer"},
+							{Name: "id", Type: "integer", Size: 4},
 						},
-						CheckConstraints: []schema.CheckConstraint{
-							{Name: "id_check", Expression: "(id < 0)", IsInheritable: true, IsValid: true},
+					},
+					{
+						Name:    "foo_fk",
+						Columns: []schema.Column{{Name: "id", Type: "integer", Size: 4}},
+					},
+				},
+				ForeignKeyConstraints: []schema.ForeignKeyConstraint{
+					{
+						EscapedName: "\"foo_fk_fk\"",
+						OwningTable: schema.SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"foo_fk\"",
 						},
+						OwningTableUnescapedName: "foo_fk",
+						ForeignTable: schema.SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"foo\"",
+						},
+						ForeignTableUnescapedName: "foo",
+						ConstraintDef:             "FOREIGN KEY (id) REFERENCES foo(id) ON UPDATE CASCADE ON DELETE CASCADE",
+						IsValid:                   true,
+					},
+				},
+				Indexes: []schema.Index{
+					{
+						TableName:       "foo",
+						Name:            "foo_pkey",
+						Columns:         []string{"id"},
+						IsPk:            true,
+						IsUnique:        true,
+						ConstraintName:  "foo_pkey",
+						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foo USING btree (id)",
 					},
 				},
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:     "ALTER TABLE \"foobar\" DROP CONSTRAINT \"id_check\"",
+					DDL:     "ALTER TABLE \"public\".\"foo_fk\" VALIDATE CONSTRAINT \"foo_fk_fk\"",
 					Timeout: statementTimeoutDefault,
-				},
-				{
-					DDL:     "ALTER TABLE \"foobar\" ADD CONSTRAINT \"id_check\" CHECK((id < 0))",
-					Timeout: statementTimeoutDefault,
+					Hazards: nil,
 				},
 			},
 		},
@@ -1046,7 +975,7 @@ var (
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:     "ALTER TABLE \"foobar\" ALTER COLUMN \"baz\" SET DATA TYPE timestamp without time zone using to_timestamp(\"baz\" / 1000)",
+					DDL:     "ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"baz\" SET DATA TYPE timestamp without time zone using to_timestamp(\"baz\" / 1000)",
 					Timeout: statementTimeoutDefault,
 					Hazards: []MigrationHazard{{
 						Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
@@ -1064,7 +993,7 @@ var (
 					Hazards: []MigrationHazard{buildAnalyzeColumnMigrationHazard()},
 				},
 				{
-					DDL:     "ALTER TABLE \"foobar\" ALTER COLUMN \"baz\" SET DEFAULT current_timestamp",
+					DDL:     "ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"baz\" SET DEFAULT current_timestamp",
 					Timeout: statementTimeoutDefault,
 				},
 			},
@@ -1097,7 +1026,7 @@ var (
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:     "ALTER TABLE \"foobar\" ALTER COLUMN \"migrate_to_c_coll\" SET DATA TYPE text COLLATE \"pg_catalog\".\"C\" using \"migrate_to_c_coll\"::text",
+					DDL:     "ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"migrate_to_c_coll\" SET DATA TYPE text COLLATE \"pg_catalog\".\"C\" using \"migrate_to_c_coll\"::text",
 					Timeout: statementTimeoutDefault,
 					Hazards: []MigrationHazard{buildColumnTypeChangeHazard()},
 				},
@@ -1107,7 +1036,7 @@ var (
 					Hazards: []MigrationHazard{buildAnalyzeColumnMigrationHazard()},
 				},
 				{
-					DDL:     "ALTER TABLE \"foobar\" ALTER COLUMN \"migrate_type\" SET DATA TYPE character varying(255) COLLATE \"pg_catalog\".\"default\" using \"migrate_type\"::character varying(255)",
+					DDL:     "ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"migrate_type\" SET DATA TYPE character varying(255) COLLATE \"pg_catalog\".\"default\" using \"migrate_type\"::character varying(255)",
 					Timeout: statementTimeoutDefault,
 					Hazards: []MigrationHazard{buildColumnTypeChangeHazard()},
 				},
