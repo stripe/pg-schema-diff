@@ -23,7 +23,8 @@ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres"
 *Broad support for diffing & applying arbitrary postgres schemas defined in declarative DDL:*
 - Tables
 - Columns
-- Check Constraints
+- Check constraints
+- Foreign keys
 - Indexes
 - Partitions
 - Functions/Triggers  (functions created by extensions are ignored)
