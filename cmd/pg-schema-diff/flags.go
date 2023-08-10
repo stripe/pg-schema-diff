@@ -1,10 +1,9 @@
 package main
 
 import (
-	"os"
-
 	"github.com/jackc/pgx/v4"
 	"github.com/spf13/cobra"
+	"github.com/stripe/pg-schema-diff/pkg/log"
 )
 
 type connFlags struct {
@@ -12,27 +11,20 @@ type connFlags struct {
 }
 
 func createConnFlags(cmd *cobra.Command) connFlags {
-	schemaDir := cmd.Flags().String("dsn", "", "Connection string for the database (DB password can be specified through PGPASSWORD environment variable)")
-	mustMarkFlagAsRequired(cmd, "dsn")
-
+	dsn := cmd.Flags().String("dsn", "", "Connection string for the database (DB password can be specified through PGPASSWORD environment variable)")
+	// Don't mark dsn as a required flag.
+	// Allow users to use the "PGHOST" etc environment variables like `psql`.
 	return connFlags{
-		dsn: schemaDir,
+		dsn: dsn,
 	}
 }
 
-func (c connFlags) parseConnConfig() (*pgx.ConnConfig, error) {
-	config, err := pgx.ParseConfig(*c.dsn)
-	if err != nil {
-		return nil, err
+func (c connFlags) parseConnConfig(logger log.Logger) (*pgx.ConnConfig, error) {
+	if c.dsn == nil || *c.dsn == "" {
+		logger.Warnf("DSN flag not set. Using libpq environment variables and default values.")
 	}
 
-	if config.Password == "" {
-		if pgPassword := os.Getenv("PGPASSWORD"); pgPassword != "" {
-			config.Password = pgPassword
-		}
-	}
-
-	return config, nil
+	return pgx.ParseConfig(*c.dsn)
 }
 
 func mustMarkFlagAsRequired(cmd *cobra.Command, flagName string) {
