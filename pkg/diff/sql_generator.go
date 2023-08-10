@@ -1512,8 +1512,7 @@ func (f *foreignKeyConstraintSQLVertexGenerator) GetDeleteDependencies(con schem
 		mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildTableVertexId(con.OwningTableUnescapedName), diffTypeDelete),
 		mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildTableVertexId(con.ForeignTableUnescapedName), diffTypeDelete),
 	}
-	// This is the slightly lazy way of ensuring the foreign key constraint is added after the requisite index is
-	// built and marked as valid.
+	// This is the slightly lazy way of ensuring the foreign key constraint is deleted before the index it depends on is deleted
 	// We __could__ do this just for the index the fk depends on, but that's slightly more wiring than we need right now
 	// because of partitioned indexes, which are only valid when all child indexes have been built
 	for _, i := range f.indexInOldSchemaByTableName[con.ForeignTableUnescapedName] {
