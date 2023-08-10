@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"path"
 	"strconv"
 	"strings"
@@ -43,7 +42,7 @@ func (c ConnectionOptions) ToDSN() string {
 }
 
 type Engine struct {
-	user *user.User
+	superuser string
 
 	// for cleanup purposes
 	process  *os.Process
@@ -52,10 +51,11 @@ type Engine struct {
 }
 
 const (
-	port = 5432
+	defaultPort      = 5432
+	defaultSuperuser = "postgres"
 
-	maxConnAttemptsAtStartup      = 10
-	waitBetweenStartupConnAttempt = time.Second
+	defaultMaxConnAttemptsAtStartup      = 10
+	defaultWaitBetweenStartupConnAttempt = time.Second
 )
 
 var (
@@ -74,12 +74,7 @@ func StartEngine() (*Engine, error) {
 	return StartEngineUsingPgDir(path.Dir(postgresPath))
 }
 
-func StartEngineUsingPgDir(pgDir string) (pgEngine *Engine, retErr error) {
-	currentUser, err := user.Current()
-	if err != nil {
-		return nil, err
-	}
-
+func StartEngineUsingPgDir(pgDir string) (_ *Engine, retErr error) {
 	dbPath, err := os.MkdirTemp("", "postgresql-")
 	if err != nil {
 		return nil, err
@@ -90,7 +85,7 @@ func StartEngineUsingPgDir(pgDir string) (pgEngine *Engine, retErr error) {
 		return nil, err
 	}
 
-	if err := initDB(currentUser, path.Join(pgDir, "initdb"), dbPath); err != nil {
+	if err := initDB(path.Join(pgDir, "initdb"), dbPath, defaultSuperuser); err != nil {
 		return nil, err
 	}
 
@@ -102,10 +97,11 @@ func StartEngineUsingPgDir(pgDir string) (pgEngine *Engine, retErr error) {
 		return nil, err
 	}
 
-	pgEngine = &Engine{
+	pgEngine := &Engine{
+		superuser: defaultSuperuser,
+
 		dbPath:   dbPath,
 		sockPath: sockPath,
-		user:     currentUser,
 		process:  process,
 	}
 	defer func() {
@@ -113,16 +109,16 @@ func StartEngineUsingPgDir(pgDir string) (pgEngine *Engine, retErr error) {
 			pgEngine.Close()
 		}
 	}()
-	if err := pgEngine.waitTillServingTraffic(maxConnAttemptsAtStartup, waitBetweenStartupConnAttempt); err != nil {
+	if err := pgEngine.waitTillServingTraffic(defaultMaxConnAttemptsAtStartup, defaultWaitBetweenStartupConnAttempt); err != nil {
 		return nil, fmt.Errorf("waiting till server can serve traffic: %w", err)
 	}
 
 	return pgEngine, nil
 }
 
-func initDB(currentUser *user.User, initDbPath, dbPath string) error {
+func initDB(initDbPath, dbPath string, superuser string) error {
 	cmd := exec.Command(initDbPath, []string{
-		"-U", currentUser.Username,
+		"-U", superuser,
 		"-D", dbPath,
 		"-A", "trust",
 	}...)
@@ -148,7 +144,7 @@ func startServer(pgBinaryPath, dbPath, sockPath string, configuration map[string
 	opts := []string{
 		"-D", dbPath,
 		"-k", sockPath,
-		"-p", strconv.Itoa(port),
+		"-p", strconv.Itoa(defaultPort),
 		"-h", "",
 	}
 	for k, v := range configuration {
@@ -195,7 +191,8 @@ func (e *Engine) GetPostgresDatabaseConnOpts() ConnectionOptions {
 	result := make(map[ConnectionOption]string)
 	result[ConnectionOptionDatabase] = "postgres"
 	result["host"] = e.sockPath
-	result["port"] = strconv.Itoa(port)
+	result["user"] = e.superuser
+	result["port"] = strconv.Itoa(defaultPort)
 	result["sslmode"] = "disable"
 
 	return result
