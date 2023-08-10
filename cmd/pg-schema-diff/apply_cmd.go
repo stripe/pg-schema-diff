@@ -28,7 +28,8 @@ func buildApplyCmd() *cobra.Command {
 			" (example: --allowed-hazards DELETES_DATA,INDEX_BUILD)")
 	lockTimeout := cmd.Flags().Duration("lock-timeout", 30*time.Second, "the max time to wait to acquire a lock. 0 implies no timeout")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		connConfig, err := connFlags.parseConnConfig()
+		logger := log.SimpleLogger()
+		connConfig, err := connFlags.parseConnConfig(logger)
 		if err != nil {
 			return err
 		}
@@ -44,7 +45,7 @@ func buildApplyCmd() *cobra.Command {
 
 		cmd.SilenceUsage = true
 
-		plan, err := generatePlan(context.Background(), log.SimpleLogger(), connConfig, planConfig)
+		plan, err := generatePlan(context.Background(), logger, connConfig, planConfig)
 		if err != nil {
 			return err
 		} else if len(plan.Statements) == 0 {
