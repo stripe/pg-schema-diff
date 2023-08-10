@@ -8,6 +8,7 @@ import (
 type (
 	Logger interface {
 		Errorf(msg string, args ...any)
+		Warnf(msg string, args ...any)
 	}
 
 	simpleLogger struct{}
@@ -20,5 +21,10 @@ func SimpleLogger() Logger {
 
 func (*simpleLogger) Errorf(msg string, args ...any) {
 	formattedMessage := fmt.Sprintf(msg, args...)
-	log.Println(fmt.Sprintf("[ERROR] %s", formattedMessage))
+	log.Printf("[ERROR] %s", formattedMessage)
+}
+
+func (*simpleLogger) Warnf(msg string, args ...any) {
+	formattedMessage := fmt.Sprintf(msg, args...)
+	log.Printf("[WARNING] %s", formattedMessage)
 }

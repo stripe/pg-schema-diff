@@ -46,7 +46,8 @@ func buildPlanCmd() *cobra.Command {
 	connFlags := createConnFlags(cmd)
 	planFlags := createPlanFlags(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		connConfig, err := connFlags.parseConnConfig()
+		logger := log.SimpleLogger()
+		connConfig, err := connFlags.parseConnConfig(logger)
 		if err != nil {
 			return err
 		}
@@ -58,7 +59,7 @@ func buildPlanCmd() *cobra.Command {
 
 		cmd.SilenceUsage = true
 
-		plan, err := generatePlan(context.Background(), log.SimpleLogger(), connConfig, planConfig)
+		plan, err := generatePlan(context.Background(), logger, connConfig, planConfig)
 		if err != nil {
 			return err
 		} else if len(plan.Statements) == 0 {
