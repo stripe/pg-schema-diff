@@ -105,7 +105,7 @@ if err != nil {
 ```
 
 ## 2. Applying plan
-We leave plan application up to the user. For example, users might want to take out a session-level advisory lock if they are 
+We leave plan application up to the user. For example, a user might want to take out a session-level advisory lock if they are 
 concerned about concurrent migrations on their database. They might also want a second user to approve the plan
 before applying it.
 
