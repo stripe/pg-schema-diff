@@ -31,6 +31,10 @@ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres"
 - Sequences
 - Extensions
 
+*The use of postgres native operations for zero-downtime migrations wherever possible:*
+- Concurrent index builds
+- Online index replacement
+
 *A comprehensive set of features to ensure the safety of planned migrations:*
 - Dangerous operations are flagged as hazards and must be approved before a migration can be applied.
 	- Data deletion hazards identify operations which will in some way delete or alter data.
@@ -38,10 +42,6 @@ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres"
 	- Performance hazards identify operations which are resource intensive and might slow other queries.
 - Migration plans are validated first against a temporary database exactly as they would be performed against the real database.
 - The library is tested against an extensive suite of unit and acceptance tests.
-
-*The use of postgres native operations for zero-downtime migrations wherever possible:*
-- Concurrent index builds
-- Online index replacement
 
 # Install
 ## CLI
