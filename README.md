@@ -115,6 +115,9 @@ for _, stmt := range plan.Statements {
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
 		panic(fmt.Sprintf("setting statement timeout: %s", err))
 	}
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION lock_timeout = %d", stmt.LockTimeout.Milliseconds())); err != nil {
+		panic(fmt.Sprintf("setting lock timeout: %s", err))
+	}
 	if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
 		panic(fmt.Sprintf("executing migration statement. the database maybe be in a dirty state: %s: %s", stmt, err))
 	}

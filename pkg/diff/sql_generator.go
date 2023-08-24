@@ -14,6 +14,8 @@ const (
 	maxPostgresIdentifierSize = 63
 
 	statementTimeoutDefault = 3 * time.Second
+	lockTimeoutDefault      = statementTimeoutDefault
+
 	// statementTimeoutConcurrentIndexBuild is the statement timeout for index builds. It may take a while to build
 	// the index. Since it doesn't take out locks, this shouldn't be a concern
 	statementTimeoutConcurrentIndexBuild = 20 * time.Minute
@@ -590,8 +592,9 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		createTableSb.WriteString(fmt.Sprintf(" PARTITION BY %s", table.PartitionKeyDef))
 	}
 	stmts = append(stmts, Statement{
-		DDL:     createTableSb.String(),
-		Timeout: statementTimeoutDefault,
+		DDL:         createTableSb.String(),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	})
 
 	csg := checkConstraintSQLGenerator{tableName: table.Name, isNewTable: true}
@@ -622,8 +625,9 @@ func (t *tableSQLVertexGenerator) Delete(table schema.Table) ([]Statement, error
 	}
 	return []Statement{
 		{
-			DDL:     fmt.Sprintf("DROP TABLE %s", schema.EscapeIdentifier(table.Name)),
-			Timeout: statementTimeoutTableDrop,
+			DDL:         fmt.Sprintf("DROP TABLE %s", schema.EscapeIdentifier(table.Name)),
+			Timeout:     statementTimeoutTableDrop,
+			LockTimeout: lockTimeoutDefault,
 			Hazards: []MigrationHazard{{
 				Type:    MigrationHazardTypeDeletesData,
 				Message: "Deletes all rows in the table (and the table itself)",
@@ -683,8 +687,9 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 		alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", publicTableAlterPrefix(diff.new.Name), schema.EscapeIdentifier(colDiff.new.Name))
 		if colDiff.new.IsNullable {
 			stmts = append(stmts, Statement{
-				DDL:     fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
-				Timeout: statementTimeoutDefault,
+				DDL:         fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
+				Timeout:     statementTimeoutDefault,
+				LockTimeout: lockTimeoutDefault,
 				Hazards: []MigrationHazard{
 					{
 						Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
@@ -695,8 +700,9 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 			})
 		} else {
 			stmts = append(stmts, Statement{
-				DDL:     fmt.Sprintf("%s SET NOT NULL", alterColumnPrefix),
-				Timeout: statementTimeoutDefault,
+				DDL:         fmt.Sprintf("%s SET NOT NULL", alterColumnPrefix),
+				Timeout:     statementTimeoutDefault,
+				LockTimeout: lockTimeoutDefault,
 			})
 		}
 	}
@@ -737,15 +743,17 @@ type columnSQLGenerator struct {
 
 func (csg *columnSQLGenerator) Add(column schema.Column) ([]Statement, error) {
 	return []Statement{{
-		DDL:     fmt.Sprintf("%s ADD COLUMN %s", publicTableAlterPrefix(csg.tableName), buildColumnDefinition(column)),
-		Timeout: statementTimeoutDefault,
+		DDL:         fmt.Sprintf("%s ADD COLUMN %s", publicTableAlterPrefix(csg.tableName), buildColumnDefinition(column)),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}}, nil
 }
 
 func (csg *columnSQLGenerator) Delete(column schema.Column) ([]Statement, error) {
 	return []Statement{{
-		DDL:     fmt.Sprintf("%s DROP COLUMN %s", publicTableAlterPrefix(csg.tableName), schema.EscapeIdentifier(column.Name)),
-		Timeout: statementTimeoutDefault,
+		DDL:         fmt.Sprintf("%s DROP COLUMN %s", publicTableAlterPrefix(csg.tableName), schema.EscapeIdentifier(column.Name)),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 		Hazards: []MigrationHazard{
 			{
 				Type:    MigrationHazardTypeDeletesData,
@@ -766,13 +774,15 @@ func (csg *columnSQLGenerator) Alter(diff columnDiff) ([]Statement, error) {
 	if oldColumn.IsNullable != newColumn.IsNullable {
 		if newColumn.IsNullable {
 			stmts = append(stmts, Statement{
-				DDL:     fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
-				Timeout: statementTimeoutDefault,
+				DDL:         fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
+				Timeout:     statementTimeoutDefault,
+				LockTimeout: lockTimeoutDefault,
 			})
 		} else {
 			stmts = append(stmts, Statement{
-				DDL:     fmt.Sprintf("%s SET NOT NULL", alterColumnPrefix),
-				Timeout: statementTimeoutDefault,
+				DDL:         fmt.Sprintf("%s SET NOT NULL", alterColumnPrefix),
+				Timeout:     statementTimeoutDefault,
+				LockTimeout: lockTimeoutDefault,
 				Hazards: []MigrationHazard{
 					{
 						Type:    MigrationHazardTypeAcquiresAccessExclusiveLock,
@@ -787,8 +797,9 @@ func (csg *columnSQLGenerator) Alter(diff columnDiff) ([]Statement, error) {
 		// Drop the default before type conversion. This will allow type conversions
 		// between incompatible types if the previous column has a default and the new column is dropping its default
 		stmts = append(stmts, Statement{
-			DDL:     fmt.Sprintf("%s DROP DEFAULT", alterColumnPrefix),
-			Timeout: statementTimeoutDefault,
+			DDL:         fmt.Sprintf("%s DROP DEFAULT", alterColumnPrefix),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
 		})
 	}
 
@@ -807,8 +818,9 @@ func (csg *columnSQLGenerator) Alter(diff columnDiff) ([]Statement, error) {
 				// affect query plans. In order to mitigate the effect on queries, re-generate the statistics for the
 				// column before continuing with the migration.
 				{
-					DDL:     fmt.Sprintf("ANALYZE %s (%s)", schema.EscapeIdentifier(csg.tableName), schema.EscapeIdentifier(newColumn.Name)),
-					Timeout: statementTimeoutAnalyzeColumn,
+					DDL:         fmt.Sprintf("ANALYZE %s (%s)", schema.EscapeIdentifier(csg.tableName), schema.EscapeIdentifier(newColumn.Name)),
+					Timeout:     statementTimeoutAnalyzeColumn,
+					LockTimeout: lockTimeoutDefault,
 					Hazards: []MigrationHazard{
 						{
 							Type: MigrationHazardTypeImpactsDatabasePerformance,
@@ -825,8 +837,9 @@ func (csg *columnSQLGenerator) Alter(diff columnDiff) ([]Statement, error) {
 		// Set the default after the type conversion. This will allow type conversions
 		// between incompatible types if the previous column has no default and the new column has a default
 		stmts = append(stmts, Statement{
-			DDL:     fmt.Sprintf("%s SET DEFAULT %s", alterColumnPrefix, newColumn.Default),
-			Timeout: statementTimeoutDefault,
+			DDL:         fmt.Sprintf("%s SET DEFAULT %s", alterColumnPrefix, newColumn.Default),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
 		})
 	}
 
@@ -848,7 +861,8 @@ func (csg *columnSQLGenerator) generateTypeTransformationStatement(
 				newType,
 				name,
 			),
-			Timeout: statementTimeoutDefault,
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
 			Hazards: []MigrationHazard{{
 				Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
 				Message: "This will completely lock the table while the data is being " +
@@ -874,7 +888,8 @@ func (csg *columnSQLGenerator) generateTypeTransformationStatement(
 			name,
 			newType,
 		),
-		Timeout: statementTimeoutDefault,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 		Hazards: []MigrationHazard{{
 			Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
 			Message: "This will completely lock the table while the data is being re-written. " +
@@ -922,8 +937,9 @@ func (rsg *renameConflictingIndexSQLVertexGenerator) Add(index schema.Index) ([]
 	rsg.indexRenamesByOldName[index.Name] = newName
 
 	return []Statement{{
-		DDL:     fmt.Sprintf("ALTER INDEX %s RENAME TO %s", schema.EscapeIdentifier(index.Name), schema.EscapeIdentifier(newName)),
-		Timeout: statementTimeoutDefault,
+		DDL:         fmt.Sprintf("ALTER INDEX %s RENAME TO %s", schema.EscapeIdentifier(index.Name), schema.EscapeIdentifier(newName)),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}}, nil
 }
 
@@ -1030,7 +1046,8 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 						}, schema.EscapeIdentifier(index.ConstraintName)),
 						strings.Join(formattedNamesForSQL(index.Columns), ", "),
 					),
-					Timeout: statementTimeoutDefault,
+					Timeout:     statementTimeoutDefault,
+					LockTimeout: lockTimeoutDefault,
 					Hazards: []MigrationHazard{
 						{
 							Type:    MigrationHazardTypeAcquiresShareLock,
@@ -1072,9 +1089,10 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 	}
 
 	stmts = append(stmts, Statement{
-		DDL:     createIdxStmt,
-		Timeout: createIdxStmtTimeout,
-		Hazards: createIdxStmtHazards,
+		DDL:         createIdxStmt,
+		Timeout:     createIdxStmtTimeout,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     createIdxStmtHazards,
 	})
 
 	_, isNewTable := isg.addedTablesByName[index.TableName]
@@ -1117,7 +1135,8 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 					EscapedName: schema.EscapeIdentifier(index.TableName),
 				}, schema.EscapeIdentifier(constraintName)),
 
-				Timeout: statementTimeoutDefault,
+				Timeout:     statementTimeoutDefault,
+				LockTimeout: lockTimeoutDefault,
 				Hazards: []MigrationHazard{
 					migrationHazardIndexDroppedAcquiresLock,
 					migrationHazardIndexDroppedQueryPerf,
@@ -1147,9 +1166,10 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 	}
 
 	return []Statement{{
-		DDL:     fmt.Sprintf("DROP INDEX %s%s", concurrentlyModifier, schema.EscapeIdentifier(indexName)),
-		Timeout: dropIndexStmtTimeout,
-		Hazards: append(dropIndexStmtHazards, migrationHazardIndexDroppedQueryPerf),
+		DDL:         fmt.Sprintf("DROP INDEX %s%s", concurrentlyModifier, schema.EscapeIdentifier(indexName)),
+		Timeout:     dropIndexStmtTimeout,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     append(dropIndexStmtHazards, migrationHazardIndexDroppedQueryPerf),
 	}}, nil
 }
 
@@ -1204,14 +1224,16 @@ func (isg *indexSQLVertexGenerator) addPkConstraintUsingIdx(index schema.Index) 
 				EscapedName: schema.EscapeIdentifier(index.TableName),
 			}, schema.EscapeIdentifier(index.ConstraintName)),
 			schema.EscapeIdentifier(index.Name)),
-		Timeout: statementTimeoutDefault,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}
 }
 
 func buildAttachIndex(index schema.Index) Statement {
 	return Statement{
-		DDL:     fmt.Sprintf("ALTER INDEX %s ATTACH PARTITION %s", schema.EscapeIdentifier(index.ParentIdxName), schema.EscapeIdentifier(index.Name)),
-		Timeout: statementTimeoutDefault,
+		DDL:         fmt.Sprintf("ALTER INDEX %s ATTACH PARTITION %s", schema.EscapeIdentifier(index.ParentIdxName), schema.EscapeIdentifier(index.Name)),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}
 }
 
@@ -1330,9 +1352,10 @@ func (csg *checkConstraintSQLGenerator) Add(con schema.CheckConstraint) ([]State
 	}
 
 	return []Statement{{
-		DDL:     sb.String(),
-		Timeout: statementTimeoutDefault,
-		Hazards: hazards,
+		DDL:         sb.String(),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     hazards,
 	}}, nil
 }
 
@@ -1349,7 +1372,8 @@ func (csg *checkConstraintSQLGenerator) Delete(con schema.CheckConstraint) ([]St
 			SchemaName:  "public",
 			EscapedName: schema.EscapeIdentifier(csg.tableName),
 		}, schema.EscapeIdentifier(con.Name)),
-		Timeout: statementTimeoutDefault,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}}, nil
 }
 
@@ -1394,8 +1418,9 @@ func (*attachPartitionSQLVertexGenerator) Alter(_ tableDiff) ([]Statement, error
 
 func buildAttachPartitionStatement(table schema.Table) Statement {
 	return Statement{
-		DDL:     fmt.Sprintf("%s ATTACH PARTITION %s %s", publicTableAlterPrefix(table.ParentTableName), schema.EscapeIdentifier(table.Name), table.ForValues),
-		Timeout: statementTimeoutDefault,
+		DDL:         fmt.Sprintf("%s ATTACH PARTITION %s %s", publicTableAlterPrefix(table.ParentTableName), schema.EscapeIdentifier(table.Name), table.ForValues),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}
 }
 
@@ -1450,9 +1475,10 @@ func (f *foreignKeyConstraintSQLVertexGenerator) Add(con schema.ForeignKeyConstr
 		})
 	}
 	return []Statement{{
-		DDL:     fmt.Sprintf("%s %s", addConstraintPrefix(con.OwningTable, con.EscapedName), con.ConstraintDef),
-		Timeout: statementTimeoutDefault,
-		Hazards: hazards,
+		DDL:         fmt.Sprintf("%s %s", addConstraintPrefix(con.OwningTable, con.EscapedName), con.ConstraintDef),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     hazards,
 	}}, nil
 }
 
@@ -1461,8 +1487,9 @@ func (f *foreignKeyConstraintSQLVertexGenerator) Delete(con schema.ForeignKeyCon
 	// if the owning table has a circular FK dependency with another table being dropped, we will need to explicitly drop
 	// one of the FK's first
 	return []Statement{{
-		DDL:     dropConstraintDDL(con.OwningTable, con.EscapedName),
-		Timeout: statementTimeoutDefault,
+		DDL:         dropConstraintDDL(con.OwningTable, con.EscapedName),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}}, nil
 }
 
@@ -1544,9 +1571,10 @@ func (s *sequenceSQLVertexGenerator) Add(seq schema.Sequence) ([]Statement, erro
 	}
 
 	return []Statement{{
-		DDL:     sb.String(),
-		Timeout: statementTimeoutDefault,
-		Hazards: hazards,
+		DDL:         sb.String(),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     hazards,
 	}}, nil
 }
 
@@ -1561,9 +1589,10 @@ func (s *sequenceSQLVertexGenerator) Delete(seq schema.Sequence) ([]Statement, e
 		hazards = append(hazards, migrationHazardSequenceCannotTrackDependencies)
 	}
 	return []Statement{{
-		DDL:     fmt.Sprintf("DROP SEQUENCE %s", seq.GetFQEscapedName()),
-		Timeout: statementTimeoutDefault,
-		Hazards: hazards,
+		DDL:         fmt.Sprintf("DROP SEQUENCE %s", seq.GetFQEscapedName()),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     hazards,
 	}}, nil
 }
 
@@ -1658,8 +1687,9 @@ func (s sequenceOwnershipSQLVertexGenerator) buildAlterOwnershipStmt(new schema.
 	}
 
 	return Statement{
-		DDL:     fmt.Sprintf("ALTER SEQUENCE %s OWNED BY %s", new.GetFQEscapedName(), newOwner),
-		Timeout: statementTimeoutDefault,
+		DDL:         fmt.Sprintf("ALTER SEQUENCE %s OWNED BY %s", new.GetFQEscapedName(), newOwner),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}
 }
 
@@ -1708,17 +1738,19 @@ func (e *extensionSQLGenerator) Add(extension schema.Extension) ([]Statement, er
 	}
 
 	return []Statement{{
-		DDL:     s,
-		Timeout: statementTimeoutDefault,
-		Hazards: nil,
+		DDL:         s,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     nil,
 	}}, nil
 }
 
 func (e *extensionSQLGenerator) Delete(extension schema.Extension) ([]Statement, error) {
 	return []Statement{{
-		DDL:     fmt.Sprintf("DROP EXTENSION %s", extension.EscapedName),
-		Timeout: statementTimeoutDefault,
-		Hazards: []MigrationHazard{migrationHazardExtensionDroppedCannotTrackDependencies},
+		DDL:         fmt.Sprintf("DROP EXTENSION %s", extension.EscapedName),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     []MigrationHazard{migrationHazardExtensionDroppedCannotTrackDependencies},
 	}}, nil
 }
 
@@ -1728,9 +1760,10 @@ func (e *extensionSQLGenerator) Alter(diff extensionDiff) ([]Statement, error) {
 		if len(diff.new.Version) == 0 {
 			// This is an implicit upgrade to the latest extension version.
 			statements = append(statements, Statement{
-				DDL:     fmt.Sprintf("ALTER EXTENSION %s UPDATE", diff.new.EscapedName),
-				Timeout: statementTimeoutDefault,
-				Hazards: []MigrationHazard{migrationHazardExtensionAlteredVersionUpgraded},
+				DDL:         fmt.Sprintf("ALTER EXTENSION %s UPDATE", diff.new.EscapedName),
+				Timeout:     statementTimeoutDefault,
+				LockTimeout: lockTimeoutDefault,
+				Hazards:     []MigrationHazard{migrationHazardExtensionAlteredVersionUpgraded},
 			})
 		} else {
 			// We optimistically assume an update path from the old to new version exists. When we
@@ -1741,8 +1774,9 @@ func (e *extensionSQLGenerator) Alter(diff extensionDiff) ([]Statement, error) {
 					diff.new.EscapedName,
 					schema.EscapeIdentifier(diff.new.Version),
 				),
-				Timeout: statementTimeoutDefault,
-				Hazards: []MigrationHazard{migrationHazardExtensionAlteredVersionUpgraded},
+				Timeout:     statementTimeoutDefault,
+				LockTimeout: lockTimeoutDefault,
+				Hazards:     []MigrationHazard{migrationHazardExtensionAlteredVersionUpgraded},
 			})
 		}
 	}
@@ -1761,9 +1795,10 @@ func (f *functionSQLVertexGenerator) Add(function schema.Function) ([]Statement,
 		hazards = append(hazards, migrationHazardAddAlterFunctionCannotTrackDependencies)
 	}
 	return []Statement{{
-		DDL:     function.FunctionDef,
-		Timeout: statementTimeoutDefault,
-		Hazards: hazards,
+		DDL:         function.FunctionDef,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     hazards,
 	}}, nil
 }
 
@@ -1779,9 +1814,10 @@ func (f *functionSQLVertexGenerator) Delete(function schema.Function) ([]Stateme
 		})
 	}
 	return []Statement{{
-		DDL:     fmt.Sprintf("DROP FUNCTION %s", function.GetFQEscapedName()),
-		Timeout: statementTimeoutDefault,
-		Hazards: hazards,
+		DDL:         fmt.Sprintf("DROP FUNCTION %s", function.GetFQEscapedName()),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     hazards,
 	}}, nil
 }
 
@@ -1795,9 +1831,10 @@ func (f *functionSQLVertexGenerator) Alter(diff functionDiff) ([]Statement, erro
 		hazards = append(hazards, migrationHazardAddAlterFunctionCannotTrackDependencies)
 	}
 	return []Statement{{
-		DDL:     diff.new.FunctionDef,
-		Timeout: statementTimeoutDefault,
-		Hazards: hazards,
+		DDL:         diff.new.FunctionDef,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     hazards,
 	}}, nil
 }
 
@@ -1850,15 +1887,17 @@ type triggerSQLVertexGenerator struct {
 
 func (t *triggerSQLVertexGenerator) Add(trigger schema.Trigger) ([]Statement, error) {
 	return []Statement{{
-		DDL:     string(trigger.GetTriggerDefStmt),
-		Timeout: statementTimeoutDefault,
+		DDL:         string(trigger.GetTriggerDefStmt),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}}, nil
 }
 
 func (t *triggerSQLVertexGenerator) Delete(trigger schema.Trigger) ([]Statement, error) {
 	return []Statement{{
-		DDL:     fmt.Sprintf("DROP TRIGGER %s ON %s", trigger.EscapedName, trigger.OwningTable.GetFQEscapedName()),
-		Timeout: statementTimeoutDefault,
+		DDL:         fmt.Sprintf("DROP TRIGGER %s ON %s", trigger.EscapedName, trigger.OwningTable.GetFQEscapedName()),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}}, nil
 }
 
@@ -1872,8 +1911,9 @@ func (t *triggerSQLVertexGenerator) Alter(diff triggerDiff) ([]Statement, error)
 		return nil, fmt.Errorf("modifying get trigger def statement to create or replace: %w", err)
 	}
 	return []Statement{{
-		DDL:     createOrReplaceStmt,
-		Timeout: statementTimeoutDefault,
+		DDL:         createOrReplaceStmt,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}}, nil
 }
 
@@ -1932,8 +1972,9 @@ func dropConstraintDDL(table schema.SchemaQualifiedName, escapedConstraintName s
 
 func validateConstraintStatement(owningTable schema.SchemaQualifiedName, escapedConstraintName string) Statement {
 	return Statement{
-		DDL:     fmt.Sprintf("%s VALIDATE CONSTRAINT %s", alterTablePrefix(owningTable), escapedConstraintName),
-		Timeout: statementTimeoutDefault,
+		DDL:         fmt.Sprintf("%s VALIDATE CONSTRAINT %s", alterTablePrefix(owningTable), escapedConstraintName),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
 	}
 }
 
