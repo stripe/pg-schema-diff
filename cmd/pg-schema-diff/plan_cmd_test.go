@@ -59,7 +59,7 @@ func TestParseStatementTimeoutModifierStr(t *testing.T) {
 		},
 	} {
 		t.Run(tc.opt, func(t *testing.T) {
-			modifier, err := parseStatementTimeoutModifierStr(tc.opt)
+			modifier, err := parseTimeoutModifier(tc.opt)
 			if len(tc.expectedErrContains) > 0 {
 				assert.ErrorContains(t, err, tc.expectedErrContains)
 				return
