@@ -33,10 +33,14 @@ func (p MigrationHazard) String() string {
 
 type Statement struct {
 	DDL string
-	// The statement_timeout to apply to this statement. If implementing your own plan executor, be sure to set
+	// Timeout is the statement_timeout to apply to this statement. If implementing your own plan executor, be sure to set
 	// the session-level statement_timeout to this value before executing the statement. A transaction-level statement_timeout
 	// will not work since building indexes concurrently cannot be done in a transaction
 	Timeout time.Duration
+	// LockTimeout is the lock_timeout to apply to this statement. If implementing your own plan executor, be sure to set
+	// the session-level lock_timeout to this value before executing the statement. A transaction-level lock_timeout
+	// will not work since building indexes concurrently cannot be done in a transaction
+	LockTimeout time.Duration
 	// The hazards this statement poses
 	Hazards []MigrationHazard
 }
@@ -57,10 +61,25 @@ type Plan struct {
 
 // ApplyStatementTimeoutModifier applies the given timeout to all statements that match the given regex
 func (p Plan) ApplyStatementTimeoutModifier(regex *regexp.Regexp, timeout time.Duration) Plan {
+	return p.applyStatementModifier(regex, func(stmt Statement) Statement {
+		stmt.Timeout = timeout
+		return stmt
+	})
+}
+
+// ApplyLockTimeoutModifier applies the given timeout to all statements that match the given regex
+func (p Plan) ApplyLockTimeoutModifier(regex *regexp.Regexp, timeout time.Duration) Plan {
+	return p.applyStatementModifier(regex, func(stmt Statement) Statement {
+		stmt.LockTimeout = timeout
+		return stmt
+	})
+}
+
+func (p Plan) applyStatementModifier(regex *regexp.Regexp, modifier func(Statement) Statement) Plan {
 	var modifiedStmts []Statement
 	for _, stmt := range p.Statements {
 		if regex.MatchString(stmt.DDL) {
-			stmt.Timeout = timeout
+			stmt = modifier(stmt)
 		}
 		modifiedStmts = append(modifiedStmts, stmt)
 	}

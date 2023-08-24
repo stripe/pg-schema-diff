@@ -26,7 +26,6 @@ func buildApplyCmd() *cobra.Command {
 		"Specify the hazards that are allowed. Order does not matter, and duplicates are ignored. If the"+
 			" migration plan contains unwanted hazards (hazards not in this list), then the migration will fail to run"+
 			" (example: --allowed-hazards DELETES_DATA,INDEX_BUILD)")
-	lockTimeout := cmd.Flags().Duration("lock-timeout", 30*time.Second, "the max time to wait to acquire a lock. 0 implies no timeout")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		logger := log.SimpleLogger()
 		connConfig, err := connFlags.parseConnConfig(logger)
@@ -37,10 +36,6 @@ func buildApplyCmd() *cobra.Command {
 		planConfig, err := planFlags.parsePlanConfig()
 		if err != nil {
 			return err
-		}
-
-		if *lockTimeout < 0 {
-			return errors.New("lock timeout must be >= 0")
 		}
 
 		cmd.SilenceUsage = true
@@ -68,7 +63,7 @@ func buildApplyCmd() *cobra.Command {
 			return err
 		}
 
-		if err := runPlan(context.Background(), connConfig, plan, lockTimeout); err != nil {
+		if err := runPlan(context.Background(), connConfig, plan); err != nil {
 			return err
 		}
 		fmt.Println("Schema applied successfully")
@@ -110,7 +105,7 @@ func failIfHazardsNotAllowed(plan diff.Plan, allowedHazardsTypesStrs []string) e
 	return nil
 }
 
-func runPlan(ctx context.Context, connConfig *pgx.ConnConfig, plan diff.Plan, lockTimeout *time.Duration) error {
+func runPlan(ctx context.Context, connConfig *pgx.ConnConfig, plan diff.Plan) error {
 	connPool, err := openDbWithPgxConfig(connConfig)
 	if err != nil {
 		return err
@@ -122,11 +117,6 @@ func runPlan(ctx context.Context, connConfig *pgx.ConnConfig, plan diff.Plan, lo
 		return err
 	}
 	defer conn.Close()
-
-	_, err = conn.ExecContext(ctx, fmt.Sprintf("SET SESSION lock_timeout = %d", lockTimeout.Milliseconds()))
-	if err != nil {
-		return fmt.Errorf("setting lock timeout: %w", err)
-	}
 
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.
@@ -140,6 +130,9 @@ func runPlan(ctx context.Context, connConfig *pgx.ConnConfig, plan diff.Plan, lo
 		start := time.Now()
 		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
 			return fmt.Errorf("setting statement timeout: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION lock_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
+			return fmt.Errorf("setting lock timeout: %w", err)
 		}
 		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
 			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt, err)

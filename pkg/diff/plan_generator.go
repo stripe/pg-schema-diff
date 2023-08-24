@@ -249,6 +249,9 @@ func executeStatements(ctx context.Context, conn queries.DBTX, statements []Stat
 		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
 			return fmt.Errorf("setting statement timeout: %w", err)
 		}
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION lock_timeout = %d", stmt.LockTimeout.Milliseconds())); err != nil {
+			return fmt.Errorf("setting lock timeout: %w", err)
+		}
 		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
 			// could the migration statement contain sensitive information?
 			return fmt.Errorf("executing migration statement: %s: %w", stmt, err)
