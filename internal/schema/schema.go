@@ -48,6 +48,7 @@ type Schema struct {
 	Tables                []Table
 	Indexes               []Index
 	ForeignKeyConstraints []ForeignKeyConstraint
+	UniqueConstraints     []UniqueConstraint
 	Sequences             []Sequence
 	Functions             []Function
 	Triggers              []Trigger
@@ -236,6 +237,31 @@ type ForeignKeyConstraint struct {
 
 func (f ForeignKeyConstraint) GetName() string {
 	return f.OwningTable.GetFQEscapedName() + "_" + f.EscapedName
+}
+
+type (
+	ParentConstraint struct {
+		EscapedName string
+		OwningTable SchemaQualifiedName
+		// OwningTableUnescapedName is a hackaround until we switch over Tables to use fully-qualified, escaped names
+		OwningTableUnescapedName string
+	}
+
+	UniqueConstraint struct {
+		EscapedName string
+		OwningTable SchemaQualifiedName
+		// TableUnescapedName is a hackaround until we switch over Tables to use fully-qualified, escaped names
+		OwningTableUnescapedName string
+		IndexEscapedName         string
+		// IndexUnescapedName is a hackaround until we switch over Indexes to use fully-qualified, escaped names
+		IndexUnescapedName string
+
+		ParentConstraint *ParentConstraint
+	}
+)
+
+func (u UniqueConstraint) GetName() string {
+	return u.OwningTable.GetFQEscapedName() + "_" + u.EscapedName
 }
 
 type (

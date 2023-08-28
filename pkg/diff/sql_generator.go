@@ -189,7 +189,11 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	newSchemaTablesByName := buildSchemaObjByNameMap(new.Tables)
 	addedTablesByName := buildSchemaObjByNameMap(tableDiffs.adds)
 	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(old, new schema.Index, oldIndex, newIndex int) (indexDiff, bool, error) {
-		return buildIndexDiff(newSchemaTablesByName, addedTablesByName, old, new, oldIndex, newIndex)
+		return buildIndexDiff(dependencyParams{
+			newSchemaTablesByName: newSchemaTablesByName,
+			addedTablesByName: addedTablesByName,
+			newSchemaUniqueConstraintsByName: buildSchemaObjByNameMap(new.UniqueConstraints),
+		}, old, new, oldIndex, newIndex)
 	})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing indexes: %w", err)
@@ -361,11 +365,17 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 	}, false, nil
 }
 
+type dependencyParams struct {
+	newSchemaTablesByName            map[string]schema.Table
+	addedTablesByName                map[string]schema.Table
+	newSchemaUniqueConstraintsByName map[string]schema.UniqueConstraint
+}
+
 // buildIndexDiff builds the index diff
-func buildIndexDiff(newSchemaTablesByName map[string]schema.Table, addedTablesByName map[string]schema.Table, old, new schema.Index, _, _ int) (diff indexDiff, requiresRecreation bool, err error) {
+func buildIndexDiff(deps dependencyParams, old, new schema.Index, _, _ int) (diff indexDiff, requiresRecreation bool, err error) {
 	updatedOld := old
 
-	if _, isOnNewTable := addedTablesByName[new.TableName]; isOnNewTable {
+	if _, isOnNewTable := deps.addedTablesByName[new.TableName]; isOnNewTable {
 		// If the table is new, then it must be re-created (this occurs if the base table has been
 		// re-created). In other words, an index must be re-created if the owning table is re-created
 		return indexDiff{}, true, nil
@@ -379,10 +389,10 @@ func buildIndexDiff(newSchemaTablesByName map[string]schema.Table, addedTablesBy
 		updatedOld.ParentIdxName = new.ParentIdxName
 	}
 
-	if !new.IsPartitionOfIndex() && !old.IsPk && new.IsPk {
+	if old.IsPk && new.IsPk && !new.IsPartitionOfIndex() {
 		// If the old index is not part of a primary key and the new index is part of a primary key,
 		// the constraint name diff is resolvable by adding the index to the primary key.
-		// Partitioned indexes are the exception; for partitioned indexes that are
+		// Partitioned indexes are the exception. For partitioned indexes that are
 		// primary keys, the indexes are created with the constraint on the base table and cannot
 		// be attached to the base index
 		// In the future, we can change this behavior to ONLY create the constraint on the base table
@@ -390,8 +400,15 @@ func buildIndexDiff(newSchemaTablesByName map[string]schema.Table, addedTablesBy
 		updatedOld.ConstraintName = new.ConstraintName
 		updatedOld.IsPk = new.IsPk
 	}
+	if old.ConstraintName == "" && new.ConstraintName > "" && deps.newSchemaUniqueConstraintsByName[schema.SchemaQualifiedName{
+		SchemaName:  "",
+		EscapedName: "",
+	}) {
+		// If the old index is not part of a constraint and the new index is part of a unique constraint, the diff can
+		// can be resolved by attaching the constraint
+	}
 
-	if isOnPartitionedTable, err := isOnPartitionedTable(newSchemaTablesByName, new); err != nil {
+	if isOnPartitionedTable, err := isOnPartitionedTable(deps.newSchemaTablesByName, new); err != nil {
 		return indexDiff{}, false, err
 	} else if isOnPartitionedTable && old.IsInvalid && !new.IsInvalid {
 		// If the index is a partitioned index, it can be made valid automatically by attaching the index partitions
@@ -1546,6 +1563,52 @@ func (f *foreignKeyConstraintSQLVertexGenerator) GetDeleteDependencies(con schem
 		deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildIndexVertexId(i.Name), diffTypeDelete))
 	}
 	return deps
+}
+
+type uniqueConstraintSQLVertexGenerator struct {
+}
+
+func (u *uniqueConstraintSQLVertexGenerator) Add(con schema.UniqueConstraint) ([]Statement, error) {
+
+}
+
+func (u *uniqueConstraintSQLVertexGenerator) Delete(con schema.UniqueConstraint) ([]Statement, error) {
+
+}
+
+func (u *uniqueConstraintSQLVertexGenerator) Alter(diff uniqueConstraintDiff) ([]Statement, error) {
+
+}
+
+func (*uniqueConstraintSQLVertexGenerator) GetSQLVertexId(con schema.UniqueConstraint) string {
+	return buildUniqueConstraintVertexId(con.OwningTable, con.EscapedName)
+}
+
+func (u *uniqueConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ schema.UniqueConstraint) []dependency {
+	deps := []dependency{
+		mustRun(u.GetSQLVertexId(con), diffTypeAddAlter).after(u.GetSQLVertexId(con), diffTypeDelete),
+		mustRun(u.GetSQLVertexId(con), diffTypeAddAlter).after(buildIndexVertexId(con.IndexUnescapedName), diffTypeAddAlter),
+	}
+	if parentConstraint := con.ParentConstraint; parentConstraint != nil {
+		// The index deletion will be forced through the constraint deletion
+		deps = append(deps, mustRun(u.GetSQLVertexId(con), diffTypeAddAlter).after(buildUniqueConstraintVertexId(parentConstraint.OwningTable, parentConstraint.OwningTableUnescapedName), diffTypeAddAlter))
+	}
+	return deps
+}
+
+func (u *uniqueConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.UniqueConstraint) []dependency {
+	deps := []dependency{
+		mustRun(u.GetSQLVertexId(con), diffTypeDelete).before(buildIndexVertexId(con.IndexUnescapedName), diffTypeDelete),
+	}
+	if parentConstraint := con.ParentConstraint; parentConstraint != nil {
+		// The delete will be cascaded by the parent
+		deps = append(deps, mustRun(u.GetSQLVertexId(con), diffTypeDelete).after(buildUniqueConstraintVertexId(parentConstraint.OwningTable, parentConstraint.OwningTableUnescapedName), diffTypeDelete))
+	}
+	return deps
+}
+
+func buildUniqueConstraintVertexId(owningTable schema.SchemaQualifiedName, escapedName string) string {
+	return buildVertexId("uniqueconstraint", fmt.Sprintf("%s_%s", owningTable.GetFQEscapedName(), escapedName))
 }
 
 type sequenceSQLVertexGenerator struct {
