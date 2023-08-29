@@ -193,6 +193,7 @@ type (
 		Type                  IndexConstraintType
 		EscapedConstraintName string
 		ConstraintDef         string
+		IsLocal               bool
 	}
 
 	Index struct {
@@ -512,6 +513,7 @@ func fetchIndexes(ctx context.Context, q *queries.Queries) ([]Index, error) {
 				Type:                  indexConstraintType,
 				EscapedConstraintName: EscapeIdentifier(rawIndex.ConstraintName),
 				ConstraintDef:         rawIndex.ConstraintDef,
+				IsLocal:               rawIndex.ConstraintIsLocal,
 			}
 		}
 

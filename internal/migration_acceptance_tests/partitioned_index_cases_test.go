@@ -619,7 +619,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Add non-local primary key constraint to partition using existing index",
+		name: "Add primary key constraint with existing matching base-table index (matching child index does not exist)",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -628,8 +628,9 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 
-			ALTER TABLE ONLY foobar ADD CONSTRAINT some_pkey PRIMARY KEY (foo, id);
-			CREATE UNIQUE INDEX foobar_1_pkey ON foobar_1(foo, id);
+			-- A unique index for foobar_1 exists, but it does not have the default name as the primary key constraint (foobar_1_pkey),
+			-- so the primary key index effectively does not already exist when migrating
+			CREATE UNIQUE INDEX foobar_pkey ON foobar(foo, id);
 			`,
 		},
 		newSchemaDDL: []string{
@@ -640,15 +641,114 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 
-			ALTER TABLE ONLY foobar ADD CONSTRAINT some_pkey PRIMARY KEY (foo, id);
-			CREATE UNIQUE INDEX foobar_1_pkey ON foobar_1(foo, id);
-			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_pkey PRIMARY KEY USING INDEX foobar_1_pkey;
-			ALTER INDEX some_pkey ATTACH PARTITION foobar_1_pkey;
+			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
 			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			// The parent table index is dropped and rebuilt
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{
-		name: "Add non-local primary key constraint to partition using existing index",
+		name: "Add primary key constraint with existing matching base-table index (local matching child index exists)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			CREATE UNIQUE INDEX foobar_pkey ON ONLY foobar(foo, id);
+			CREATE UNIQUE INDEX foobar_1_pkey ON foobar_1(foo, id);
+			ALTER INDEX foobar_pkey ATTACH PARTITION foobar_1_pkey;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			// The parent table index is dropped and rebuilt
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+	},
+	{
+		name: "Add primary key constraint with existing matching base-table index (matching non-local index exists that backs local matching PK)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			CREATE UNIQUE INDEX foobar_pkey ON foobar(foo, id);
+			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_pkey PRIMARY KEY USING INDEX foobar_1_foo_id_idx;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+	},
+	{
+		name: "Add primary key constraint with existing matching base-table index (matching local PK already exists backed by local index)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			CREATE UNIQUE INDEX foobar_pkey ON ONLY foobar(foo, id);
+			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_pkey PRIMARY KEY(foo, id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			// Base table index is dropped
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+	},
+	{
+		name: "Add key constraint to partition using existing index",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(

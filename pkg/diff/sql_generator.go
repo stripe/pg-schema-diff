@@ -188,11 +188,13 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 
 	newSchemaTablesByName := buildSchemaObjByNameMap(new.Tables)
 	addedTablesByName := buildSchemaObjByNameMap(tableDiffs.adds)
-	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(old, new schema.Index, oldIndex, newIndex int) (indexDiff, bool, error) {
-		return buildIndexDiff(indexDependencyParams{
-			newSchemaTablesByName: newSchemaTablesByName,
-			addedTablesByName:     addedTablesByName,
-		}, old, new, oldIndex, newIndex)
+	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(oldIndex, newIndex schema.Index, _, _ int) (indexDiff, bool, error) {
+		return buildIndexDiff(indexDiffConfig{
+			newSchemaTablesByName:  newSchemaTablesByName,
+			addedTablesByName:      addedTablesByName,
+			oldSchemaIndexesByName: buildSchemaObjByNameMap(old.Indexes),
+			newSchemaIndexesByName: buildSchemaObjByNameMap(new.Indexes),
+		}, oldIndex, newIndex)
 	})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing indexes: %w", err)
@@ -364,13 +366,28 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 	}, false, nil
 }
 
-type indexDependencyParams struct {
+type indexDiffConfig struct {
 	newSchemaTablesByName map[string]schema.Table
 	addedTablesByName     map[string]schema.Table
+
+	// oldSchemaIndexesByName and newSchemaIndexesByName by name are hackaround because the diff function does not yet support hierarchies
+	oldSchemaIndexesByName map[string]schema.Index
+	newSchemaIndexesByName map[string]schema.Index
+
+	// seenIndexByName is used to prevent infinite recursion when diffing indexes
+	seenIndexesByName map[string]bool
 }
 
 // buildIndexDiff builds the index diff
-func buildIndexDiff(deps indexDependencyParams, old, new schema.Index, _, _ int) (diff indexDiff, requiresRecreation bool, err error) {
+func buildIndexDiff(deps indexDiffConfig, old, new schema.Index) (diff indexDiff, requiresRecreation bool, err error) {
+	if deps.seenIndexesByName == nil {
+		deps.seenIndexesByName = make(map[string]bool)
+	} else if deps.seenIndexesByName[new.Name] {
+		// Prevent infinite recursion
+		return indexDiff{}, false, fmt.Errorf("loop detected between indexes that starts with %q. %v", new.Name, deps.seenIndexesByName)
+	}
+	deps.seenIndexesByName[new.Name] = true
+
 	updatedOld := old
 
 	if _, isOnNewTable := deps.addedTablesByName[new.TableName]; isOnNewTable {
@@ -387,25 +404,45 @@ func buildIndexDiff(deps indexDependencyParams, old, new schema.Index, _, _ int)
 		updatedOld.ParentIdxName = new.ParentIdxName
 	}
 
-	if !new.IsPartitionOfIndex() && old.Constraint == nil && new.Constraint != nil {
-		// If the old index is not part of a constraint and the new index is part of a constraint,
-		// the constraint name diff is resolvable by building the constraint using the index
-		// Partitioned indexes are the exception; for partitioned indexes that are
-		// constraints, the indexes are created with the constraint on the base table and cannot
-		// be attached to the base index
-		// In the future, we can change this behavior to ONLY create the constraint on the base table
-		// and follow a similar paradigm to adding indexes
-		//updatedOld.Constraint = new.Constraint
+	if old.IsPartitionOfIndex() && new.IsPartitionOfIndex() && old.ParentIdxName == new.ParentIdxName {
+		// This is a bad way of recreating the child index when the parent is recreated. Ideally, the diff function
+		// should be able to handle dependency hierarchies, where if a parent is recreated, the child is recreated.
+		// This is hack around because that functionality is not yet implemented
+		oldParentIndex, ok := deps.oldSchemaIndexesByName[new.ParentIdxName]
+		if !ok {
+			return indexDiff{}, false, fmt.Errorf("could not find parent index %s", new.ParentIdxName)
+		}
+		newParentIndex, ok := deps.newSchemaIndexesByName[new.ParentIdxName]
+		if !ok {
+			return indexDiff{}, false, fmt.Errorf("could not find parent index %s", new.ParentIdxName)
+		}
+
+		if _, parentRecreated, err := buildIndexDiff(deps, oldParentIndex, newParentIndex); err != nil {
+			return indexDiff{}, false, fmt.Errorf("diffing parent index: %w", err)
+		} else if parentRecreated {
+			// Re-create an index if it's parent is re-created
+			return indexDiff{}, true, nil
+		}
 	}
 
-	if old.Constraint == nil && new.Constraint != nil {
-		// Attach the constraint using the existing index
-		updatedOld.Constraint = new.Constraint
+	isOnPartitionedTable, err := isOnPartitionedTable(deps.newSchemaTablesByName, new)
+	if err != nil {
+		return indexDiff{}, false, fmt.Errorf("checking if index is on partitioned table: %w", err)
 	}
 
-	if isOnPartitionedTable, err := isOnPartitionedTable(deps.newSchemaTablesByName, new); err != nil {
-		return indexDiff{}, false, err
-	} else if isOnPartitionedTable && old.IsInvalid && !new.IsInvalid {
+	if !isOnPartitionedTable {
+		if old.Constraint == nil && new.Constraint != nil {
+			// Attach the constraint using the existing index. This cannot be done if the index is on a partitioned table.
+			// In the case of an index being on a partitioned table, it must be re-created
+			updatedOld.Constraint = new.Constraint
+		}
+		if old.Constraint != nil && new.Constraint != nil && old.Constraint.IsLocal && !new.Constraint.IsLocal {
+			// Similar to above. The constraint can just be attached.
+			updatedOld.Constraint.IsLocal = new.Constraint.IsLocal
+		}
+	}
+
+	if isOnPartitionedTable && old.IsInvalid && !new.IsInvalid {
 		// If the index is a partitioned index, it can be made valid automatically by attaching the index partitions
 		// We don't need to re-create it.
 		updatedOld.IsInvalid = new.IsInvalid
@@ -1109,8 +1146,20 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, error) {
 	_, tableWasDeleted := isg.deletedTablesByName[index.TableName]
 	// An index will be dropped if its owning table is dropped.
-	// Similarly, a partition of an index will be dropped when the parent index is dropped
-	if tableWasDeleted || index.IsPartitionOfIndex() {
+	if tableWasDeleted {
+		return nil, nil
+	}
+
+	if index.IsPartitionOfIndex() {
+		if index.Constraint != nil && index.Constraint.IsLocal {
+			// This creates a weird circular dependency that Postgres doesn't have any easy way of out.
+			// You can't drop the parent index without dropping the local constraint. But if you try dropping the local
+			// constraint, it will try to drop the partition of the index without dropping the shared index, which errors
+			// because an individual index partition cannot be dropped. Only the whole index can be dropped
+			// A workaround could be implemented with "CASCADE" if this ends up blocking users
+			return nil, fmt.Errorf("dropping an index partition that backs a local constraint is not supported: %w", ErrNotImplemented)
+		}
+		// A partition of an index will be dropped when the parent index is dropped
 		return nil, nil
 	}
 
@@ -2041,12 +2090,4 @@ func buildColumnDefinition(column schema.Column) string {
 		sb.WriteString(fmt.Sprintf(" DEFAULT %s", column.Default))
 	}
 	return sb.String()
-}
-
-func formattedNamesForSQL(names []string) []string {
-	var formattedNames []string
-	for _, name := range names {
-		formattedNames = append(formattedNames, schema.EscapeIdentifier(name))
-	}
-	return formattedNames
 }
