@@ -48,7 +48,6 @@ type Schema struct {
 	Tables                []Table
 	Indexes               []Index
 	ForeignKeyConstraints []ForeignKeyConstraint
-	UniqueConstraints     []UniqueConstraint
 	Sequences             []Sequence
 	Functions             []Function
 	Triggers              []Trigger
@@ -184,24 +183,38 @@ func (i GetIndexDefStatement) ToCreateIndexConcurrently() (string, error) {
 	return idxToConcurrentlyRegex.ReplaceAllString(string(i), "${1}CONCURRENTLY ${3}"), nil
 }
 
-type Index struct {
-	TableName string
-	Name      string
-	Columns   []string
-	IsInvalid bool
-	IsPk      bool
-	IsUnique  bool
-	// ConstraintName is the name of the constraint associated with an index. Empty string if no associated constraint.
-	// Once we need support for constraints not associated with indexes, we'll add a
-	// Constraint schema object and starting fetching constraints directly
-	ConstraintName string
+type (
+	IndexConstraintType string
 
-	// GetIndexDefStmt is the output of pg_getindexdef
-	GetIndexDefStmt GetIndexDefStatement
+	// IndexConstraint informally represents a constraint that is always 1:1 with an index, i.e.,
+	// primary and unique constraints. It's easiest to just treat these like a property of the index rather than
+	// a separate entity
+	IndexConstraint struct {
+		Type                  IndexConstraintType
+		EscapedConstraintName string
+		ConstraintDef         string
+	}
 
-	// ParentIdxName is the name of the parent index if the index is a partition of an index
-	ParentIdxName string
-}
+	Index struct {
+		TableName string
+		Name      string
+		Columns   []string
+		IsInvalid bool
+		IsUnique  bool
+
+		Constraint *IndexConstraint
+
+		// GetIndexDefStmt is the output of pg_getindexdef
+		GetIndexDefStmt GetIndexDefStatement
+
+		// ParentIdxName is the name of the parent index if the index is a partition of an index
+		ParentIdxName string
+	}
+)
+
+const (
+	PkIndexConstraintType IndexConstraintType = "PRIMARY KEY"
+)
 
 func (i Index) GetName() string {
 	return i.Name
@@ -209,6 +222,10 @@ func (i Index) GetName() string {
 
 func (i Index) IsPartitionOfIndex() bool {
 	return len(i.ParentIdxName) > 0
+}
+
+func (i Index) IsPk() bool {
+	return i.Constraint != nil && i.Constraint.Type == PkIndexConstraintType
 }
 
 type CheckConstraint struct {
@@ -237,31 +254,6 @@ type ForeignKeyConstraint struct {
 
 func (f ForeignKeyConstraint) GetName() string {
 	return f.OwningTable.GetFQEscapedName() + "_" + f.EscapedName
-}
-
-type (
-	ParentConstraint struct {
-		EscapedName string
-		OwningTable SchemaQualifiedName
-		// OwningTableUnescapedName is a hackaround until we switch over Tables to use fully-qualified, escaped names
-		OwningTableUnescapedName string
-	}
-
-	UniqueConstraint struct {
-		EscapedName string
-		OwningTable SchemaQualifiedName
-		// TableUnescapedName is a hackaround until we switch over Tables to use fully-qualified, escaped names
-		OwningTableUnescapedName string
-		IndexEscapedName         string
-		// IndexUnescapedName is a hackaround until we switch over Indexes to use fully-qualified, escaped names
-		IndexUnescapedName string
-
-		ParentConstraint *ParentConstraint
-	}
-)
-
-func (u UniqueConstraint) GetName() string {
-	return u.OwningTable.GetFQEscapedName() + "_" + u.EscapedName
 }
 
 type (
@@ -499,7 +491,7 @@ func fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Context, q *queries.Q
 func fetchIndexes(ctx context.Context, q *queries.Queries) ([]Index, error) {
 	rawIndexes, err := q.GetIndexes(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("GetColumnsInPublicSchema: %w", err)
+		return nil, fmt.Errorf("GetIndexes: %w", err)
 	}
 
 	var indexes []Index
@@ -509,20 +501,44 @@ func fetchIndexes(ctx context.Context, q *queries.Queries) ([]Index, error) {
 			return nil, fmt.Errorf("GetColumnsForIndex(%s): %w", rawIndex.Oid, err)
 		}
 
+		var indexConstraint *IndexConstraint
+		if rawIndex.ConstraintName != "" {
+			indexConstraintType, err := getIndexConstraintType(rawIndex.ConstraintType)
+			if err != nil {
+				return nil, fmt.Errorf("getIndexConstraintType(%s): %w", rawIndex.ConstraintType, err)
+			}
+
+			indexConstraint = &IndexConstraint{
+				Type:                  indexConstraintType,
+				EscapedConstraintName: EscapeIdentifier(rawIndex.ConstraintName),
+				ConstraintDef:         rawIndex.ConstraintDef,
+			}
+		}
+
 		indexes = append(indexes, Index{
 			TableName:       rawIndex.TableName,
 			Name:            rawIndex.IndexName,
 			Columns:         rawColumns,
 			GetIndexDefStmt: GetIndexDefStatement(rawIndex.DefStmt),
 			IsInvalid:       !rawIndex.IndexIsValid,
-			IsPk:            rawIndex.IndexIsPk,
 			IsUnique:        rawIndex.IndexIsUnique,
-			ConstraintName:  rawIndex.ConstraintName,
-			ParentIdxName:   rawIndex.ParentIndexName,
+
+			Constraint: indexConstraint,
+
+			ParentIdxName: rawIndex.ParentIndexName,
 		})
 	}
 
 	return indexes, nil
+}
+
+func getIndexConstraintType(constraintType string) (IndexConstraintType, error) {
+	switch constraintType {
+	case "p":
+		return PkIndexConstraintType, nil
+	default:
+		return "", fmt.Errorf("unknown/unsupported index constraint type: %s", constraintType)
+	}
 }
 
 func fetchForeignKeyCons(ctx context.Context, q *queries.Queries) ([]ForeignKeyConstraint, error) {

@@ -60,6 +60,8 @@ SELECT
     table_c.relname::TEXT AS table_name,
     pg_catalog.pg_get_indexdef(c.oid)::TEXT AS def_stmt,
     COALESCE(con.conname, '')::TEXT AS constraint_name,
+    COALESCE(con.contype, '')::TEXT AS constraint_type,
+    COALESCE(pg_catalog.pg_get_constraintdef(con.oid), '')::TEXT  AS constraint_def,
     i.indisvalid AS index_is_valid,
     i.indisprimary AS index_is_pk,
     i.indisunique AS index_is_unique,
@@ -138,36 +140,6 @@ WHERE
     AND pg_constraint.conislocal;
 
 
--- name: GetUniqueConstraints :many
-SELECT
-    pg_constraint.conname::TEXT AS constraint_name,
-    constraint_c.relname::TEXT AS table_name,
-    constraint_namespace.nspname::TEXT AS table_schema_name,
-    index_c.relname AS index_name,
-    pg_constraint.conparentid,
-    parent_constraint_c.relname AS parent_constraint_name,
-    parent_constraint_c.relname AS parent_constraint_schema_name
-FROM pg_catalog.pg_constraint
-INNER JOIN
-    pg_catalog.pg_class AS constraint_c
-    ON pg_constraint.conrelid = constraint_c.oid
-INNER JOIN pg_catalog.pg_namespace AS constraint_namespace
-    ON pg_constraint.connamespace = constraint_namespace.oid
-INNER JOIN
-    pg_catalog.pg_class AS index_c
-    ON pg_constraint.conindid = index_c.oid
-LEFT JOIN
-    pg_catalog.pg_constraint AS parent_constraint
-    ON pg_constraint.conparentid = parent_constraint.oid
-LEFT JOIN
-    pg_catalog.pg_class AS parent_constraint_c
-    ON parent_constraint.conrelid = parent_constraint_c.oid
-LEFT JOIN
-    pg_catalog.pg_class AS parent_constraint_namespace
-    ON parent_constraint.connamespace = parent_constraint_namespace.oid
-WHERE
-    constraint_namespace.nspname = 'public'
-    AND pg_constraint.contype = 'u';
 
 -- name: GetFunctions :many
 SELECT

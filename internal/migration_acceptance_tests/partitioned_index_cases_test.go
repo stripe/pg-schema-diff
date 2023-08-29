@@ -192,7 +192,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
-			diff.MigrationHazardTypeAcquiresShareLock,
 			diff.MigrationHazardTypeIndexBuild,
 		},
 	},
@@ -252,7 +251,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexBuild,
-			diff.MigrationHazardTypeAcquiresShareLock,
 		},
 	},
 	{
@@ -279,7 +277,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
-			diff.MigrationHazardTypeAcquiresShareLock,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
 		},
@@ -309,7 +306,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
-			diff.MigrationHazardTypeAcquiresShareLock,
 			diff.MigrationHazardTypeIndexBuild,
 		},
 	},
@@ -569,7 +565,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareLock,
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
@@ -620,6 +615,36 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 
 			CREATE INDEX "Foobar_3_Part" ON "Foobar_3"(foo);
 			ALTER INDEX "Partitioned_Idx" ATTACH PARTITION "Foobar_3_Part";
+			`,
+		},
+	},
+	// Add test case for new primary key that mirrors unique index (AKA only constraint is different)
+	{
+		name: "Add non-local primary key constraint to partition using existing index",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE ONLY foobar ADD CONSTRAINT some_pkey PRIMARY KEY (foo, id);
+			CREATE UNIQUE INDEX foobar_1_pkey ON foobar_1(foo, id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE ONLY foobar ADD CONSTRAINT some_pkey PRIMARY KEY (foo, id);
+			CREATE UNIQUE INDEX foobar_1_pkey ON foobar_1(foo, id);
+			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_pkey PRIMARY KEY USING INDEX foobar_1_pkey;
+			ALTER INDEX some_pkey ATTACH PARTITION foobar_1_pkey;
 			`,
 		},
 	},

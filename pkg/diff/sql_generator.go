@@ -189,10 +189,9 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	newSchemaTablesByName := buildSchemaObjByNameMap(new.Tables)
 	addedTablesByName := buildSchemaObjByNameMap(tableDiffs.adds)
 	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(old, new schema.Index, oldIndex, newIndex int) (indexDiff, bool, error) {
-		return buildIndexDiff(dependencyParams{
+		return buildIndexDiff(indexDependencyParams{
 			newSchemaTablesByName: newSchemaTablesByName,
-			addedTablesByName: addedTablesByName,
-			newSchemaUniqueConstraintsByName: buildSchemaObjByNameMap(new.UniqueConstraints),
+			addedTablesByName:     addedTablesByName,
 		}, old, new, oldIndex, newIndex)
 	})
 	if err != nil {
@@ -365,14 +364,13 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 	}, false, nil
 }
 
-type dependencyParams struct {
-	newSchemaTablesByName            map[string]schema.Table
-	addedTablesByName                map[string]schema.Table
-	newSchemaUniqueConstraintsByName map[string]schema.UniqueConstraint
+type indexDependencyParams struct {
+	newSchemaTablesByName map[string]schema.Table
+	addedTablesByName     map[string]schema.Table
 }
 
 // buildIndexDiff builds the index diff
-func buildIndexDiff(deps dependencyParams, old, new schema.Index, _, _ int) (diff indexDiff, requiresRecreation bool, err error) {
+func buildIndexDiff(deps indexDependencyParams, old, new schema.Index, _, _ int) (diff indexDiff, requiresRecreation bool, err error) {
 	updatedOld := old
 
 	if _, isOnNewTable := deps.addedTablesByName[new.TableName]; isOnNewTable {
@@ -389,23 +387,20 @@ func buildIndexDiff(deps dependencyParams, old, new schema.Index, _, _ int) (dif
 		updatedOld.ParentIdxName = new.ParentIdxName
 	}
 
-	if old.IsPk && new.IsPk && !new.IsPartitionOfIndex() {
-		// If the old index is not part of a primary key and the new index is part of a primary key,
-		// the constraint name diff is resolvable by adding the index to the primary key.
-		// Partitioned indexes are the exception. For partitioned indexes that are
-		// primary keys, the indexes are created with the constraint on the base table and cannot
+	if !new.IsPartitionOfIndex() && old.Constraint == nil && new.Constraint != nil {
+		// If the old index is not part of a constraint and the new index is part of a constraint,
+		// the constraint name diff is resolvable by building the constraint using the index
+		// Partitioned indexes are the exception; for partitioned indexes that are
+		// constraints, the indexes are created with the constraint on the base table and cannot
 		// be attached to the base index
 		// In the future, we can change this behavior to ONLY create the constraint on the base table
 		// and follow a similar paradigm to adding indexes
-		updatedOld.ConstraintName = new.ConstraintName
-		updatedOld.IsPk = new.IsPk
+		//updatedOld.Constraint = new.Constraint
 	}
-	if old.ConstraintName == "" && new.ConstraintName > "" && deps.newSchemaUniqueConstraintsByName[schema.SchemaQualifiedName{
-		SchemaName:  "",
-		EscapedName: "",
-	}) {
-		// If the old index is not part of a constraint and the new index is part of a unique constraint, the diff can
-		// can be resolved by attaching the constraint
+
+	if old.Constraint == nil && new.Constraint != nil {
+		// Attach the constraint using the existing index
+		updatedOld.Constraint = new.Constraint
 	}
 
 	if isOnPartitionedTable, err := isOnPartitionedTable(deps.newSchemaTablesByName, new); err != nil {
@@ -455,6 +450,7 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 
 	attachPartitionGraphs, err := diff.tableDiffs.resolveToSQLGraph(&attachPartitionSQLVertexGenerator{
 		indexesInNewSchemaByTableName: indexesInNewSchemaByTableName,
+		addedTablesByName:             addedTablesByName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolving attach partition sql graphs: %w", err)
@@ -936,7 +932,7 @@ func newRenameConflictingIndexSQLVertexGenerator(oldSchemaIndexesByName map[stri
 func (rsg *renameConflictingIndexSQLVertexGenerator) Add(index schema.Index) ([]Statement, error) {
 	if oldIndex, indexIsBeingRecreated := rsg.oldSchemaIndexesByName[index.Name]; !indexIsBeingRecreated {
 		return nil, nil
-	} else if oldIndex.IsPk && index.IsPk {
+	} else if oldIndex.IsPk() && index.IsPk() {
 		// Don't bother renaming if both are primary keys, since the new index will need to be created after the old
 		// index because we can't have two primary keys at the same time.
 		//
@@ -1036,59 +1032,33 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		return nil, fmt.Errorf("can't create an invalid index: %w", ErrNotImplemented)
 	}
 
-	if index.IsPk {
-		if index.IsPartitionOfIndex() {
-			if parentIdx, ok := isg.indexesInNewSchemaByName[index.ParentIdxName]; !ok {
-				return nil, fmt.Errorf("could not find parent index %s", index.ParentIdxName)
-			} else if parentIdx.IsPk {
-				// All indexes associated with parent primary keys are automatically created by their parent
-				return nil, nil
-			}
-		}
-
-		if isOnPartitionedTable, err := isg.isOnPartitionedTable(index); err != nil {
-			return nil, err
-		} else if isOnPartitionedTable {
-			// A partitioned table can't have a constraint added to it with "USING INDEX", so just make the index
-			// automatically through the constraint. This currently blocks and is a dangerous operation
-			// If users want to be able to switch primary keys concurrently, support can be added in the future,
-			// with a similar strategy to adding indexes to a partitioned table
-			return []Statement{
-				{
-					DDL: fmt.Sprintf("%s PRIMARY KEY (%s)",
-						addConstraintPrefix(schema.SchemaQualifiedName{
-							// Assumes public
-							SchemaName:  "public",
-							EscapedName: schema.EscapeIdentifier(index.TableName),
-						}, schema.EscapeIdentifier(index.ConstraintName)),
-						strings.Join(formattedNamesForSQL(index.Columns), ", "),
-					),
-					Timeout:     statementTimeoutDefault,
-					LockTimeout: lockTimeoutDefault,
-					Hazards: []MigrationHazard{
-						{
-							Type:    MigrationHazardTypeAcquiresShareLock,
-							Message: "This will lock writes to the table while the index build occurs.",
-						},
-						{
-							Type: MigrationHazardTypeIndexBuild,
-							Message: "This is non-concurrent because adding PK's concurrently hasn't been" +
-								"implemented yet. It WILL lock out writes. Index builds require a non-trivial " +
-								"amount of CPU as well, which might affect database performance",
-						},
-					},
-				},
-			}, nil
-		}
-	}
-
 	var stmts []Statement
 	var createIdxStmtHazards []MigrationHazard
+
+	_, isNewTable := isg.addedTablesByName[index.TableName]
 
 	createIdxStmt := string(index.GetIndexDefStmt)
 	createIdxStmtTimeout := statementTimeoutDefault
 	if isOnPartitionedTable, err := isg.isOnPartitionedTable(index); err != nil {
 		return nil, err
+	} else if isOnPartitionedTable {
+		if index.IsPk() {
+			// If it's a primary key on a partitioned table, the index will be created implicitly through the constraint
+			// If we attempt to create the index and the primary key, it will throw an error about the relation already existing
+			owningTableName := schema.SchemaQualifiedName{
+				// Assumes public
+				SchemaName:  "public",
+				EscapedName: schema.EscapeIdentifier(index.TableName),
+			}
+			// If the table is the base table of a partitioned table, the constraint should "ONLY" be added to the base
+			//table. We can then concurrently build all of the partitioned indexes and attach them.
+			// Without "ONLY", all the partitioned indexes will be automatically built
+			return []Statement{{
+				DDL:         fmt.Sprintf("ALTER TABLE ONLY %s ADD CONSTRAINT %s %s", owningTableName.GetFQEscapedName(), index.Constraint.EscapedConstraintName, index.Constraint.ConstraintDef),
+				Timeout:     statementTimeoutDefault,
+				LockTimeout: lockTimeoutDefault,
+			}}, nil
+		}
 	} else if !isOnPartitionedTable {
 		// Only indexes on non-partitioned tables can be created concurrently
 		concurrentCreateIdxStmt, err := index.GetIndexDefStmt.ToCreateIndexConcurrently()
@@ -1112,17 +1082,23 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		Hazards:     createIdxStmtHazards,
 	})
 
-	_, isNewTable := isg.addedTablesByName[index.TableName]
-	if index.IsPartitionOfIndex() && !isNewTable {
-		// Exclude if the partition is new because the index will be attached when the partition is attached
-		stmts = append(stmts, buildAttachIndex(index))
+	if index.IsPk() {
+		addConstraintStmt, err := isg.addIndexConstraint(index)
+		if err != nil {
+			return nil, fmt.Errorf("generating add constraint statement: %w", err)
+		}
+		stmts = append(stmts, addConstraintStmt)
 	}
 
-	if index.IsPk {
-		stmts = append(stmts, isg.addPkConstraintUsingIdx(index))
-	} else if len(index.ConstraintName) > 0 {
-		return nil, fmt.Errorf("constraints not supported for non-primary key indexes: %w", ErrNotImplemented)
+	if index.IsPartitionOfIndex() {
+		_, baseTableIsNew := isg.addedTablesByName[index.TableName]
+		if !isNewTable || baseTableIsNew {
+			// Exclude if the partition is new but not the base because the index will be attached when the partition
+			//is attached. On new base tables, we attach the partitions first, then build the indexes
+			stmts = append(stmts, buildAttachIndex(index))
+		}
 	}
+
 	return stmts, nil
 }
 
@@ -1135,11 +1111,11 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 	}
 
 	// An index used by a primary key constraint/unique constraint cannot be dropped concurrently
-	if len(index.ConstraintName) > 0 {
+	if index.Constraint != nil {
 		// The index has been potentially renamed, which causes the constraint to be renamed. Use the updated name
-		constraintName := index.ConstraintName
+		escapedConstraintName := index.Constraint.EscapedConstraintName
 		if rename, hasRename := isg.indexRenamesByOldName[index.Name]; hasRename {
-			constraintName = rename
+			escapedConstraintName = schema.EscapeIdentifier(rename)
 		}
 
 		// Dropping the constraint will automatically drop the index. There is no way to drop
@@ -1150,7 +1126,7 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 					// Assumes public
 					SchemaName:  "public",
 					EscapedName: schema.EscapeIdentifier(index.TableName),
-				}, schema.EscapeIdentifier(constraintName)),
+				}, escapedConstraintName),
 
 				Timeout:     statementTimeoutDefault,
 				LockTimeout: lockTimeoutDefault,
@@ -1200,10 +1176,13 @@ func (isg *indexSQLVertexGenerator) Alter(diff indexDiff) ([]Statement, error) {
 		diff.old.IsInvalid = diff.new.IsInvalid
 	}
 
-	if !diff.new.IsPartitionOfIndex() && !diff.old.IsPk && diff.new.IsPk {
-		stmts = append(stmts, isg.addPkConstraintUsingIdx(diff.new))
-		diff.old.IsPk = diff.new.IsPk
-		diff.old.ConstraintName = diff.new.ConstraintName
+	if diff.old.Constraint == nil && diff.new.Constraint != nil {
+		addConstraintStmt, err := isg.addIndexConstraint(diff.new)
+		if err != nil {
+			return nil, fmt.Errorf("generating add constraint statement: %w", err)
+		}
+		stmts = append(stmts, addConstraintStmt)
+		diff.old.Constraint = diff.new.Constraint
 	}
 
 	if len(diff.old.ParentIdxName) == 0 && len(diff.new.ParentIdxName) > 0 {
@@ -1232,18 +1211,21 @@ func isOnPartitionedTable(tablesInNewSchemaByName map[string]schema.Table, index
 	}
 }
 
-func (isg *indexSQLVertexGenerator) addPkConstraintUsingIdx(index schema.Index) Statement {
+func (isg *indexSQLVertexGenerator) addIndexConstraint(index schema.Index) (Statement, error) {
+	owningTableName := schema.SchemaQualifiedName{
+		// Assumes public
+		SchemaName:  "public",
+		EscapedName: schema.EscapeIdentifier(index.TableName),
+	}
+
 	return Statement{
-		DDL: fmt.Sprintf("%s PRIMARY KEY USING INDEX %s",
-			addConstraintPrefix(schema.SchemaQualifiedName{
-				// Assumes public
-				SchemaName:  "public",
-				EscapedName: schema.EscapeIdentifier(index.TableName),
-			}, schema.EscapeIdentifier(index.ConstraintName)),
+		DDL: fmt.Sprintf("%s %s USING INDEX %s",
+			addConstraintPrefix(owningTableName, index.Constraint.EscapedConstraintName),
+			index.Constraint.Type,
 			schema.EscapeIdentifier(index.Name)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
-	}
+	}, nil
 }
 
 func buildAttachIndex(index schema.Index) Statement {
@@ -1317,7 +1299,7 @@ func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index sche
 	// If the parent table still exists and the index is a primary key, we should drop the PK index before
 	// any statements associated with altering the table run. This is important for changing the nullability of
 	// columns
-	if index.IsPk {
+	if index.IsPk() {
 		return addAlterColumnDeps
 	}
 
@@ -1420,6 +1402,7 @@ func (csg *checkConstraintSQLGenerator) Alter(diff checkConstraintDiff) ([]State
 
 type attachPartitionSQLVertexGenerator struct {
 	indexesInNewSchemaByTableName map[string][]schema.Index
+	addedTablesByName             map[string]schema.Table
 }
 
 func (*attachPartitionSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
@@ -1452,6 +1435,17 @@ func (*attachPartitionSQLVertexGenerator) GetSQLVertexId(table schema.Table) str
 func (a *attachPartitionSQLVertexGenerator) GetAddAlterDependencies(table, _ schema.Table) []dependency {
 	deps := []dependency{
 		mustRun(a.GetSQLVertexId(table), diffTypeAddAlter).after(buildTableVertexId(table.Name), diffTypeAddAlter),
+	}
+
+	if _, baseTableIsNew := a.addedTablesByName[table.ParentTableName]; baseTableIsNew {
+		// If the base table is new, we should force the partition to be attached before we build any indexes.
+		// This allows us to create fresh schemas where the base table has a PK but none of the children tables
+		// have the PK (this is useful when creating the fresh database schema for migration validation)
+		// If we attach the partition after the index is built, the index will be automatically built by Postgres
+		for _, idx := range a.indexesInNewSchemaByTableName[table.ParentTableName] {
+			deps = append(deps, mustRun(a.GetSQLVertexId(table), diffTypeAddAlter).before(buildIndexVertexId(idx.Name), diffTypeAddAlter))
+		}
+		return deps
 	}
 
 	for _, idx := range a.indexesInNewSchemaByTableName[table.Name] {
@@ -1563,52 +1557,6 @@ func (f *foreignKeyConstraintSQLVertexGenerator) GetDeleteDependencies(con schem
 		deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildIndexVertexId(i.Name), diffTypeDelete))
 	}
 	return deps
-}
-
-type uniqueConstraintSQLVertexGenerator struct {
-}
-
-func (u *uniqueConstraintSQLVertexGenerator) Add(con schema.UniqueConstraint) ([]Statement, error) {
-
-}
-
-func (u *uniqueConstraintSQLVertexGenerator) Delete(con schema.UniqueConstraint) ([]Statement, error) {
-
-}
-
-func (u *uniqueConstraintSQLVertexGenerator) Alter(diff uniqueConstraintDiff) ([]Statement, error) {
-
-}
-
-func (*uniqueConstraintSQLVertexGenerator) GetSQLVertexId(con schema.UniqueConstraint) string {
-	return buildUniqueConstraintVertexId(con.OwningTable, con.EscapedName)
-}
-
-func (u *uniqueConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ schema.UniqueConstraint) []dependency {
-	deps := []dependency{
-		mustRun(u.GetSQLVertexId(con), diffTypeAddAlter).after(u.GetSQLVertexId(con), diffTypeDelete),
-		mustRun(u.GetSQLVertexId(con), diffTypeAddAlter).after(buildIndexVertexId(con.IndexUnescapedName), diffTypeAddAlter),
-	}
-	if parentConstraint := con.ParentConstraint; parentConstraint != nil {
-		// The index deletion will be forced through the constraint deletion
-		deps = append(deps, mustRun(u.GetSQLVertexId(con), diffTypeAddAlter).after(buildUniqueConstraintVertexId(parentConstraint.OwningTable, parentConstraint.OwningTableUnescapedName), diffTypeAddAlter))
-	}
-	return deps
-}
-
-func (u *uniqueConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.UniqueConstraint) []dependency {
-	deps := []dependency{
-		mustRun(u.GetSQLVertexId(con), diffTypeDelete).before(buildIndexVertexId(con.IndexUnescapedName), diffTypeDelete),
-	}
-	if parentConstraint := con.ParentConstraint; parentConstraint != nil {
-		// The delete will be cascaded by the parent
-		deps = append(deps, mustRun(u.GetSQLVertexId(con), diffTypeDelete).after(buildUniqueConstraintVertexId(parentConstraint.OwningTable, parentConstraint.OwningTableUnescapedName), diffTypeDelete))
-	}
-	return deps
-}
-
-func buildUniqueConstraintVertexId(owningTable schema.SchemaQualifiedName, escapedName string) string {
-	return buildVertexId("uniqueconstraint", fmt.Sprintf("%s_%s", owningTable.GetFQEscapedName(), escapedName))
 }
 
 type sequenceSQLVertexGenerator struct {
