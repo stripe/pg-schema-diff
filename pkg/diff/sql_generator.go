@@ -448,16 +448,14 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving extension sql graphs: %w", err)
 	}
 
-	attachPartitionGraphs, err := diff.tableDiffs.resolveToSQLGraph(&attachPartitionSQLVertexGenerator{
-		indexesInNewSchemaByTableName: indexesInNewSchemaByTableName,
-		addedTablesByName:             addedTablesByName,
-	})
+	attachPartitionSQLVertexGenerator := newAttachPartitionSQLVertexGenerator(indexesInNewSchemaByTableName, addedTablesByName)
+	attachPartitionGraphs, err := diff.tableDiffs.resolveToSQLGraph(attachPartitionSQLVertexGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("resolving attach partition sql graphs: %w", err)
 	}
 
 	renameConflictingIndexSQLVertexGenerator := newRenameConflictingIndexSQLVertexGenerator(buildSchemaObjByNameMap(diff.old.Indexes))
-	renameConflictingIndexGraphs, err := diff.indexDiffs.resolveToSQLGraph(&renameConflictingIndexSQLVertexGenerator)
+	renameConflictingIndexGraphs, err := diff.indexDiffs.resolveToSQLGraph(renameConflictingIndexSQLVertexGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("resolving renaming conflicting indexes: %w", err)
 	}
@@ -467,7 +465,9 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		addedTablesByName:        addedTablesByName,
 		tablesInNewSchemaByName:  tablesInNewSchemaByName,
 		indexesInNewSchemaByName: buildSchemaObjByNameMap(diff.new.Indexes),
-		indexRenamesByOldName:    renameConflictingIndexSQLVertexGenerator.getRenames(),
+
+		renameSQLVertexGenerator:          renameConflictingIndexSQLVertexGenerator,
+		attachPartitionSQLVertexGenerator: attachPartitionSQLVertexGenerator,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolving index sql graphs: %w", err)
@@ -922,8 +922,8 @@ type renameConflictingIndexSQLVertexGenerator struct {
 	indexRenamesByOldName map[string]string
 }
 
-func newRenameConflictingIndexSQLVertexGenerator(oldSchemaIndexesByName map[string]schema.Index) renameConflictingIndexSQLVertexGenerator {
-	return renameConflictingIndexSQLVertexGenerator{
+func newRenameConflictingIndexSQLVertexGenerator(oldSchemaIndexesByName map[string]schema.Index) *renameConflictingIndexSQLVertexGenerator {
+	return &renameConflictingIndexSQLVertexGenerator{
 		oldSchemaIndexesByName: oldSchemaIndexesByName,
 		indexRenamesByOldName:  make(map[string]string),
 	}
@@ -971,8 +971,13 @@ func (rsg *renameConflictingIndexSQLVertexGenerator) generateNonConflictingName(
 	return index.Name[:idxNameTruncationIdx] + newNameSuffix, nil
 }
 
-func (rsg *renameConflictingIndexSQLVertexGenerator) getRenames() map[string]string {
-	return rsg.indexRenamesByOldName
+// rename gets the rename for the index if it eixsts, otherwise it returns an empty stringa nd false
+func (rsg *renameConflictingIndexSQLVertexGenerator) rename(index string) (string, bool) {
+	rename, ok := rsg.indexRenamesByOldName[index]
+	if !ok {
+		return "", false
+	}
+	return rename, true
 }
 
 func (rsg *renameConflictingIndexSQLVertexGenerator) Delete(_ schema.Index) ([]Statement, error) {
@@ -1011,8 +1016,11 @@ type indexSQLVertexGenerator struct {
 	// indexesInNewSchemaByName is a map of index name to the index
 	// This is used to identify the parent index is a primary key
 	indexesInNewSchemaByName map[string]schema.Index
-	// indexRenamesByOldName is a map of any renames performed by the conflicting index sql vertex generator
-	indexRenamesByOldName map[string]string
+
+	// renameSQLVertexGenerator is used to find renames
+	renameSQLVertexGenerator *renameConflictingIndexSQLVertexGenerator
+	// attachPartitionSQLVertexGenerator is used to find if a partition will be attached after an index builds
+	attachPartitionSQLVertexGenerator *attachPartitionSQLVertexGenerator
 }
 
 func (isg *indexSQLVertexGenerator) Add(index schema.Index) ([]Statement, error) {
@@ -1034,8 +1042,6 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 
 	var stmts []Statement
 	var createIdxStmtHazards []MigrationHazard
-
-	_, isNewTable := isg.addedTablesByName[index.TableName]
 
 	createIdxStmt := string(index.GetIndexDefStmt)
 	createIdxStmtTimeout := statementTimeoutDefault
@@ -1090,13 +1096,11 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		stmts = append(stmts, addConstraintStmt)
 	}
 
-	if index.IsPartitionOfIndex() {
-		_, baseTableIsNew := isg.addedTablesByName[index.TableName]
-		if !isNewTable || baseTableIsNew {
-			// Exclude if the partition is new but not the base because the index will be attached when the partition
-			//is attached. On new base tables, we attach the partitions first, then build the indexes
-			stmts = append(stmts, buildAttachIndex(index))
-		}
+	if index.IsPartitionOfIndex() && isg.attachPartitionSQLVertexGenerator.isPartitionAlreadyAttachedBeforeIndexBuilds(index.TableName) {
+		// Only attach the index if the index is built after the table is partitioned. If the partition
+		// hasn't already been attached, the index/constraint will be automatically attached when the table partition is
+		// attached
+		stmts = append(stmts, buildAttachIndex(index))
 	}
 
 	return stmts, nil
@@ -1114,7 +1118,7 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 	if index.Constraint != nil {
 		// The index has been potentially renamed, which causes the constraint to be renamed. Use the updated name
 		escapedConstraintName := index.Constraint.EscapedConstraintName
-		if rename, hasRename := isg.indexRenamesByOldName[index.Name]; hasRename {
+		if rename, hasRename := isg.renameSQLVertexGenerator.rename(index.Name); hasRename {
 			escapedConstraintName = schema.EscapeIdentifier(rename)
 		}
 
@@ -1154,7 +1158,7 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 
 	// The index has been potentially renamed. Use the updated name
 	indexName := index.Name
-	if rename, hasRename := isg.indexRenamesByOldName[index.Name]; hasRename {
+	if rename, hasRename := isg.renameSQLVertexGenerator.rename(index.Name); hasRename {
 		indexName = rename
 	}
 
@@ -1403,6 +1407,19 @@ func (csg *checkConstraintSQLGenerator) Alter(diff checkConstraintDiff) ([]State
 type attachPartitionSQLVertexGenerator struct {
 	indexesInNewSchemaByTableName map[string][]schema.Index
 	addedTablesByName             map[string]schema.Table
+
+	// isPartitionAttachedAfterIdxBuildsByTableName is a map of table name to whether or not the table partition will be
+	// attached after its indexes are built. This is useful for determining when indexes need to be attached
+	isPartitionAttachedAfterIdxBuildsByTableName map[string]bool
+}
+
+func newAttachPartitionSQLVertexGenerator(indexesInNewSchemaByTableName map[string][]schema.Index, addedTablesByName map[string]schema.Table) *attachPartitionSQLVertexGenerator {
+	return &attachPartitionSQLVertexGenerator{
+		indexesInNewSchemaByTableName: indexesInNewSchemaByTableName,
+		addedTablesByName:             addedTablesByName,
+
+		isPartitionAttachedAfterIdxBuildsByTableName: make(map[string]bool),
+	}
 }
 
 func (*attachPartitionSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
@@ -1432,13 +1449,18 @@ func (*attachPartitionSQLVertexGenerator) GetSQLVertexId(table schema.Table) str
 	return fmt.Sprintf("attachpartition_%s", table.Name)
 }
 
-func (a *attachPartitionSQLVertexGenerator) GetAddAlterDependencies(table, _ schema.Table) []dependency {
+func (a *attachPartitionSQLVertexGenerator) GetAddAlterDependencies(table, old schema.Table) []dependency {
+	if !cmp.Equal(old, schema.Table{}) {
+		// The table already exists. Skip building dependencies
+		return nil
+	}
+
 	deps := []dependency{
 		mustRun(a.GetSQLVertexId(table), diffTypeAddAlter).after(buildTableVertexId(table.Name), diffTypeAddAlter),
 	}
 
 	if _, baseTableIsNew := a.addedTablesByName[table.ParentTableName]; baseTableIsNew {
-		// If the base table is new, we should force the partition to be attached before we build any indexes.
+		// If the base table is new, we should force the partition to be attached before we build any non-local indexes.
 		// This allows us to create fresh schemas where the base table has a PK but none of the children tables
 		// have the PK (this is useful when creating the fresh database schema for migration validation)
 		// If we attach the partition after the index is built, the index will be automatically built by Postgres
@@ -1448,10 +1470,15 @@ func (a *attachPartitionSQLVertexGenerator) GetAddAlterDependencies(table, _ sch
 		return deps
 	}
 
+	a.isPartitionAttachedAfterIdxBuildsByTableName[table.Name] = true
 	for _, idx := range a.indexesInNewSchemaByTableName[table.Name] {
 		deps = append(deps, mustRun(a.GetSQLVertexId(table), diffTypeAddAlter).after(buildIndexVertexId(idx.Name), diffTypeAddAlter))
 	}
 	return deps
+}
+
+func (a *attachPartitionSQLVertexGenerator) isPartitionAlreadyAttachedBeforeIndexBuilds(partitionName string) bool {
+	return !a.isPartitionAttachedAfterIdxBuildsByTableName[partitionName]
 }
 
 func (a *attachPartitionSQLVertexGenerator) GetDeleteDependencies(_ schema.Table) []dependency {

@@ -206,12 +206,15 @@ var (
 				},
 				Indexes: []schema.Index{
 					{
-						TableName:       "foo",
-						Name:            "foo_pkey",
-						Columns:         []string{"id", "version"},
-						IsPk:            true,
-						IsUnique:        true,
-						ConstraintName:  "foo_pkey",
+						TableName: "foo",
+						Name:      "foo_pkey",
+						Columns:   []string{"id", "version"},
+						IsUnique:  true,
+						Constraint: &schema.IndexConstraint{
+							Type:                  schema.PkIndexConstraintType,
+							EscapedConstraintName: "foo_pkey",
+							ConstraintDef:         "PRIMARY KEY (id, version)",
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foo USING btree (id, version)",
 					},
 					{
@@ -464,7 +467,8 @@ var (
 				Indexes: []schema.Index{
 					{
 						TableName: "foo",
-						Name:      "foo_pkey", Columns: []string{"author", "id"}, IsPk: true, IsUnique: true, ConstraintName: "foo_pkey",
+						Name:      "foo_pkey", Columns: []string{"author", "id"}, IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "foo_pkey", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON ONLY public.foo USING btree (author, id)",
 					},
 					{
@@ -474,12 +478,12 @@ var (
 					},
 					{
 						TableName: "foo",
-						Name:      "some_unique_partitioned_idx", Columns: []string{"author", "created_at"}, IsPk: false, IsUnique: true,
+						Name:      "some_unique_partitioned_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX some_unique_partitioned_idx ON ONLY public.foo USING btree (author, created_at DESC)",
 					},
 					{
 						TableName: "foo",
-						Name:      "some_invalid_idx", Columns: []string{"author", "genre"}, IsInvalid: true, IsPk: false, IsUnique: false,
+						Name:      "some_invalid_idx", Columns: []string{"author", "genre"}, IsInvalid: true, IsUnique: false,
 						GetIndexDefStmt: "CREATE INDEX some_invalid_idx ON ONLY public.foo USING btree (author, genre)",
 					},
 					// foo_1 indexes
@@ -490,7 +494,7 @@ var (
 					},
 					{
 						TableName: "foo_1",
-						Name:      "foo_1_author_created_at_idx", Columns: []string{"author", "created_at"}, IsPk: false, IsUnique: true, ParentIdxName: "some_unique_partitioned_idx",
+						Name:      "foo_1_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true, ParentIdxName: "some_unique_partitioned_idx",
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_author_created_at_idx ON public.foo_1 USING btree (author, created_at DESC)",
 					},
 					{
@@ -500,7 +504,8 @@ var (
 					},
 					{
 						TableName: "foo_1",
-						Name:      "foo_1_pkey", Columns: []string{"author", "id"}, IsPk: true, IsUnique: true, ConstraintName: "foo_1_pkey", ParentIdxName: "foo_pkey",
+						Name:      "foo_1_pkey", Columns: []string{"author", "id"}, ParentIdxName: "foo_pkey", IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "foo_1_pkey", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_pkey ON public.foo_1 USING btree (author, id)",
 					},
 					// foo_2 indexes
@@ -511,7 +516,7 @@ var (
 					},
 					{
 						TableName: "foo_2",
-						Name:      "foo_2_author_created_at_idx", Columns: []string{"author", "created_at"}, IsPk: false, IsUnique: true, ParentIdxName: "some_unique_partitioned_idx",
+						Name:      "foo_2_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true, ParentIdxName: "some_unique_partitioned_idx",
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_author_created_at_idx ON public.foo_2 USING btree (author, created_at DESC)",
 					},
 					{
@@ -521,7 +526,8 @@ var (
 					},
 					{
 						TableName: "foo_2",
-						Name:      "foo_2_pkey", Columns: []string{"author", "id"}, IsPk: true, IsUnique: true, ConstraintName: "foo_2_pkey", ParentIdxName: "foo_pkey",
+						Name:      "foo_2_pkey", Columns: []string{"author", "id"}, ParentIdxName: "foo_pkey", IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "foo_2_pkey", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_pkey ON public.foo_2 USING btree (author, id)",
 					},
 					// foo_3 indexes
@@ -532,7 +538,7 @@ var (
 					},
 					{
 						TableName: "foo_3",
-						Name:      "foo_3_author_created_at_idx", Columns: []string{"author", "created_at"}, IsPk: false, IsUnique: true, ParentIdxName: "some_unique_partitioned_idx",
+						Name:      "foo_3_author_created_at_idx", Columns: []string{"author", "created_at"}, ParentIdxName: "some_unique_partitioned_idx",
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_author_created_at_idx ON public.foo_3 USING btree (author, created_at DESC)",
 					},
 					{
@@ -542,7 +548,8 @@ var (
 					},
 					{
 						TableName: "foo_3",
-						Name:      "foo_3_pkey", Columns: []string{"author", "id"}, IsPk: true, IsUnique: true, ConstraintName: "foo_3_pkey", ParentIdxName: "foo_pkey",
+						Name:      "foo_3_pkey", Columns: []string{"author", "id"}, ParentIdxName: "foo_pkey", IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "foo_3_pkey", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_pkey ON public.foo_3 USING btree (author, id)",
 					},
 				},
