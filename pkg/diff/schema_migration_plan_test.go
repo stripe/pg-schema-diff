@@ -11,11 +11,12 @@ import (
 )
 
 type schemaMigrationPlanTestCase struct {
-	name               string
-	oldSchema          schema.Schema
-	newSchema          schema.Schema
-	expectedStatements []Statement
-	expectedDiffErrIs  error
+	name                    string
+	oldSchema               schema.Schema
+	newSchema               schema.Schema
+	expectedStatements      []Statement
+	expectedDiffErrIs       error
+	expectedDiffErrContains string
 }
 
 // schemaMigrationPlanTestCases -- these test cases assert the exact migration plan that is expected
@@ -132,7 +133,7 @@ var (
 			},
 		},
 		{
-			name: "Index dropped concurrently before columns dropped",
+			name: "Index dropped concurrently before columns dropped", // If this is not true, the columns will automatically drop the index
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -148,7 +149,8 @@ var (
 				Indexes: []schema.Index{
 					{
 						TableName: "foobar",
-						Name:      "foobar_pkey", Columns: []string{"id"}, IsPk: true, IsUnique: true, ConstraintName: "foobar_pkey",
+						Name:      "foobar_pkey", Columns: []string{"id"}, IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_pkey\"", ConstraintDef: "PRIMARY KEY (id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_pkey ON public.foobar USING btree (id)",
 					},
 					{
@@ -171,7 +173,8 @@ var (
 				Indexes: []schema.Index{
 					{
 						TableName: "foobar",
-						Name:      "foobar_pkey", Columns: []string{"id"}, IsPk: true, IsUnique: true, ConstraintName: "foobar_pkey",
+						Name:      "foobar_pkey", Columns: []string{"id"}, IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_pkey\"", ConstraintDef: "PRIMARY KEY (id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_pkey ON public.foobar USING btree (id)",
 					},
 				},
@@ -305,7 +308,7 @@ var (
 			},
 		},
 		{
-			name: "Index replacement on partitioned table",
+			name: "Index replacement on partitioned table (replaces index is now also a primary key)",
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -426,8 +429,9 @@ var (
 					},
 					{
 						TableName: "foobar",
-						Name:      "replaced_with_same_name_idx", Columns: []string{"bar", "foo"},
-						GetIndexDefStmt: "CREATE INDEX replaced_with_same_name_idx ON ONLY public.foobar USING btree (bar, foo)",
+						Name:      "replaced_with_same_name_idx", Columns: []string{"bar", "foo"}, IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"replaced_with_same_name_idx\"", ConstraintDef: "PRIMARY KEY (foo, id)", IsLocal: true},
+						GetIndexDefStmt: "CREATE UNIQUE INDEX replaced_with_same_name_idx ON ONLY public.foobar USING btree (bar, foo)",
 					},
 					// foobar_1 indexes
 					{
@@ -437,8 +441,9 @@ var (
 					},
 					{
 						TableName: "foobar_1",
-						Name:      "foobar_1_replaced_with_same_name_idx", Columns: []string{"bar", "foo"}, ParentIdxName: "replaced_with_same_name_idx",
-						GetIndexDefStmt: "CREATE INDEX foobar_1_replaced_with_same_name_idx ON public.foobar USING btree (bar, foo)",
+						Name:      "foobar_1_replaced_with_same_name_idx", Columns: []string{"bar", "foo"}, ParentIdxName: "replaced_with_same_name_idx", IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_1_replaced_with_same_name_idx\"", ConstraintDef: "PRIMARY KEY (foo, id)", IsLocal: true},
+						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_1_replaced_with_same_name_idx ON public.foobar USING btree (bar, foo)",
 					},
 					{
 						TableName: "foobar_1",
@@ -453,8 +458,9 @@ var (
 					},
 					{
 						TableName: "foobar_2",
-						Name:      "foobar_2_replaced_with_same_name_idx", Columns: []string{"bar", "foo"}, ParentIdxName: "replaced_with_same_name_idx",
-						GetIndexDefStmt: "CREATE INDEX foobar_2_replaced_with_same_name_idx ON public.foobar_2 USING btree (bar, foo)",
+						Name:      "foobar_2_replaced_with_same_name_idx", Columns: []string{"bar", "foo"}, ParentIdxName: "replaced_with_same_name_idx", IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_2_replaced_with_same_name_idx\"", ConstraintDef: "PRIMARY KEY (foo, id)", IsLocal: true},
+						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_2_replaced_with_same_name_idx ON public.foobar_2 USING btree (bar, foo)",
 					},
 				},
 			},
@@ -480,17 +486,22 @@ var (
 					LockTimeout: lockTimeoutDefault,
 				},
 				{
-					DDL:         "CREATE INDEX replaced_with_same_name_idx ON ONLY public.foobar USING btree (bar, foo)",
+					DDL:         "ALTER TABLE ONLY \"public\".\"foobar\" ADD CONSTRAINT \"replaced_with_same_name_idx\" PRIMARY KEY (foo, id)",
 					Timeout:     statementTimeoutDefault,
 					LockTimeout: lockTimeoutDefault,
 				},
 				{
-					DDL:         "CREATE INDEX CONCURRENTLY foobar_1_replaced_with_same_name_idx ON public.foobar USING btree (bar, foo)",
+					DDL:         "CREATE UNIQUE INDEX CONCURRENTLY foobar_1_replaced_with_same_name_idx ON public.foobar USING btree (bar, foo)",
 					Timeout:     statementTimeoutConcurrentIndexDrop,
 					LockTimeout: lockTimeoutDefault,
 					Hazards: []MigrationHazard{
 						buildIndexBuildHazard(),
 					},
+				},
+				{
+					DDL:         "ALTER TABLE \"public\".\"foobar_1\" ADD CONSTRAINT \"foobar_1_replaced_with_same_name_idx\" PRIMARY KEY USING INDEX \"foobar_1_replaced_with_same_name_idx\"",
+					Timeout:     statementTimeoutDefault,
+					LockTimeout: lockTimeoutDefault,
 				},
 				{
 					DDL:         "ALTER INDEX \"replaced_with_same_name_idx\" ATTACH PARTITION \"foobar_1_replaced_with_same_name_idx\"",
@@ -521,12 +532,18 @@ var (
 					},
 				},
 				{
-					DDL:         "CREATE INDEX CONCURRENTLY foobar_2_replaced_with_same_name_idx ON public.foobar_2 USING btree (bar, foo)",
+					DDL:         "CREATE UNIQUE INDEX CONCURRENTLY foobar_2_replaced_with_same_name_idx ON public.foobar_2 USING btree (bar, foo)",
 					Timeout:     statementTimeoutConcurrentIndexBuild,
 					LockTimeout: lockTimeoutDefault,
 					Hazards: []MigrationHazard{
 						buildIndexBuildHazard(),
 					},
+				},
+				{
+					DDL:         "ALTER TABLE \"public\".\"foobar_2\" ADD CONSTRAINT \"foobar_2_replaced_with_same_name_idx\" PRIMARY KEY USING INDEX \"foobar_2_replaced_with_same_name_idx\"",
+					Timeout:     statementTimeoutDefault,
+					LockTimeout: lockTimeoutDefault,
+					Hazards:     nil,
 				},
 				{
 					DDL:         "ALTER INDEX \"replaced_with_same_name_idx\" ATTACH PARTITION \"foobar_2_replaced_with_same_name_idx\"",
@@ -606,7 +623,8 @@ var (
 					// foobar indexes
 					{
 						TableName: "foobar",
-						Name:      "foobar_pkey", Columns: []string{"foo", "id"}, IsPk: true, IsUnique: true, ConstraintName: "foobar_pkey",
+						Name:      "foobar_pkey", Columns: []string{"foo", "id"}, IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_pkey\"", ConstraintDef: "PRIMARY KEY (foo, id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_pkey ON ONLY public.foobar USING btree (foo, id)",
 					},
 					{
@@ -617,7 +635,8 @@ var (
 					// foobar_1 indexes
 					{
 						TableName: "foobar_1",
-						Name:      "foobar_1_pkey", Columns: []string{"foo", "id"}, IsPk: true, IsUnique: true, ConstraintName: "foobar_pkey", ParentIdxName: "foobar_pkey",
+						Name:      "foobar_1_pkey", Columns: []string{"foo", "id"}, IsUnique: true, ParentIdxName: "foobar_pkey",
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_1_pkey\"", ConstraintDef: "PRIMARY KEY (foo, id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_1_pkey ON public.foobar_1 USING btree (foo, id)",
 					},
 					{
@@ -658,13 +677,15 @@ var (
 					// foobar indexes
 					{
 						TableName: "foobar",
-						Name:      "foobar_pkey", Columns: []string{"foo", "id"}, IsPk: true, IsUnique: true, ConstraintName: "foobar_pkey",
+						Name:      "foobar_pkey", Columns: []string{"foo", "id"}, IsUnique: true,
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_pkey\"", ConstraintDef: "PRIMARY KEY (foo, id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_pkey ON ONLY public.foobar USING btree (foo, id)",
 					},
 					// foobar_1 indexes
 					{
 						TableName: "foobar_1",
-						Name:      "foobar_1_pkey", Columns: []string{"foo", "id"}, IsPk: true, IsUnique: true, ConstraintName: "foobar_pkey", ParentIdxName: "foobar_pkey",
+						Name:      "foobar_1_pkey", Columns: []string{"foo", "id"}, IsUnique: true, ParentIdxName: "foobar_pkey",
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_1_pkey\"", ConstraintDef: "PRIMARY KEY (foo, id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foobar_1_pkey ON public.foobar_1 USING btree (foo, id)",
 					},
 				},
@@ -920,9 +941,8 @@ var (
 						TableName:       "foo",
 						Name:            "foo_pkey",
 						Columns:         []string{"id"},
-						IsPk:            true,
 						IsUnique:        true,
-						ConstraintName:  "foo_pkey",
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_pkey\"", ConstraintDef: "PRIMARY KEY (id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foo USING btree (id)",
 					},
 				},
@@ -971,9 +991,8 @@ var (
 						TableName:       "foo",
 						Name:            "foo_pkey",
 						Columns:         []string{"id"},
-						IsPk:            true,
 						IsUnique:        true,
-						ConstraintName:  "foo_pkey",
+						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foobar_pkey\"", ConstraintDef: "PRIMARY KEY (id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foo USING btree (id)",
 					},
 				},
@@ -1094,6 +1113,90 @@ var (
 				},
 			},
 		},
+		{
+			name: "Handle infinite index loop without panicking",
+			oldSchema: schema.Schema{
+				Tables: []schema.Table{
+					{
+						Name: "foobar",
+						Columns: []schema.Column{
+							{Name: "id", Type: "integer"},
+							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
+							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
+						},
+						CheckConstraints: nil,
+						PartitionKeyDef:  "LIST(foo)",
+					},
+					{
+						ParentTableName: "foobar",
+						Name:            "foobar_1",
+						Columns: []schema.Column{
+							{Name: "id", Type: "integer"},
+							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
+							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
+						},
+						CheckConstraints: nil,
+						ForValues:        "FOR VALUES IN ('some_val')",
+					},
+				},
+				Indexes: []schema.Index{
+					// foobar indexes
+					{
+						TableName: "foobar",
+						// This index points to its child, which is wrong, but induces a loop
+						Name: "some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "foobar_1_some_idx",
+						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
+					},
+					// foobar_1 indexes
+					{
+						TableName: "foobar_1",
+						Name:      "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
+						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
+					},
+				},
+			},
+			newSchema: schema.Schema{
+				Tables: []schema.Table{
+					{
+						Name: "foobar",
+						Columns: []schema.Column{
+							{Name: "id", Type: "integer"},
+							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
+							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
+						},
+						CheckConstraints: nil,
+						PartitionKeyDef:  "LIST(foo)",
+					},
+					{
+						ParentTableName: "foobar",
+						Name:            "foobar_1",
+						Columns: []schema.Column{
+							{Name: "id", Type: "integer"},
+							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
+							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
+						},
+						CheckConstraints: nil,
+						ForValues:        "FOR VALUES IN ('some_val')",
+					},
+				},
+				Indexes: []schema.Index{
+					// foobar indexes
+					{
+						TableName: "foobar",
+						// This index points to its child, which is wrong, but induces a loop
+						Name: "some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "foobar_1_some_idx",
+						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
+					},
+					// foobar_1 indexes
+					{
+						TableName: "foobar_1",
+						Name:      "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
+						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
+					},
+				},
+			},
+			expectedDiffErrContains: "loop detected",
+		},
 	}
 )
 
@@ -1117,6 +1220,8 @@ func TestSchemaMigrationPlanTest(t *testing.T) {
 			schemaDiff, _, err := buildSchemaDiff(testCase.oldSchema, testCase.newSchema)
 			if testCase.expectedDiffErrIs != nil {
 				require.ErrorIs(t, err, testCase.expectedDiffErrIs)
+			} else if testCase.expectedDiffErrContains != "" {
+				require.ErrorContains(t, err, testCase.expectedDiffErrContains)
 			} else {
 				require.NoError(t, err)
 			}

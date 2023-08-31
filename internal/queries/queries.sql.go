@@ -290,9 +290,6 @@ INNER JOIN
 INNER JOIN pg_catalog.pg_namespace AS foreign_table_namespace
     ON
         foreign_table_c.relnamespace = foreign_table_namespace.oid
-INNER JOIN
-    pg_catalog.pg_class AS index_c
-    ON pg_constraint.conindid = index_c.oid
 WHERE
     constraint_namespace.nspname = 'public'
     AND pg_constraint.contype = 'f'
@@ -417,17 +414,22 @@ SELECT
     table_c.relname::TEXT AS table_name,
     pg_catalog.pg_get_indexdef(c.oid)::TEXT AS def_stmt,
     COALESCE(con.conname, '')::TEXT AS constraint_name,
+    COALESCE(con.contype, '')::TEXT AS constraint_type,
+    COALESCE(
+        pg_catalog.pg_get_constraintdef(con.oid), ''
+    )::TEXT AS constraint_def,
     i.indisvalid AS index_is_valid,
     i.indisprimary AS index_is_pk,
     i.indisunique AS index_is_unique,
     COALESCE(parent_c.relname, '')::TEXT AS parent_index_name,
-    COALESCE(parent_namespace.nspname, '')::TEXT AS parent_index_schema_name
+    COALESCE(parent_namespace.nspname, '')::TEXT AS parent_index_schema_name,
+    COALESCE(con.conislocal, false) AS constraint_is_local
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_index AS i ON (i.indexrelid = c.oid)
 INNER JOIN pg_catalog.pg_class AS table_c ON (table_c.oid = i.indrelid)
 LEFT JOIN
     pg_catalog.pg_constraint AS con
-    ON (con.conindid = c.oid AND con.contype IN ('p', 'u', NULL))
+    ON (con.conindid = c.oid AND con.contype IN ('p', 'u', null))
 LEFT JOIN
     pg_catalog.pg_inherits AS idx_inherits
     ON (c.oid = idx_inherits.inhrelid)
@@ -449,11 +451,14 @@ type GetIndexesRow struct {
 	TableName             string
 	DefStmt               string
 	ConstraintName        string
+	ConstraintType        string
+	ConstraintDef         string
 	IndexIsValid          bool
 	IndexIsPk             bool
 	IndexIsUnique         bool
 	ParentIndexName       string
 	ParentIndexSchemaName string
+	ConstraintIsLocal     bool
 }
 
 func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
@@ -471,11 +476,14 @@ func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
 			&i.TableName,
 			&i.DefStmt,
 			&i.ConstraintName,
+			&i.ConstraintType,
+			&i.ConstraintDef,
 			&i.IndexIsValid,
 			&i.IndexIsPk,
 			&i.IndexIsUnique,
 			&i.ParentIndexName,
 			&i.ParentIndexSchemaName,
+			&i.ConstraintIsLocal,
 		); err != nil {
 			return nil, err
 		}
@@ -503,7 +511,7 @@ SELECT
     pg_seq.seqmin AS min_value,
     pg_seq.seqcache AS cache_size,
     pg_seq.seqcycle AS is_cycle,
-    FORMAT_TYPE(pg_seq.seqtypid, NULL) AS data_type
+    FORMAT_TYPE(pg_seq.seqtypid, null) AS data_type
 FROM pg_catalog.pg_sequence AS pg_seq
 INNER JOIN pg_catalog.pg_class AS seq_c ON pg_seq.seqrelid = seq_c.oid
 INNER JOIN pg_catalog.pg_namespace AS seq_ns ON seq_c.relnamespace = seq_ns.oid
