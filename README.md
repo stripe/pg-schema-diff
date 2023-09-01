@@ -7,42 +7,42 @@ The tooling attempts to use native postgres migration operations and avoid locki
 be lock-free and some might require downtime, but the hazards system will warn you ahead of time when that's the case.
 Stateful online migration techniques, like shadow tables, aren't yet supported.
 
+Your project's diff:
 ```
-pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres" --schema-dir schema
-
+diff --git a/schema/schema.sql b/schema/schema.sql
+index 062816a..08a6a40 100644
+--- a/schema/schema.sql
++++ b/schema/schema.sql
+@@ -4,4 +4,4 @@ CREATE TABLE foobar(
+ 	sender text,
+ 	created_at timestamp
+ );
+-CREATE INDEX message_idx ON foobar(message);
++CREATE INDEX message_idx ON foobar(message, created_at);
+```
+The generated plan (*online index replacement*):
+```
 ################################ Generated plan ################################
-1. ALTER TABLE "foobar" ADD COLUMN "fizz" character varying(255) COLLATE "pg_catalog"."default";
-        -- Timeout: 3s
+1. ALTER INDEX "message_idx" RENAME TO "message_idx_0ef03fcb-2368-4d57-9c81-f44cb58e7325";
+	-- Statement Timeout: 3s
 
-2. CREATE INDEX CONCURRENTLY fizz_idx ON public.foobar USING btree (fizz);
-        -- Timeout: 20m0s
-        -- Hazard INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.
+2. CREATE INDEX CONCURRENTLY message_idx ON public.foobar USING btree (message, created_at);
+	-- Statement Timeout: 20m0s
+	-- Lock Timeout: 3s
+	-- Hazard INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.
+
+3. DROP INDEX CONCURRENTLY "message_idx_0ef03fcb-2368-4d57-9c81-f44cb58e7325";
+	-- Statement Timeout: 20m0s
+	-- Lock Timeout: 3s
+	-- Hazard INDEX_DROPPED: Dropping this index means queries that use this index might perform worse because they will no longer will be able to leverage it.
 ```
 
 # Key features
-*Broad support for diffing & applying arbitrary postgres schemas defined in declarative DDL:*
-- Tables
-- Columns
-- Check constraints
-- Foreign keys
-- Indexes
-- Partitions
-- Functions/Triggers  (functions created by extensions are ignored)
-- Sequences
-- Extensions
-
-*The use of postgres native operations for zero-downtime migrations wherever possible:*
-- Concurrent index builds
-- Online index replacement
-
-*A comprehensive set of features to ensure the safety of planned migrations:*
-- Dangerous operations are flagged as hazards and must be approved before a migration can be applied.
-	- Data deletion hazards identify operations which will in some way delete or alter data.
-	- Downtime/locking hazards identify operations which will impede or stop other queries.
-	- Performance hazards identify operations which are resource intensive and might slow other queries.
-- Migration plans are validated first against a temporary database exactly as they would be performed against the real database.
-- The library is tested against an extensive suite of unit and acceptance tests.
-
+* Declarative schema migrations
+* The use of postgres native operations for zero-downtime migrations wherever possible:
+  * Concurrent index builds
+  * Online index replacement
+* A comprehensive set of features to ensure the safety of planned migrations:*
 # Install
 ## CLI
 ```bash
