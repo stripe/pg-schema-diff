@@ -1,14 +1,14 @@
 # pg-schema-diff
+Diffs Postgres database schemas and generates the SQL required to get your database schema from point A to B while 
+minimizing downtime and locks. This enables you to take your database and migrate it to any desired schema defined with plain DDL.
 
-Diffs Postgres database schemas and generates the SQL required to get your database schema from point A to B. This 
-enables you to take your database and migrate it to any desired schema defined with plain DDL.
-
-The tooling attempts to use native postgres migration operations and avoid locking wherever possible. Not all migrations will
+The tooling attempts to use native postgres migration operations to perform online migrations and avoid locking wherever possible. Not all migrations will
 be lock-free and some might require downtime, but the hazards system will warn you ahead of time when that's the case.
 Stateful online migration techniques, like shadow tables, aren't yet supported.
 
 Your project's diff:
 ```
+$ git diff
 diff --git a/schema/schema.sql b/schema/schema.sql
 index 062816a..08a6a40 100644
 --- a/schema/schema.sql
@@ -22,6 +22,7 @@ index 062816a..08a6a40 100644
 ```
 The generated plan (*online index replacement*):
 ```
+$ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres" --schema-dir ./schema
 ################################ Generated plan ################################
 1. ALTER INDEX "message_idx" RENAME TO "message_idx_0ef03fcb-2368-4d57-9c81-f44cb58e7325";
 	-- Statement Timeout: 3s
@@ -42,7 +43,9 @@ The generated plan (*online index replacement*):
 * The use of postgres native operations for zero-downtime migrations wherever possible:
   * Concurrent index builds
   * Online index replacement
-* A comprehensive set of features to ensure the safety of planned migrations:*
+* A comprehensive set of features to ensure the safety of planned migrations:
+  * Operators warned of dangerous operations.
+  * Migration plans are validated first against a temporary database exactly as they would be performed against the real database.
 # Install
 ## CLI
 ```bash
@@ -52,7 +55,7 @@ go install github.com/stripe/pg-schema-diff/cmd/pg-schema-diff
 ## Library
 ```bash
 go get -u github.com/stripe/pg-schema-diff
-````
+```
 # Using CLI
 ## 1. Apply schema to fresh database
 Create a directory to hold your schema files. Then, generate sql files and place them into a schema dir.
@@ -105,7 +108,7 @@ if err != nil {
 ```
 
 ## 2. Applying plan
-We leave plan application up to the user. For example, Users might want to take out a session-level advisory lock if they are 
+We leave plan application up to the user. For example, a user might want to take out a session-level advisory lock if they are 
 concerned about concurrent migrations on their database. They might also want a second user to approve the plan
 before applying it.
 
