@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"io"
 	"sort"
 )
 
@@ -212,4 +213,39 @@ func (g *Graph[V]) TopologicallySortWithPriority(isLowerPriority func(V, V) bool
 	}
 
 	return output, nil
+}
+
+func (g *Graph[V]) EncodeDOT(w io.Writer) (err error) {
+	builder := &dotBuilder{w}
+	err = builder.init()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = builder.finish()
+	}()
+	
+	n := 0
+	ids := make(map[string]int)
+	for k := range g.verticesById {
+		err = builder.addNode(n, k)
+		if err != nil {
+			return err
+		}
+		ids[k] = n
+		n++
+	}
+
+	for source, adjacentEdgesMap := range g.edges {
+		for target, isAdjacent := range adjacentEdgesMap {
+			if isAdjacent {
+				err = builder.addEdge(ids[source], ids[target])
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return err
 }
