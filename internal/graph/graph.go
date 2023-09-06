@@ -215,7 +215,7 @@ func (g *Graph[V]) TopologicallySortWithPriority(isLowerPriority func(V, V) bool
 	return output, nil
 }
 
-func (g *Graph[V]) EncodeDOT(w io.Writer) (err error) {
+func (g *Graph[V]) EncodeDOT(w io.Writer, sortVertices bool) (err error) {
 	builder := &dotBuilder{w}
 	err = builder.init()
 	if err != nil {
@@ -225,21 +225,30 @@ func (g *Graph[V]) EncodeDOT(w io.Writer) (err error) {
 		err = builder.finish()
 	}()
 	
-	n := 0
-	ids := make(map[string]int)
+	vertexIds := make([]string, 0, len(g.verticesById))
 	for k := range g.verticesById {
-		err = builder.addNode(n, k)
+		vertexIds = append(vertexIds, k)
+	}
+	if sortVertices {
+		// Sort the vertices so that the ordering of the output is deterministic,
+		// mainly for testing purposes.
+		sort.Strings(vertexIds)
+	}
+
+	nodeIdsByVertex := make(map[string]int)
+	for i, vid := range vertexIds {
+		err = builder.addNode(i, vid)
 		if err != nil {
 			return err
 		}
-		ids[k] = n
-		n++
+		nodeIdsByVertex[vid] = i
 	}
 
-	for source, adjacentEdgesMap := range g.edges {
+	for _, source := range vertexIds {
+		adjacentEdgesMap := g.edges[source]
 		for target, isAdjacent := range adjacentEdgesMap {
 			if isAdjacent {
-				err = builder.addEdge(ids[source], ids[target])
+				err = builder.addEdge(nodeIdsByVertex[source], nodeIdsByVertex[target])
 				if err != nil {
 					return err
 				}
