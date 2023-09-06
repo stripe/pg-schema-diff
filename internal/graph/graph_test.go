@@ -424,7 +424,6 @@ n1 -> n2
 	// add edges
 	for id, neighbors := range adjList {
 		for _, neighborId := range neighbors {
-			fmt.Println(id, neighborId)
 			assert.NoError(t, g.AddEdge(id, neighborId))
 		}
 	}

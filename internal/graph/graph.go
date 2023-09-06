@@ -224,7 +224,7 @@ func (g *Graph[V]) EncodeDOT(w io.Writer, sortVertices bool) (err error) {
 	defer func() {
 		err = builder.finish()
 	}()
-	
+
 	vertexIds := make([]string, 0, len(g.verticesById))
 	for k := range g.verticesById {
 		vertexIds = append(vertexIds, k)
