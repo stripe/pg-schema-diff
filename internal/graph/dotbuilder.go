@@ -37,7 +37,7 @@ func (b *dotBuilder) finish() error {
 
 // addNode adds a node to the graph
 func (b *dotBuilder) addNode(id int, label string) error {
-	attr := fmt.Sprintf(`label="%s"`, label)
+	attr := fmt.Sprintf(`label=%q`, label)
 	_, err := fmt.Fprintf(b, "n%d [%s]\n", id, attr)
 	return err
 }
