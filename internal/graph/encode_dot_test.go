@@ -16,8 +16,7 @@ func TestDOTEncoding(t *testing.T) {
 		{
 			name:    "empty graph",
 			adjList: map[string][]string{},
-			expected: 
-`digraph G {
+			expected: `digraph G {
 node [fontname="Helvetica,Arial,sans-serif"]
 }
 `,
@@ -31,8 +30,7 @@ node [fontname="Helvetica,Arial,sans-serif"]
 				"v_3": {},
 				"v_4": {"v_0", "v_3"},
 			},
-			expected: 
-`digraph G {
+			expected: `digraph G {
 node [fontname="Helvetica,Arial,sans-serif"]
 n0 [label="v_0"]
 n1 [label="v_1"]
@@ -50,25 +48,25 @@ n4 -> n3
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-		g := NewGraph[vertex]()
-		
-		// add vertices
-		for id := range tc.adjList {
-			g.AddVertex(NewV(id))
-		}
+			g := NewGraph[vertex]()
 
-		// add edges
-		for id, neighbors := range tc.adjList {
-			for _, neighborId := range neighbors {
-				assert.NoError(t, g.AddEdge(id, neighborId))
+			// add vertices
+			for id := range tc.adjList {
+				g.AddVertex(NewV(id))
 			}
-		}
 
-		// encode to DOT
-		buf := bytes.Buffer{}
-		// sort vertices to ensure deterministic ordering of nodes and edges
-		assert.NoError(t, EncodeDOT(g, &buf, true))
-		assert.Equal(t, tc.expected, buf.String())
+			// add edges
+			for id, neighbors := range tc.adjList {
+				for _, neighborId := range neighbors {
+					assert.NoError(t, g.AddEdge(id, neighborId))
+				}
+			}
+
+			// encode to DOT
+			buf := bytes.Buffer{}
+			// sort vertices to ensure deterministic ordering of nodes and edges
+			assert.NoError(t, EncodeDOT(g, &buf, true))
+			assert.Equal(t, tc.expected, buf.String())
 		})
 	}
 }
