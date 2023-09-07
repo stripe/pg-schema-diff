@@ -80,8 +80,8 @@ func EncodeDOT[V Vertex](g *Graph[V], w io.Writer, sortVertices bool) error {
 		adjacentEdgesMap := g.edges[source]
 
 		adjacentVerticesIds := make([]string, 0, len(adjacentEdgesMap))
-		for targetId := range adjacentEdgesMap {
-			adjacentVerticesIds = append(adjacentVerticesIds, targetId)
+		for tid := range adjacentEdgesMap {
+			adjacentVerticesIds = append(adjacentVerticesIds, tid)
 		}
 		if sortVertices {
 			sort.Strings(adjacentVerticesIds)
