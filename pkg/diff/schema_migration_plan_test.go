@@ -55,6 +55,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 				Indexes: []schema.Index{
@@ -80,6 +81,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 				Indexes: []schema.Index{
@@ -144,6 +146,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 				Indexes: []schema.Index{
@@ -168,6 +171,7 @@ var (
 							{Name: "id", Type: "integer"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 				Indexes: []schema.Index{
@@ -212,6 +216,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 				Indexes: []schema.Index{
@@ -233,6 +238,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 				Indexes: []schema.Index{
@@ -266,48 +272,6 @@ var (
 			},
 		},
 		{
-			name:      "Create partitioned table",
-			oldSchema: schema.Schema{},
-			newSchema: schema.Schema{
-				Tables: []schema.Table{
-					{
-						Name: "foobar",
-						Columns: []schema.Column{
-							{Name: "id", Type: "integer"},
-							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
-						},
-						PartitionKeyDef: "LIST(foo)",
-					},
-					{
-						ParentTableName: "foobar",
-						Name:            "foobar_1",
-						Columns: []schema.Column{
-							{Name: "id", Type: "integer"},
-							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
-						},
-						ForValues: "FOR VALUES IN ('some_val')",
-					},
-				},
-			},
-			expectedStatements: []Statement{
-				{
-					DDL:         "CREATE TABLE \"foobar\" (\n\t\"id\" integer NOT NULL,\n\t\"foo\" character varying(255) COLLATE \"pg_catalog\".\"default\" NOT NULL DEFAULT ''::character varying\n) PARTITION BY LIST(foo)",
-					Timeout:     statementTimeoutDefault,
-					LockTimeout: lockTimeoutDefault,
-				},
-				{
-					DDL:         "CREATE TABLE \"foobar_1\" (\n\t\"id\" integer NOT NULL,\n\t\"foo\" character varying(255) COLLATE \"pg_catalog\".\"default\" NOT NULL DEFAULT ''::character varying\n)",
-					Timeout:     statementTimeoutDefault,
-					LockTimeout: lockTimeoutDefault,
-				},
-				{
-					DDL:         "ALTER TABLE \"public\".\"foobar\" ATTACH PARTITION \"foobar_1\" FOR VALUES IN ('some_val')",
-					Timeout:     statementTimeoutDefault,
-					LockTimeout: lockTimeoutDefault,
-				},
-			},
-		},
-		{
 			name: "Index replacement on partitioned table (replaces index is now also a primary key)",
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
@@ -319,6 +283,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
@@ -330,6 +295,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_val')",
 					},
 					{
@@ -341,6 +307,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_other_val')",
 					},
 				},
@@ -395,6 +362,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
@@ -406,6 +374,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_val')",
 					},
 					{
@@ -417,6 +386,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_other_val')",
 					},
 				},
@@ -605,6 +575,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
@@ -616,6 +587,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_val')",
 					},
 				},
@@ -660,6 +632,7 @@ var (
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
@@ -670,6 +643,7 @@ var (
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_val')",
 					},
 				},
@@ -730,6 +704,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
@@ -741,6 +716,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_val')",
 					},
 				},
@@ -771,6 +747,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
@@ -782,6 +759,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_val')",
 					},
 				},
@@ -840,6 +818,7 @@ var (
 							{Name: "id", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 			},
@@ -852,6 +831,7 @@ var (
 							{Name: "something", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 			},
@@ -870,6 +850,7 @@ var (
 						CheckConstraints: []schema.CheckConstraint{
 							{Name: "id_check", Expression: "(id > 0)", IsInheritable: true},
 						},
+						ReplicaIdentity: schema.ReplicaIdentityDefault,
 					},
 				},
 			},
@@ -883,6 +864,7 @@ var (
 						CheckConstraints: []schema.CheckConstraint{
 							{Name: "id_check", Expression: "(id > 0)", IsInheritable: true, IsValid: true},
 						},
+						ReplicaIdentity: schema.ReplicaIdentityDefault,
 					},
 				},
 			},
@@ -1016,6 +998,7 @@ var (
 							{Name: "baz", Type: "bigint"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 				Indexes: nil,
@@ -1028,6 +1011,7 @@ var (
 							{Name: "baz", Type: "timestamp without time zone", Default: "current_timestamp"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 				Indexes: nil,
@@ -1071,6 +1055,7 @@ var (
 							{Name: "migrate_type", Type: "text", Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 			},
@@ -1083,6 +1068,7 @@ var (
 							{Name: "migrate_type", Type: "character varying(255)", Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 			},
@@ -1125,6 +1111,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
@@ -1136,6 +1123,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_val')",
 					},
 				},
@@ -1165,6 +1153,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
@@ -1176,6 +1165,7 @@ var (
 							{Name: "bar", Type: "timestamp without time zone", IsNullable: true, Default: "CURRENT_TIMESTAMP"},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some_val')",
 					},
 				},

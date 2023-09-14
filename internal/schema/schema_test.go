@@ -73,9 +73,11 @@ var (
 			);
 
 			ALTER TABLE foo ADD CONSTRAINT author_check CHECK (author IS NOT NULL AND LENGTH(author) > 0) NO INHERIT NOT VALID;
-			CREATE INDEX some_idx ON foo USING hash (content);
-			CREATE UNIQUE INDEX some_unique_idx ON foo (created_at DESC, author ASC);
+			CREATE INDEX some_idx ON foo (created_at DESC, author ASC);
+			CREATE UNIQUE INDEX some_unique_idx ON foo (content);
 			CREATE INDEX some_gin_idx ON foo USING GIN (author gin_trgm_ops);
+
+			ALTER TABLE foo REPLICA IDENTITY USING INDEX some_unique_idx;
 
 			CREATE FUNCTION increment_version() RETURNS TRIGGER AS $$
 				BEGIN
@@ -99,7 +101,7 @@ var (
 				ON DELETE CASCADE
 				NOT VALID;
 		`},
-			expectedHash: "c10cfab0c2d413b1",
+			expectedHash: "2ebe255a8e21e27",
 			expectedSchema: schema.Schema{
 				Extensions: []schema.Extension{
 					{
@@ -133,6 +135,7 @@ var (
 								},
 							},
 						},
+						ReplicaIdentity: schema.ReplicaIdentityIndex,
 					},
 					{
 						Name: "foo_fk",
@@ -155,6 +158,7 @@ var (
 							},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "",
 						ParentTableName:  "",
 						ForValues:        "",
@@ -214,16 +218,17 @@ var (
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foo USING btree (id, version)",
 					},
 					{
-						TableName: "foo",
-						Name:      "some_idx", Columns: []string{"content"},
-						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foo USING hash (content)",
+						TableName:       "foo",
+						Name:            "some_idx",
+						Columns:         []string{"created_at", "author"},
+						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foo USING btree (created_at DESC, author)",
 					},
 					{
 						TableName:       "foo",
 						Name:            "some_unique_idx",
-						Columns:         []string{"created_at", "author"},
+						Columns:         []string{"content"},
 						IsUnique:        true,
-						GetIndexDefStmt: "CREATE UNIQUE INDEX some_unique_idx ON public.foo USING btree (created_at DESC, author)",
+						GetIndexDefStmt: "CREATE UNIQUE INDEX some_unique_idx ON public.foo USING btree (content)",
 					},
 					{
 						TableName:       "foo",
@@ -282,6 +287,7 @@ var (
 				PRIMARY KEY (author, id)
 			) PARTITION BY LIST (author);
 			ALTER TABLE foo ADD CONSTRAINT author_check CHECK (author IS NOT NULL AND LENGTH(author) > 0) NOT VALID;
+			ALTER TABLE foo REPLICA IDENTITY FULL;
 
 			CREATE FUNCTION increment_version() RETURNS TRIGGER AS $$
 				BEGIN
@@ -299,6 +305,7 @@ var (
 			CREATE TABLE foo_1 PARTITION OF foo(
 			    content NOT NULL
 			) FOR VALUES IN ('some author 1');
+			ALTER TABLE foo_1 REPLICA IDENTITY NOTHING;
 			CREATE TABLE foo_2 PARTITION OF foo FOR VALUES IN ('some author 2');
 			CREATE TABLE foo_3 PARTITION OF foo FOR VALUES IN ('some author 3');
 
@@ -331,7 +338,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "5369b79369fba1",
+			expectedHash: "7cc1abf755b2ec27",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -349,6 +356,7 @@ var (
 							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true, IsInheritable: true},
 							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true},
 						},
+						ReplicaIdentity: schema.ReplicaIdentityFull,
 						PartitionKeyDef: "LIST (author)",
 					},
 					{
@@ -363,6 +371,7 @@ var (
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityNothing,
 						ForValues:        "FOR VALUES IN ('some author 1')",
 					},
 					{
@@ -377,6 +386,7 @@ var (
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some author 2')",
 					},
 					{
@@ -391,6 +401,7 @@ var (
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some author 3')",
 					},
 					{
@@ -422,6 +433,7 @@ var (
 							},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST (author)",
 						ParentTableName:  "",
 						ForValues:        "",
@@ -455,6 +467,7 @@ var (
 							},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "",
 						ParentTableName:  "foo_fk",
 						ForValues:        "FOR VALUES IN ('some author 1')",
@@ -623,7 +636,7 @@ var (
 			    PRIMARY KEY (author, id)
 			) FOR VALUES IN ('some author 1');
 		`},
-			expectedHash: "b2f9f40bcc2b3dc5",
+			expectedHash: "a79f6f70a0439aea",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -633,6 +646,7 @@ var (
 							{Name: "author", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST (author)",
 					},
 					{
@@ -643,6 +657,7 @@ var (
 							{Name: "author", Type: "text", Size: -1, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some author 1')",
 					},
 				},
@@ -673,7 +688,7 @@ var (
 				"serial" SERIAL NOT NULL
 			);
 		`},
-			expectedHash: "c107f4517aef1d0d",
+			expectedHash: "b9bb73829e790b8e",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -692,6 +707,7 @@ var (
 							{Name: "serial", Type: "integer", Collation: schema.SchemaQualifiedName{}, Default: "nextval('foo_serial_seq'::regclass)", IsNullable: false, Size: 4},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 				Sequences: []schema.Sequence{
@@ -794,7 +810,7 @@ var (
 			ALTER TABLE foo ADD CONSTRAINT foo_fk FOREIGN KEY (id) REFERENCES test.foo(test_schema_id);
 			ALTER TABLE test.foo ADD CONSTRAINT foo_fk FOREIGN KEY (test_schema_id) REFERENCES foo(id);
 		`},
-			expectedHash: "bdcdfbf8b0311dcb",
+			expectedHash: "e6bd150cfcc499e9",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -807,6 +823,7 @@ var (
 						CheckConstraints: []schema.CheckConstraint{
 							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true},
 						},
+						ReplicaIdentity: schema.ReplicaIdentityDefault,
 					},
 					{
 						Name: "bar",
@@ -817,6 +834,7 @@ var (
 						CheckConstraints: []schema.CheckConstraint{
 							{Name: "bar_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true},
 						},
+						ReplicaIdentity: schema.ReplicaIdentityDefault,
 						PartitionKeyDef: "LIST (author)",
 					},
 					{
@@ -827,6 +845,7 @@ var (
 							{Name: "author", Type: "text", Default: "", Size: -1, Collation: schema.SchemaQualifiedName{SchemaName: "test", EscapedName: `"some collation"`}},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some author 1')",
 					},
 				},
@@ -912,7 +931,7 @@ var (
 				value TEXT
 			);
 		`},
-			expectedHash: "d79ce7136996f2a7",
+			expectedHash: "5fa049e3f5b044a5",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -921,6 +940,7 @@ var (
 							{Name: "value", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
+						ReplicaIdentity:  schema.ReplicaIdentityDefault,
 					},
 				},
 			},

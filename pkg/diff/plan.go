@@ -12,6 +12,7 @@ const (
 	MigrationHazardTypeAcquiresAccessExclusiveLock   MigrationHazardType = "ACQUIRES_ACCESS_EXCLUSIVE_LOCK"
 	MigrationHazardTypeAcquiresShareLock             MigrationHazardType = "ACQUIRES_SHARE_LOCK"
 	MigrationHazardTypeAcquiresShareRowExclusiveLock MigrationHazardType = "ACQUIRES_SHARE_ROW_EXCLUSIVE_LOCK"
+	MigrationHazardTypeCorrectness                   MigrationHazardType = "CORRECTNESS"
 	MigrationHazardTypeDeletesData                   MigrationHazardType = "DELETES_DATA"
 	MigrationHazardTypeHasUntrackableDependencies    MigrationHazardType = "HAS_UNTRACKABLE_DEPENDENCIES"
 	MigrationHazardTypeIndexBuild                    MigrationHazardType = "INDEX_BUILD"
