@@ -106,6 +106,15 @@ func (s Schema) Hash() (string, error) {
 	return fmt.Sprintf("%x", hashVal), nil
 }
 
+type ReplicaIdentity string
+
+const (
+	ReplicaIdentityDefault ReplicaIdentity = "d"
+	ReplicaIdentityNothing ReplicaIdentity = "n"
+	ReplicaIdentityFull    ReplicaIdentity = "f"
+	ReplicaIdentityIndex   ReplicaIdentity = "i"
+)
+
 type Extension struct {
 	SchemaQualifiedName
 	Version string
@@ -115,6 +124,7 @@ type Table struct {
 	Name             string
 	Columns          []Column
 	CheckConstraints []CheckConstraint
+	ReplicaIdentity  ReplicaIdentity
 
 	// PartitionKeyDef is the output of Pg function pg_get_partkeydef:
 	// PARTITION BY $PartitionKeyDef
@@ -449,6 +459,7 @@ func fetchTables(ctx context.Context, q *queries.Queries) ([]Table, error) {
 			Name:             table.TableName,
 			Columns:          columns,
 			CheckConstraints: tablesToCheckConsMap[table.TableName],
+			ReplicaIdentity:  ReplicaIdentity(table.ReplicaIdentity),
 
 			PartitionKeyDef: table.PartitionKeyDef,
 

@@ -67,6 +67,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
 				FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
 			);
+			ALTER TABLE bar REPLICA IDENTITY FULL;
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
 			CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);
@@ -131,6 +132,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
 				FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
 			);
+			ALTER TABLE bar REPLICA IDENTITY FULL;
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
 			CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);

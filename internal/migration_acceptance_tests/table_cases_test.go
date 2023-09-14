@@ -16,6 +16,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    fizz SERIAL NOT NULL,
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
+			ALTER TABLE foobar REPLICA IDENTITY FULL;
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX unique_idx ON foobar(foo, bar);
 
@@ -38,6 +39,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    fizz SERIAL NOT NULL,
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
+			ALTER TABLE foobar REPLICA IDENTITY FULL;
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX unique_idx ON foobar(foo, bar);
 
@@ -70,6 +72,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			    fizz SERIAL NOT NULL,
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
+			ALTER TABLE foobar REPLICA IDENTITY FULL;
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
 
@@ -92,6 +95,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 				buzz REAL CHECK (buzz IS NOT NULL),
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL
 			);
+			ALTER TABLE foobar REPLICA IDENTITY FULL;
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
 
@@ -135,6 +139,26 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 				CREATE UNIQUE INDEX unique_idx ON "Foobar"("Foo" DESC, bar);
 				`,
 			},
+		},
+	},
+	{
+		name:         "Create table with index replica identity",
+		oldSchemaDDL: nil,
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+			    foobar TEXT NOT NULL
+			);
+			CREATE UNIQUE INDEX some_idx ON foobar(foobar);
+			ALTER TABLE foobar REPLICA IDENTITY USING INDEX some_idx;
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
 	{
@@ -183,6 +207,58 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: nil,
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "Alter replica identity",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE "Foobar"(
+			    id INT PRIMARY KEY
+			);
+			ALTER TABLE "Foobar" REPLICA IDENTITY FULL;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE "Foobar"(
+			    id INT PRIMARY KEY
+			);
+			ALTER TABLE "Foobar" REPLICA IDENTITY DEFAULT ;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeCorrectness,
+		},
+	},
+	{
+		name: "Alter replica identity to index replica identity",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY
+			);
+			ALTER TABLE foobar REPLICA IDENTITY FULL;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar TEXT NOT NULL
+			);
+			CREATE UNIQUE INDEX some_idx ON foobar(foobar);
+			ALTER TABLE foobar REPLICA IDENTITY USING INDEX some_idx;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeCorrectness,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
 	{
