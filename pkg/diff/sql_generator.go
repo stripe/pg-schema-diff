@@ -647,7 +647,7 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		LockTimeout: lockTimeoutDefault,
 	})
 
-	csg := checkConstraintSQLGenerator{tableName: table.Name, isNewTable: true}
+	csg := checkConstraintSQLGenerator{tableName: publicSchemaName(table.Name), isNewTable: true}
 	for _, checkCon := range table.CheckConstraints {
 		addConStmts, err := csg.Add(checkCon)
 		if err != nil {
@@ -655,6 +655,17 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		}
 		// Remove hazards from statements since the table is brand new
 		stmts = append(stmts, stripMigrationHazards(addConStmts)...)
+	}
+
+	if table.ReplicaIdentity != schema.ReplicaIdentityDefault {
+		// We don't need to set the replica identity if it's the default
+		alterReplicaIdentityStmt, err := alterReplicaIdentityStatement(publicSchemaName(table.Name), table.ReplicaIdentity)
+		if err != nil {
+			return nil, fmt.Errorf("building replica identity statement: %w", err)
+		}
+		// Remove hazards from statements since the table is brand new
+		alterReplicaIdentityStmt.Hazards = nil
+		stmts = append(stmts, alterReplicaIdentityStmt)
 	}
 
 	return stmts, nil
@@ -689,10 +700,35 @@ func (t *tableSQLVertexGenerator) Delete(table schema.Table) ([]Statement, error
 func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 	if diff.old.IsPartition() != diff.new.IsPartition() {
 		return nil, fmt.Errorf("changing a partition to no longer be a partition (or vice versa): %w", ErrNotImplemented)
-	} else if diff.new.IsPartition() {
-		return t.alterPartition(diff)
 	}
 
+	var stmts []Statement
+	if diff.new.IsPartition() {
+		alterPartitionStmts, err := t.alterPartition(diff)
+		if err != nil {
+			return nil, fmt.Errorf("altering partition: %w", err)
+		}
+		stmts = alterPartitionStmts
+	} else {
+		alterBaseTableStmts, err := t.alterBaseTable(diff)
+		if err != nil {
+			return nil, fmt.Errorf("altering base table: %w", err)
+		}
+		stmts = alterBaseTableStmts
+	}
+
+	if diff.old.ReplicaIdentity != diff.new.ReplicaIdentity {
+		alterReplicaIdentityStmt, err := alterReplicaIdentityStatement(publicSchemaName(diff.new.Name), diff.new.ReplicaIdentity)
+		if err != nil {
+			return nil, fmt.Errorf("building replica identity statement: %w", err)
+		}
+		stmts = append(stmts, alterReplicaIdentityStmt)
+	}
+
+	return stmts, nil
+}
+
+func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, error) {
 	if diff.old.PartitionKeyDef != diff.new.PartitionKeyDef {
 		return nil, fmt.Errorf("changing partition key def: %w", ErrNotImplemented)
 	}
@@ -703,7 +739,7 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving index diff: %w", err)
 	}
 
-	checkConSQLGenerator := checkConstraintSQLGenerator{tableName: diff.new.Name, isNewTable: false}
+	checkConSQLGenerator := checkConstraintSQLGenerator{tableName: publicSchemaName(diff.new.Name), isNewTable: false}
 	checkConGeneratedSQL, err := diff.checkConstraintDiff.resolveToSQLGroupedByEffect(&checkConSQLGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("resolving check constraints diff: %w", err)
@@ -716,6 +752,7 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 	stmts = append(stmts, columnGeneratedSQL.Alters...)
 	stmts = append(stmts, checkConGeneratedSQL.Adds...)
 	stmts = append(stmts, checkConGeneratedSQL.Alters...)
+
 	return stmts, nil
 }
 
@@ -734,7 +771,7 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 		if colDiff.old.IsNullable == colDiff.new.IsNullable {
 			continue
 		}
-		alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", publicTableAlterPrefix(diff.new.Name), schema.EscapeIdentifier(colDiff.new.Name))
+		alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(publicSchemaName(diff.new.Name)), schema.EscapeIdentifier(colDiff.new.Name))
 		if colDiff.new.IsNullable {
 			stmts = append(stmts, Statement{
 				DDL:         fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
@@ -758,6 +795,37 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 	}
 
 	return stmts, nil
+}
+
+func alterReplicaIdentityStatement(table schema.SchemaQualifiedName, identity schema.ReplicaIdentity) (Statement, error) {
+	alterType, err := replicaIdentityAlterType(identity)
+	if err != nil {
+		return Statement{}, fmt.Errorf("getting replica identity alter type: %w", err)
+	}
+	return Statement{
+		DDL:         fmt.Sprintf("%s REPLICA IDENTITY %s", alterTablePrefix(table), alterType),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards: []MigrationHazard{{
+			Type:    MigrationHazardTypeCorrectness,
+			Message: "Changing replica identity may change the behavior of processes dependent on logical replication",
+		}},
+	}, nil
+}
+
+func replicaIdentityAlterType(identity schema.ReplicaIdentity) (string, error) {
+	switch identity {
+	case schema.ReplicaIdentityDefault:
+		return "DEFAULT", nil
+	case schema.ReplicaIdentityFull:
+		return "FULL", nil
+	case schema.ReplicaIdentityNothing:
+		return "NOTHING", nil
+		// We currently won't support index replica identity. If we want to add support, we should either:
+		// option 1) Have the index sql generator generate the alter statement when the replica identity changes to index
+		// option 2) Have a dedicates SQL generator for the alter replica identity statement
+	}
+	return "", fmt.Errorf("unknown/unsupported replica identity %s: %w", identity, ErrNotImplemented)
 }
 
 func (t *tableSQLVertexGenerator) GetSQLVertexId(table schema.Table) string {
@@ -793,7 +861,7 @@ type columnSQLGenerator struct {
 
 func (csg *columnSQLGenerator) Add(column schema.Column) ([]Statement, error) {
 	return []Statement{{
-		DDL:         fmt.Sprintf("%s ADD COLUMN %s", publicTableAlterPrefix(csg.tableName), buildColumnDefinition(column)),
+		DDL:         fmt.Sprintf("%s ADD COLUMN %s", alterTablePrefix(publicSchemaName(csg.tableName)), buildColumnDefinition(column)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}}, nil
@@ -801,7 +869,7 @@ func (csg *columnSQLGenerator) Add(column schema.Column) ([]Statement, error) {
 
 func (csg *columnSQLGenerator) Delete(column schema.Column) ([]Statement, error) {
 	return []Statement{{
-		DDL:         fmt.Sprintf("%s DROP COLUMN %s", publicTableAlterPrefix(csg.tableName), schema.EscapeIdentifier(column.Name)),
+		DDL:         fmt.Sprintf("%s DROP COLUMN %s", alterTablePrefix(publicSchemaName(csg.tableName)), schema.EscapeIdentifier(column.Name)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards: []MigrationHazard{
@@ -819,7 +887,7 @@ func (csg *columnSQLGenerator) Alter(diff columnDiff) ([]Statement, error) {
 	}
 	oldColumn, newColumn := diff.old, diff.new
 	var stmts []Statement
-	alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", publicTableAlterPrefix(csg.tableName), schema.EscapeIdentifier(newColumn.Name))
+	alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(publicSchemaName(csg.tableName)), schema.EscapeIdentifier(newColumn.Name))
 
 	if oldColumn.IsNullable != newColumn.IsNullable {
 		if newColumn.IsNullable {
@@ -1088,11 +1156,7 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		if index.IsPk() {
 			// If it's a primary key on a partitioned table, the index will be created implicitly through the constraint
 			// If we attempt to create the index and the primary key, it will throw an error about the relation already existing
-			owningTableName := schema.SchemaQualifiedName{
-				// Assumes public
-				SchemaName:  "public",
-				EscapedName: schema.EscapeIdentifier(index.TableName),
-			}
+			owningTableName := publicSchemaName(index.TableName)
 			// If the table is the base table of a partitioned table, the constraint should "ONLY" be added to the base
 			//table. We can then concurrently build all of the partitioned indexes and attach them.
 			// Without "ONLY", all the partitioned indexes will be automatically built
@@ -1175,11 +1239,7 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 		// the constraint without dropping the index
 		return []Statement{
 			{
-				DDL: dropConstraintDDL(schema.SchemaQualifiedName{
-					// Assumes public
-					SchemaName:  "public",
-					EscapedName: schema.EscapeIdentifier(index.TableName),
-				}, escapedConstraintName),
+				DDL: dropConstraintDDL(publicSchemaName(index.TableName), escapedConstraintName),
 
 				Timeout:     statementTimeoutDefault,
 				LockTimeout: lockTimeoutDefault,
@@ -1265,12 +1325,7 @@ func isOnPartitionedTable(tablesInNewSchemaByName map[string]schema.Table, index
 }
 
 func (isg *indexSQLVertexGenerator) addIndexConstraint(index schema.Index) (Statement, error) {
-	owningTableName := schema.SchemaQualifiedName{
-		// Assumes public
-		SchemaName:  "public",
-		EscapedName: schema.EscapeIdentifier(index.TableName),
-	}
-
+	owningTableName := publicSchemaName(index.TableName)
 	return Statement{
 		DDL: fmt.Sprintf("%s %s USING INDEX %s",
 			addConstraintPrefix(owningTableName, index.Constraint.EscapedConstraintName),
@@ -1369,7 +1424,7 @@ func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index sche
 }
 
 type checkConstraintSQLGenerator struct {
-	tableName  string
+	tableName  schema.SchemaQualifiedName
 	isNewTable bool
 }
 
@@ -1384,11 +1439,7 @@ func (csg *checkConstraintSQLGenerator) Add(con schema.CheckConstraint) ([]State
 
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%s CHECK(%s)",
-		addConstraintPrefix(schema.SchemaQualifiedName{
-			// Assumes public
-			SchemaName:  "public",
-			EscapedName: schema.EscapeIdentifier(csg.tableName),
-		}, schema.EscapeIdentifier(con.Name)), con.Expression))
+		addConstraintPrefix(csg.tableName, schema.EscapeIdentifier(con.Name)), con.Expression))
 	if !con.IsInheritable {
 		sb.WriteString(" NO INHERIT")
 	}
@@ -1419,11 +1470,7 @@ func (csg *checkConstraintSQLGenerator) Delete(con schema.CheckConstraint) ([]St
 	}
 
 	return []Statement{{
-		DDL: dropConstraintDDL(schema.SchemaQualifiedName{
-			// Assumes public
-			SchemaName:  "public",
-			EscapedName: schema.EscapeIdentifier(csg.tableName),
-		}, schema.EscapeIdentifier(con.Name)),
+		DDL:         dropConstraintDDL(csg.tableName, schema.EscapeIdentifier(con.Name)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}}, nil
@@ -1446,11 +1493,9 @@ func (csg *checkConstraintSQLGenerator) Alter(diff checkConstraintDiff) ([]State
 		return nil, fmt.Errorf("check constraints that depend on UDFs: %w", ErrNotImplemented)
 	}
 
-	return []Statement{validateConstraintStatement(schema.SchemaQualifiedName{
-		// Assumes public
-		SchemaName:  "public",
-		EscapedName: schema.EscapeIdentifier(csg.tableName),
-	}, schema.EscapeIdentifier(diff.new.Name))}, nil
+	return []Statement{
+		validateConstraintStatement(csg.tableName, schema.EscapeIdentifier(diff.new.Name)),
+	}, nil
 }
 
 type attachPartitionSQLVertexGenerator struct {
@@ -1484,7 +1529,7 @@ func (*attachPartitionSQLVertexGenerator) Alter(_ tableDiff) ([]Statement, error
 
 func buildAttachPartitionStatement(table schema.Table) Statement {
 	return Statement{
-		DDL:         fmt.Sprintf("%s ATTACH PARTITION %s %s", publicTableAlterPrefix(table.ParentTableName), schema.EscapeIdentifier(table.Name), table.ForValues),
+		DDL:         fmt.Sprintf("%s ATTACH PARTITION %s %s", alterTablePrefix(publicSchemaName(table.ParentTableName)), schema.EscapeIdentifier(table.Name), table.ForValues),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}
@@ -2065,12 +2110,12 @@ func validateConstraintStatement(owningTable schema.SchemaQualifiedName, escaped
 	}
 }
 
-func publicTableAlterPrefix(tableName string) string {
-	return alterTablePrefix(schema.SchemaQualifiedName{
+func publicSchemaName(unescapedName string) schema.SchemaQualifiedName {
+	return schema.SchemaQualifiedName{
 		// Assumes public
 		SchemaName:  "public",
-		EscapedName: schema.EscapeIdentifier(tableName),
-	})
+		EscapedName: schema.EscapeIdentifier(unescapedName),
+	}
 }
 
 func alterTablePrefix(table schema.SchemaQualifiedName) string {

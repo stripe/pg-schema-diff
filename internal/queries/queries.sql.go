@@ -596,6 +596,7 @@ const getTables = `-- name: GetTables :many
 SELECT
     c.oid AS oid,
     c.relname::TEXT AS table_name,
+    c.relreplident::TEXT AS replica_identity,
     COALESCE(parent_c.relname, '')::TEXT AS parent_table_name,
     COALESCE(parent_namespace.nspname, '')::TEXT AS parent_table_schema_name,
     (CASE
@@ -626,6 +627,7 @@ WHERE
 type GetTablesRow struct {
 	Oid                   interface{}
 	TableName             string
+	ReplicaIdentity       string
 	ParentTableName       string
 	ParentTableSchemaName string
 	PartitionKeyDef       string
@@ -644,6 +646,7 @@ func (q *Queries) GetTables(ctx context.Context) ([]GetTablesRow, error) {
 		if err := rows.Scan(
 			&i.Oid,
 			&i.TableName,
+			&i.ReplicaIdentity,
 			&i.ParentTableName,
 			&i.ParentTableSchemaName,
 			&i.PartitionKeyDef,

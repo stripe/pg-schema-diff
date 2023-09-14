@@ -17,7 +17,9 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				CHECK ( fizz > 0 ),
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
+			ALTER TABLE foobar REPLICA IDENTITY FULL;
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			ALTER TABLE foobar_1 REPLICA IDENTITY DEFAULT ;
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
 			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
 			-- partitioned indexes
@@ -54,8 +56,10 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				CHECK ( fizz > 0 ),
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
+			ALTER TABLE foobar REPLICA IDENTITY FULL;
 			-- partitions
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			ALTER TABLE foobar_1 REPLICA IDENTITY DEFAULT ;
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
 			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
 			-- partitioned indexes
@@ -104,12 +108,16 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				CHECK ( fizz > 0 ),
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
+			ALTER TABLE "Foobar" REPLICA IDENTITY FULL;
+
 			-- partitions
 			CREATE TABLE "FOOBAR_1" PARTITION OF "Foobar"(
 			    foo NOT NULL,
 			    bar NOT NULL
 			) FOR VALUES IN ('foo_1');
+			ALTER TABLE "FOOBAR_1" REPLICA IDENTITY NOTHING ;
 			CREATE TABLE foobar_2 PARTITION OF "Foobar" FOR VALUES IN ('foo_2');
+			ALTER TABLE foobar_2 REPLICA IDENTITY FULL;
 			CREATE TABLE foobar_3 PARTITION OF "Foobar" FOR VALUES IN ('foo_3');
 			-- partitioned indexes
 			CREATE UNIQUE INDEX foobar_unique_idx ON "Foobar"(foo, fizz);
@@ -129,12 +137,16 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 					CHECK ( fizz > 0 ),
 					PRIMARY KEY (foo, id)
 				) PARTITION BY LIST (foo);
+				ALTER TABLE "Foobar" REPLICA IDENTITY FULL;
+
+				-- partitions
 				CREATE TABLE "FOOBAR_1" PARTITION OF "Foobar"(
 					foo NOT NULL,
 					bar NOT NULL
 				) FOR VALUES IN ('foo_1');
-				-- partitions
+				ALTER TABLE "FOOBAR_1" REPLICA IDENTITY NOTHING ;
 				CREATE TABLE foobar_2 PARTITION OF "Foobar" FOR VALUES IN ('foo_2');
+				ALTER TABLE foobar_2 REPLICA IDENTITY FULL;
 				CREATE TABLE foobar_3 PARTITION OF "Foobar" FOR VALUES IN ('foo_3');
 				-- partitioned indexes
 				CREATE UNIQUE INDEX foobar_unique_idx ON "Foobar"(foo, fizz);
@@ -246,6 +258,43 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeDeletesData,
 		},
 		newSchemaDDL: nil,
+	},
+	{
+		name: "Alter replica identity of parent and children",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    PRIMARY KEY (foo, id)
+			) PARTITION BY LIST (foo);
+			ALTER TABLE foobar REPLICA IDENTITY FULL;
+			-- partitions
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			ALTER TABLE foobar_1 REPLICA IDENTITY NOTHING;
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    PRIMARY KEY (foo, id)
+			) PARTITION BY LIST (foo);
+			ALTER TABLE foobar REPLICA IDENTITY DEFAULT;
+			-- partitions
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			ALTER TABLE foobar_1 REPLICA IDENTITY FULL;
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			ALTER TABLE foobar_2 REPLICA IDENTITY FULL;
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeCorrectness,
+		},
 	},
 	{
 		name: "Alter table: New primary key, change column types, delete partitioned index, new partitioned index, delete local index, add local index, validate check constraint, validate FK, delete FK",

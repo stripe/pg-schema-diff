@@ -2,6 +2,7 @@
 SELECT
     c.oid AS oid,
     c.relname::TEXT AS table_name,
+    c.relreplident::TEXT AS replica_identity,
     COALESCE(parent_c.relname, '')::TEXT AS parent_table_name,
     COALESCE(parent_namespace.nspname, '')::TEXT AS parent_table_schema_name,
     (CASE
