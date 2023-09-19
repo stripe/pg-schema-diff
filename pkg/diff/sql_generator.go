@@ -2,6 +2,7 @@ package diff
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -209,6 +210,43 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		} else if _, isReferencingNewTable := addedTablesByName[new.ForeignTableUnescapedName]; isReferencingNewTable {
 			// Same as above, but for the referenced table
 			return foreignKeyConstraintDiff{}, true, nil
+		}
+
+		extractColumnName := func(constraint string) (string, error) {
+			// TODO: doesn't handle the case of multiple columns for fk
+			re := regexp.MustCompile(`FOREIGN KEY \("(.+?)"\)`)
+			matches := re.FindStringSubmatch(constraint)
+		
+			if len(matches) > 1 {
+				return matches[1], nil
+			} else {
+				return "", fmt.Errorf("invalid constraint definition")
+			}	
+		}
+
+		// Check if we're casting from bigint to timestamp without timezone for some column
+		if old.ConstraintDef == new.ConstraintDef {
+			// For now, only consider the case where column name remains the same
+			for _, tableDiff := range tableDiffs.alters {
+				for _, columnDiff := range tableDiff.columnsDiff.alters {
+					columns := columnDiff.oldAndNew;
+					if columns.old.Name != columns.new.Name {
+						// For now, only consider the case where column name remains the same
+						// TODO: handle the case where column is renamed
+						continue;
+					}
+
+					columnName, err := extractColumnName(old.ConstraintDef)
+					if err != nil {
+						return foreignKeyConstraintDiff{}, false, err
+					}
+
+					isBigintToTimestampWithFk := columns.old.Type == "bigint" && columns.new.Type == "timestamp without time zone" && columns.old.Name == columnName
+					if isBigintToTimestampWithFk {
+						return foreignKeyConstraintDiff{}, true, nil
+					}
+				}
+			}
 		}
 
 		// Set the new clone to be equal to the old for all fields that can actually be altered
