@@ -14,7 +14,8 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 				foo VARCHAR(255),
 				bar TEXT,
 				fizz INT,
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
@@ -30,7 +31,8 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 				foo VARCHAR(255),
 				bar TEXT,
 				fizz INT,
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+			    UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
@@ -196,6 +198,35 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add a unique constraint",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+				UNIQUE (foo, id)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
 		name: "Add a partitioned index that is used by a local primary key",
 		oldSchemaDDL: []string{
 			`
@@ -277,6 +308,33 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
+		name: "Add a partitioned unique constraint when the local index already exists",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE UNIQUE INDEX foobar_1_unique_idx ON foobar_1(foo, id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_unique UNIQUE (foo, id);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
 		},
@@ -377,6 +435,36 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			    id INT,
 				foo VARCHAR(255),
 			    PRIMARY KEY (foo, id)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeIndexDropped,
+		},
+	},
+	{
+		name: "Delete a unique constraint",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    UNIQUE (foo, id)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
@@ -652,6 +740,39 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add unique constraint with existing matching base-table index (matching child index does not exist)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			-- A unique index for foobar_1 exists, but it does not have the default name as the unique constraint (foobar_1_foo_id_key),
+			-- so the primary key index effectively does not already exist when migrating
+			CREATE UNIQUE INDEX foobar_unique ON foobar(foo, id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE foobar ADD CONSTRAINT foobar_unique UNIQUE (foo, id);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			// The parent table index is dropped and rebuilt
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+	},
+	{
 		name: "Add primary key constraint with existing matching base-table index (local matching child index exists)",
 		oldSchemaDDL: []string{
 			`
@@ -717,6 +838,74 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add unique constraint with existing matching base-table index (matching non-local index exists that backs local matching PK)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			CREATE UNIQUE INDEX foobar_foo_id_key ON ONLY foobar(foo, id);
+			CREATE UNIQUE INDEX foobar_1_foo_id_key ON foobar_1(foo, id);
+			ALTER INDEX foobar_foo_id_key ATTACH PARTITION foobar_1_foo_id_key;
+			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_pkey PRIMARY KEY USING INDEX foobar_1_foo_id_key;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE foobar ADD CONSTRAINT foobar_foo_id_key UNIQUE (foo, id);
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+	},
+	{
+		name: "Add unique constraint with existing matching base-table index (matching non-local index exists that backs local matching unique constraint)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			CREATE UNIQUE INDEX foobar_foo_id_key ON ONLY foobar(foo, id);
+			CREATE UNIQUE INDEX foobar_1_foo_id_key ON foobar_1(foo, id);
+			ALTER INDEX foobar_foo_id_key ATTACH PARTITION foobar_1_foo_id_key;
+			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_pkey UNIQUE USING INDEX foobar_1_foo_id_key;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE foobar ADD CONSTRAINT foobar_foo_id_key UNIQUE (foo, id);
+			`,
+		},
+		vanillaExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+		dataPackingExpectations: expectations{
+			planErrorIs: diff.ErrNotImplemented,
+		},
+	},
+	{
 		name: "Add primary key constraint with existing matching base-table index (matching local PK already exists backed by local index)",
 		oldSchemaDDL: []string{
 			`
@@ -748,7 +937,38 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Add key constraint to partition using existing index",
+		name: "Add unique constraint with existing matching base-table index (matching local PK already exists backed by local index)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			CREATE UNIQUE INDEX foobar_foo_id_key ON ONLY foobar(foo, id);
+			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_foo_id_key UNIQUE (foo, id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE foobar ADD CONSTRAINT foobar_foo_id_key UNIQUE (foo, id);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			// Base table index is dropped
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+	},
+	{
+		name: "Add primary key to partition using existing index",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -773,6 +993,35 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX foobar_1_pkey ON foobar_1(foo, id);
 			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_pkey PRIMARY KEY USING INDEX foobar_1_pkey;
 			ALTER INDEX some_pkey ATTACH PARTITION foobar_1_pkey;
+			`,
+		},
+	},
+	{
+		name: "Add unique constraint to partition using existing index",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE ONLY foobar ADD CONSTRAINT foobar_foo_id_key UNIQUE (foo, id);
+			CREATE UNIQUE INDEX foobar_1_foo_id_key ON foobar_1(foo, id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT NOT NULL,
+				foo VARCHAR(255) NOT NULL
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			ALTER TABLE ONLY foobar ADD CONSTRAINT foobar_foo_id_key UNIQUE (foo, id);
+			CREATE UNIQUE INDEX foobar_1_foo_id_key ON foobar_1(foo, id);
+			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_foo_id_key UNIQUE USING INDEX foobar_1_foo_id_key;
+			ALTER INDEX foobar_foo_id_key ATTACH PARTITION foobar_1_foo_id_key;
 			`,
 		},
 	},

@@ -45,7 +45,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
 			    bar SERIAL NOT NULL,
 			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of foobar(
@@ -110,7 +111,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
 			    bar SERIAL NOT NULL,
 			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of foobar(
@@ -190,7 +192,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    id INT PRIMARY KEY,
 			    bar SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL,
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE (foo, bar)
 			);
 			CREATE INDEX foobar_normal_idx ON foobar USING hash (fizz);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, fizz DESC);
@@ -259,7 +262,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    new_bar SMALLSERIAL NOT NULL,
 				new_foo VARCHAR(255) DEFAULT '' NOT NULL CHECK ( new_foo IS NOT NULL),
 			    new_fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    version INT NOT NULL DEFAULT 0
+			    version INT NOT NULL DEFAULT 0,
+				UNIQUE (new_foo, new_bar)
 			);
 			ALTER TABLE "New_table" ADD CONSTRAINT "new_fzz_check" CHECK ( new_fizz < CURRENT_TIMESTAMP - interval '1 month' ) NO INHERIT NOT VALID;
 			CREATE UNIQUE INDEX foobar_unique_idx ON "New_table"(new_foo, new_fizz);
@@ -350,7 +354,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    id INT PRIMARY KEY,
 			    version INT NOT NULL DEFAULT 0,
 			    new_bar SMALLSERIAL NOT NULL,
-				new_foo VARCHAR(255) DEFAULT '' NOT NULL CHECK ( new_foo IS NOT NULL)
+				new_foo VARCHAR(255) DEFAULT '' NOT NULL CHECK ( new_foo IS NOT NULL),
+				UNIQUE (new_foo, new_bar)
 			);
 			ALTER TABLE "New_table" ADD CONSTRAINT "new_fzz_check" CHECK ( new_fizz < CURRENT_TIMESTAMP - interval '1 month' ) NO INHERIT NOT VALID;
 			CREATE UNIQUE INDEX foobar_unique_idx ON "New_table"(new_foo, new_fizz);
@@ -401,7 +406,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    bar SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
 			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of foobar(
@@ -436,7 +442,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    id INT,
 				bar TIMESTAMPTZ NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			    UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of new_foobar(
@@ -477,7 +484,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				bar TIMESTAMPTZ NOT NULL,
 			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			    id INT,
-				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0)
+				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of new_foobar(
