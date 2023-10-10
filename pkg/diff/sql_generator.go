@@ -214,7 +214,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 
 		extractColumnName := func(constraint string) (string, error) {
 			// TODO: doesn't handle the case of multiple columns for fk
-			re := regexp.MustCompile(`FOREIGN KEY \("(.+?)"\)`)
+			re := regexp.MustCompile(`FOREIGN KEY \("?([^"]+)"?\)`)
 			matches := re.FindStringSubmatch(constraint)
 		
 			if len(matches) > 1 {
