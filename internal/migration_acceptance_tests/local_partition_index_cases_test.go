@@ -153,6 +153,44 @@ var localPartitionIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add local unique constraints",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    bar TEXT,
+			    fizz bytea
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    bar TEXT,
+			    fizz bytea
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar(
+			    CONSTRAINT "foobar1_PRIMARY_KEY" UNIQUE (foo, id)
+			) FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar(
+				CONSTRAINT "foobar2_PRIMARY_KEY" UNIQUE (foo, bar)
+			) FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar(
+				CONSTRAINT "foobar3_PRIMARY_KEY" UNIQUE (foo, fizz)
+			) FOR VALUES IN ('foo_3');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
 		name: "Delete a local index",
 		oldSchemaDDL: []string{
 			`
@@ -261,6 +299,36 @@ var localPartitionIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeIndexDropped,
+		},
+	},
+	{
+		name: "Delete a unique local index",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+
+			CREATE UNIQUE INDEX foobar_1_some_idx ON foobar_1 (foo);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeIndexDropped,
 		},
 	},
@@ -402,6 +470,34 @@ var localPartitionIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+	},
+	{
+		name: "Add a unique constraint when the index already exists",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    bar TEXT,
+			    fizz bytea
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE UNIQUE INDEX foobar_1_unique ON foobar_1(foo, id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    bar TEXT,
+			    fizz bytea
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_unique UNIQUE (foo, id);
+
+			`,
 		},
 	},
 	{

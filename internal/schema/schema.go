@@ -224,7 +224,7 @@ type (
 )
 
 const (
-	PkIndexConstraintType IndexConstraintType = "PRIMARY KEY"
+	PkIndexConstraintType IndexConstraintType = "p"
 )
 
 func (i Index) GetName() string {
@@ -515,13 +515,8 @@ func fetchIndexes(ctx context.Context, q *queries.Queries) ([]Index, error) {
 
 		var indexConstraint *IndexConstraint
 		if rawIndex.ConstraintName != "" {
-			indexConstraintType, err := getIndexConstraintType(rawIndex.ConstraintType)
-			if err != nil {
-				return nil, fmt.Errorf("getIndexConstraintType(%s): %w", rawIndex.ConstraintType, err)
-			}
-
 			indexConstraint = &IndexConstraint{
-				Type:                  indexConstraintType,
+				Type:                  IndexConstraintType(rawIndex.ConstraintType),
 				EscapedConstraintName: EscapeIdentifier(rawIndex.ConstraintName),
 				ConstraintDef:         rawIndex.ConstraintDef,
 				IsLocal:               rawIndex.ConstraintIsLocal,
@@ -543,15 +538,6 @@ func fetchIndexes(ctx context.Context, q *queries.Queries) ([]Index, error) {
 	}
 
 	return indexes, nil
-}
-
-func getIndexConstraintType(constraintType string) (IndexConstraintType, error) {
-	switch constraintType {
-	case "p":
-		return PkIndexConstraintType, nil
-	default:
-		return "", fmt.Errorf("unknown/unsupported index constraint type: %s", constraintType)
-	}
 }
 
 func fetchForeignKeyCons(ctx context.Context, q *queries.Queries) ([]ForeignKeyConstraint, error) {

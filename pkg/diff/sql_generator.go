@@ -1153,8 +1153,8 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 	if isOnPartitionedTable, err := isg.isOnPartitionedTable(index); err != nil {
 		return nil, err
 	} else if isOnPartitionedTable {
-		if index.IsPk() {
-			// If it's a primary key on a partitioned table, the index will be created implicitly through the constraint
+		if index.Constraint != nil {
+			// If it's associated with a constraint, the index will be created implicitly through the constraint
 			// If we attempt to create the index and the primary key, it will throw an error about the relation already existing
 			owningTableName := publicSchemaName(index.TableName)
 			// If the table is the base table of a partitioned table, the constraint should "ONLY" be added to the base
@@ -1189,7 +1189,7 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		Hazards:     createIdxStmtHazards,
 	})
 
-	if index.IsPk() {
+	if index.Constraint != nil {
 		addConstraintStmt, err := isg.addIndexConstraint(index)
 		if err != nil {
 			return nil, fmt.Errorf("generating add constraint statement: %w", err)
@@ -1326,14 +1326,29 @@ func isOnPartitionedTable(tablesInNewSchemaByName map[string]schema.Table, index
 
 func (isg *indexSQLVertexGenerator) addIndexConstraint(index schema.Index) (Statement, error) {
 	owningTableName := publicSchemaName(index.TableName)
+	sqlConstraintType, err := constraintTypeAsSQL(index.Constraint.Type)
+	if err != nil {
+		return Statement{}, fmt.Errorf("getting constraint type as SQL: %w", err)
+	}
 	return Statement{
 		DDL: fmt.Sprintf("%s %s USING INDEX %s",
 			addConstraintPrefix(owningTableName, index.Constraint.EscapedConstraintName),
-			index.Constraint.Type,
+			sqlConstraintType,
 			schema.EscapeIdentifier(index.Name)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}, nil
+}
+
+func constraintTypeAsSQL(constraintType schema.IndexConstraintType) (string, error) {
+	switch constraintType {
+	case "p":
+		return "PRIMARY KEY", nil
+	case "u":
+		return "UNIQUE", nil
+	default:
+		return "", fmt.Errorf("unknown/unsupported index constraint type: %s", constraintType)
+	}
 }
 
 func buildAttachIndex(index schema.Index) Statement {

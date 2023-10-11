@@ -139,7 +139,6 @@ Note, the library only currently supports diffing the *public* schema. Support f
 
 *Unsupported*:
 - (On roadmap) Diffing schemas other than "public"
-- (On roadmap) Unique constraints (unique indexes are supported but not unique constraints)
 - (On roadmap) Adding and remove partitions from an existing partitioned table
 - (On roadmap) Check constraints localized to specific partitions
 - Partitioned partitions (partitioned tables are supported but not partitioned partitions)

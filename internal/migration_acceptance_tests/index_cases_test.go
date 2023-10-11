@@ -12,7 +12,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT PRIMARY KEY,
 				foo VARCHAR(255),
-				bar TEXT,
+				bar TEXT UNIQUE ,
 				fizz INT
 			);
 			CREATE INDEX some_idx ON foobar USING hash (foo);
@@ -24,7 +24,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar(
 			    id INT PRIMARY KEY,
 				foo VARCHAR(255),
-				bar TEXT,
+				bar TEXT UNIQUE ,
 				fizz INT
 			);
 			CREATE INDEX some_idx ON foobar USING hash (foo);
@@ -152,6 +152,26 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add a unique constraint",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT UNIQUE
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
 		name: "Add a primary key on NOT NULL column",
 		oldSchemaDDL: []string{
 			`
@@ -195,6 +215,26 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add a unique constraint when the index already exists",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT
+			);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT
+			);
+			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(id);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_unique_idx UNIQUE USING INDEX foobar_unique_idx;
+			`,
+		},
+	},
+	{
 		name: "Add a primary key when the index already exists but has a name different to the constraint",
 		oldSchemaDDL: []string{
 			`
@@ -221,6 +261,31 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add a unique constraint when the index already exists but has a name different to the constraint",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT
+			);
+			CREATE UNIQUE INDEX foobar_idx ON foobar(id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT
+			);
+			CREATE UNIQUE INDEX foobar_idx ON foobar(id);
+			-- This renames the index
+			ALTER TABLE foobar ADD CONSTRAINT foobar_unique_constraint UNIQUE USING INDEX foobar_idx;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
 		name: "Add a primary key when the index already exists but is not unique",
 		oldSchemaDDL: []string{
 			`
@@ -241,6 +306,30 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
+		name: "Add a unique constraint when the index already exists but is not unique",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT
+			);
+			CREATE INDEX foobar_idx ON foobar(id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT
+			);
+			CREATE UNIQUE INDEX foobar_idx ON foobar(id);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_unique_idx UNIQUE USING INDEX foobar_idx;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
 		},
@@ -321,6 +410,27 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 			    id INT PRIMARY KEY
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeIndexDropped,
+		},
+	},
+	{
+		name: "Delete a unique constraint",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT UNIQUE
 			);
 			`,
 		},
