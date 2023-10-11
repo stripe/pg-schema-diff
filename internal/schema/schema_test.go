@@ -101,7 +101,7 @@ var (
 				ON DELETE CASCADE
 				NOT VALID;
 		`},
-			expectedHash: "2ebe255a8e21e27",
+			expectedHash: "3ba99555d461fb94",
 			expectedSchema: schema.Schema{
 				Extensions: []schema.Extension{
 					{
@@ -338,7 +338,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "7cc1abf755b2ec27",
+			expectedHash: "400d9fe0b0b047a",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -636,7 +636,7 @@ var (
 			    PRIMARY KEY (author, id)
 			) FOR VALUES IN ('some author 1');
 		`},
-			expectedHash: "a79f6f70a0439aea",
+			expectedHash: "767d30df139d570",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -810,7 +810,7 @@ var (
 			ALTER TABLE foo ADD CONSTRAINT foo_fk FOREIGN KEY (id) REFERENCES test.foo(test_schema_id);
 			ALTER TABLE test.foo ADD CONSTRAINT foo_fk FOREIGN KEY (test_schema_id) REFERENCES foo(id);
 		`},
-			expectedHash: "e6bd150cfcc499e9",
+			expectedHash: "dc511bd1c4467e44",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{

@@ -75,7 +75,7 @@ func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 				EXECUTE PROCEDURE increment_version();
 	`
 
-		expectedHash = "a96acaeed4efc06a"
+		expectedHash = "1380d2bbcd1c8520"
 	)
 	db, err := suite.pgEngine.CreateDatabase()
 	suite.Require().NoError(err)

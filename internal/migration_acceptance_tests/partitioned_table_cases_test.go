@@ -15,7 +15,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				bar TEXT COLLATE "POSIX",
 				fizz SERIAL,
 				CHECK ( fizz > 0 ),
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE foobar REPLICA IDENTITY FULL;
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -54,7 +55,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				bar TEXT COLLATE "POSIX",
 				fizz SERIAL,
 				CHECK ( fizz > 0 ),
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE foobar REPLICA IDENTITY FULL;
 			-- partitions
@@ -106,7 +108,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
 				fizz SERIAL,
 				CHECK ( fizz > 0 ),
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+			    UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE "Foobar" REPLICA IDENTITY FULL;
 
@@ -135,7 +138,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 					foo VARCHAR(255),
 					bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
 					CHECK ( fizz > 0 ),
-					PRIMARY KEY (foo, id)
+					PRIMARY KEY (foo, id),
+					UNIQUE (foo, bar)
 				) PARTITION BY LIST (foo);
 				ALTER TABLE "Foobar" REPLICA IDENTITY FULL;
 
@@ -179,7 +183,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    PRIMARY KEY (foo, bar)
 			) FOR VALUES IN ('foo_2');
 			CREATE TABLE foobar_3 PARTITION OF "Foobar"(
-			    PRIMARY KEY (foo, fizz)
+			    PRIMARY KEY (foo, fizz),
+			    UNIQUE (foo, bar)
 			) FOR VALUES IN ('foo_3');
 			-- partitioned indexes
 			CREATE UNIQUE INDEX foobar_unique_idx ON "Foobar"(foo, bar);
@@ -218,7 +223,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				bar TEXT,
 				fizz SERIAL,
 				CHECK ( fizz > 0 ),
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+			    UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 
 			CREATE TABLE "FOOBAR_1" PARTITION OF "Foobar"(
@@ -297,7 +303,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter table: New primary key, change column types, delete partitioned index, new partitioned index, delete local index, add local index, validate check constraint, validate FK, delete FK",
+		name: "Alter table: New primary key, new unique constraint, droped unique constraint, change column types, delete partitioned index, new partitioned index, delete local index, add local index, validate check constraint, validate FK, delete FK",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -305,7 +311,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				foo VARCHAR(255),
 				bar TEXT COLLATE "C",
 				fizz SERIAL,
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			-- check constraints
 			ALTER TABLE foobar ADD CONSTRAINT some_check_constraint CHECK ( fizz > 0 ) NOT VALID;
@@ -348,7 +355,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				foo VARCHAR(255),
 				bar TEXT COLLATE "POSIX",
 				fizz TEXT,
-			    PRIMARY KEY (foo, id)
+			    PRIMARY KEY (foo, id),
+			    UNIQUE (foo, fizz)
 			) PARTITION BY LIST (foo);
 			-- check constraint
 			ALTER TABLE foobar ADD CONSTRAINT some_check_constraint CHECK ( LENGTH(fizz) > 0 );
@@ -431,7 +439,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, bar)
 			);
 
 			CREATE INDEX some_idx on foobar(id);
@@ -470,7 +479,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 
 			CREATE INDEX some_idx on foobar(id);
@@ -518,7 +528,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, fizz)
 			);
 
 			CREATE INDEX some_idx on foobar(id);
@@ -529,7 +540,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, fizz)
 			);
 
 			CREATE INDEX foobar_1_id_idx on foobar(id);
@@ -580,7 +592,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, fizz)
 			) PARTITION BY LIST (foo);
 
 			CREATE INDEX some_idx on foobar(id);
@@ -629,7 +642,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 
 			CREATE INDEX some_idx on foobar(id);
@@ -671,7 +685,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, bar)
 			);
 
 			CREATE INDEX some_idx on foobar(id);
@@ -715,7 +730,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 
 			CREATE INDEX some_idx on foobar(id);
@@ -758,7 +774,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, bar)
 			);
 
 			CREATE INDEX some_idx on foobar(id);
@@ -769,7 +786,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				version INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, bar)
 			);
 
 			CREATE INDEX foobar_1_id_idx on foobar(id);
@@ -828,7 +846,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				foo VARCHAR(255),
 				bar TEXT,
 				CHECK ( fizz > 0 ),
-				PRIMARY KEY (foo, id)
+				PRIMARY KEY (foo, id),
+				UNIQUE (foo, fizz)
 			) PARTITION BY LIST (foo);
 
 			-- partitioned indexes
@@ -857,7 +876,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				foo VARCHAR(255),
 				bar TEXT,
 				CHECK ( fizz > 0 ),
-				PRIMARY KEY (foo, id)
+				PRIMARY KEY (foo, id),
+				UNIQUE (foo, fizz)
 			) PARTITION BY LIST (foo);
 
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -950,6 +970,41 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Adding a partition with local unique constraint that can back the unique index",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				version INT,
+				fizz SERIAL,
+				foo VARCHAR(255),
+				bar TEXT,
+				CHECK ( fizz > 0 )
+			) PARTITION BY LIST (foo);
+			-- partitioned indexes
+			CREATE UNIQUE INDEX some_partitioned_idx ON foobar(foo, bar);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				version INT,
+				fizz SERIAL,
+				foo VARCHAR(255),
+				bar TEXT,
+				CHECK ( fizz > 0 )
+			) PARTITION BY LIST (foo);
+			-- partitions
+			CREATE TABLE foobar_1 PARTITION OF foobar(
+			    UNIQUE (foo, bar)
+			) FOR VALUES IN ('foo_1');
+			-- partitioned indexes
+			CREATE UNIQUE INDEX some_partitioned_idx ON foobar(foo, bar);
+			`,
+		},
+	},
+	{
 		name: "Deleting a partitioning errors",
 		oldSchemaDDL: []string{
 			`
@@ -1023,11 +1078,13 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT,
 				fizz INT,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, fizz)
 			) PARTITION BY LIST (foo);
 
 			CREATE TABLE foobar_1 PARTITION OF foobar(
-			    PRIMARY KEY (foo, bar)
+			    PRIMARY KEY (foo, bar),
+			    UNIQUE (foo, id)
 			) FOR VALUES IN ('foo_1');
 
 			-- partitioned indexes
@@ -1059,11 +1116,13 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    id INT,
 				fizz INT,
 				foo VARCHAR(255),
-				bar TEXT
+				bar TEXT,
+				UNIQUE (foo, fizz)
 			) PARTITION BY LIST (foo);
 
 			CREATE TABLE foobar_1 PARTITION OF foobar_new(
-			    PRIMARY KEY (foo, bar)
+			    PRIMARY KEY (foo, bar),
+			    UNIQUE (foo, id)
 			) FOR VALUES IN ('foo_1');
 
 			-- partitioned indexes
