@@ -166,8 +166,9 @@ for _, stmt := range plan.Statements {
 ```
 
 # Supported Postgres versions
-- 14 (tested with 14.7)
-- 15 (tested with 15.2)
+- 14
+- 15
+- 16
 
 Postgres v13 and below are not supported. Use at your own risk.
 
