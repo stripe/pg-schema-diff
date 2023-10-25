@@ -839,7 +839,7 @@ var (
 			expectedDiffErrIs:  errDuplicateIdentifier,
 		},
 		{
-			name: "Online check constraint addition",
+			name: "Online check constraint build",
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
