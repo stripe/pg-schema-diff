@@ -1444,14 +1444,29 @@ type checkConstraintSQLGenerator struct {
 }
 
 func (csg *checkConstraintSQLGenerator) Add(con schema.CheckConstraint) ([]Statement, error) {
-	var hazards []MigrationHazard
-
 	// UDF's in check constraints are a bad idea. Check constraints are not re-validated
 	// if the UDF changes, so it's not really a safe practice. We won't support it for now
 	if len(con.DependsOnFunctions) > 0 {
 		return nil, fmt.Errorf("check constraints that depend on UDFs: %w", ErrNotImplemented)
 	}
 
+	var stmts []Statement
+	if !con.IsValid || csg.isNewTable {
+		stmts = append(stmts, csg.createCheckConstraintStatement(con))
+	} else {
+		// If the check constraint is not on a new table and is marked as valid, we should:
+		// 1. Build the constraint as invalid
+		// 2. Validate the constraint
+		con.IsValid = false
+		stmts = append(stmts, csg.createCheckConstraintStatement(con))
+		stmts = append(stmts, validateConstraintStatement(csg.tableName, schema.EscapeIdentifier(con.Name)))
+	}
+
+	return stmts, nil
+}
+
+func (csg *checkConstraintSQLGenerator) createCheckConstraintStatement(con schema.CheckConstraint) Statement {
+	var hazards []MigrationHazard
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%s CHECK(%s)",
 		addConstraintPrefix(csg.tableName, schema.EscapeIdentifier(con.Name)), con.Expression))
@@ -1461,7 +1476,7 @@ func (csg *checkConstraintSQLGenerator) Add(con schema.CheckConstraint) ([]State
 
 	if !con.IsValid {
 		sb.WriteString(" NOT VALID")
-	} else if !csg.isNewTable {
+	} else {
 		hazards = append(hazards, MigrationHazard{
 			Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
 			Message: "This will lock reads and writes to the owning table while the constraint is being added. " +
@@ -1469,12 +1484,12 @@ func (csg *checkConstraintSQLGenerator) Add(con schema.CheckConstraint) ([]State
 		})
 	}
 
-	return []Statement{{
+	return Statement{
 		DDL:         sb.String(),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     hazards,
-	}}, nil
+	}
 }
 
 func (csg *checkConstraintSQLGenerator) Delete(con schema.CheckConstraint) ([]Statement, error) {

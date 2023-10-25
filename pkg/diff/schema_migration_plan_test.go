@@ -839,6 +839,48 @@ var (
 			expectedDiffErrIs:  errDuplicateIdentifier,
 		},
 		{
+			name: "Online check constraint build",
+			oldSchema: schema.Schema{
+				Tables: []schema.Table{
+					{
+						Name: "foobar",
+						Columns: []schema.Column{
+							{Name: "id", Type: "integer"},
+						},
+						ReplicaIdentity: schema.ReplicaIdentityDefault,
+					},
+				},
+			},
+			newSchema: schema.Schema{
+				Tables: []schema.Table{
+					{
+						Name: "foobar",
+						Columns: []schema.Column{
+							{Name: "id", Type: "integer"},
+						},
+						CheckConstraints: []schema.CheckConstraint{
+							{Name: "id_check", Expression: "(id > 0)", IsInheritable: true, IsValid: true},
+						},
+						ReplicaIdentity: schema.ReplicaIdentityDefault,
+					},
+				},
+			},
+			expectedStatements: []Statement{
+				{
+					DDL:         "ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"id_check\" CHECK((id > 0)) NOT VALID",
+					Timeout:     statementTimeoutDefault,
+					LockTimeout: lockTimeoutDefault,
+					Hazards:     nil,
+				},
+				{
+					DDL:         "ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"id_check\"",
+					Timeout:     statementTimeoutDefault,
+					LockTimeout: lockTimeoutDefault,
+					Hazards:     nil,
+				},
+			},
+		},
+		{
 			name: "Invalid check constraint made valid",
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
