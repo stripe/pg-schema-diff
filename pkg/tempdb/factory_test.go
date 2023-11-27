@@ -103,12 +103,21 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 		dbPrefix       = "some_prefix"
 		metadataSchema = "some metadata schema"
 		metadataTable  = "some metadata table"
+		rootDbName     = "some_root_db"
 	)
+
+	rootDb, err := suite.engine.CreateDatabaseWithName(rootDbName)
+	suite.Require().NoError(err)
+	defer func(rootDb *pgengine.DB) {
+		suite.Require().NoError(rootDb.DropDB())
+	}(rootDb)
+
 	factory := suite.mustBuildFactory(
 		WithDbPrefix(dbPrefix),
 		WithMetadataSchema(metadataSchema),
 		WithMetadataTable(metadataTable),
 		WithLogger(log.SimpleLogger()),
+		WithRootDatabase(rootDbName),
 	)
 	defer func(factory Factory) {
 		suite.Require().NoError(factory.Close())

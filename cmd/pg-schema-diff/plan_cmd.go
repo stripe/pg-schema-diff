@@ -225,7 +225,7 @@ func generatePlan(ctx context.Context, logger log.Logger, connConfig *pgx.ConnCo
 		copiedConfig := connConfig.Copy()
 		copiedConfig.Database = dbName
 		return openDbWithPgxConfig(copiedConfig)
-	})
+	}, tempdb.WithRootDatabase(connConfig.Database))
 	if err != nil {
 		return diff.Plan{}, err
 	}
