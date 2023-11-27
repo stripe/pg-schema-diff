@@ -40,6 +40,7 @@ type (
 		metadataSchema string
 		metadataTable  string
 		logger         log.Logger
+		rootDatabase   string
 	}
 
 	OnInstanceFactoryOpt func(*onInstanceFactoryOptions)
@@ -73,6 +74,13 @@ func WithMetadataTable(table string) OnInstanceFactoryOpt {
 	}
 }
 
+// WithRootDatabase sets the database to connect to when creating temporary databases
+func WithRootDatabase(db string) OnInstanceFactoryOpt {
+	return func(opts *onInstanceFactoryOptions) {
+		opts.rootDatabase = db
+	}
+}
+
 type (
 	CreateConnForDbFn func(ctx context.Context, dbName string) (*sql.DB, error)
 
@@ -100,6 +108,7 @@ func NewOnInstanceFactory(ctx context.Context, createConnForDb CreateConnForDbFn
 		dbPrefix:       DefaultOnInstanceDbPrefix,
 		metadataSchema: DefaultOnInstanceMetadataSchema,
 		metadataTable:  DefaultOnInstanceMetadataTable,
+		rootDatabase:   "postgres",
 		logger:         log.SimpleLogger(),
 	}
 	for _, opt := range opts {
@@ -109,11 +118,11 @@ func NewOnInstanceFactory(ctx context.Context, createConnForDb CreateConnForDbFn
 		return nil, fmt.Errorf("dbPrefix (%s) must be a simple Postgres identifier matching the following regex: %s", options.dbPrefix, pgidentifier.SimpleIdentifierRegex)
 	}
 
-	rootDb, err := createConnForDb(ctx, "postgres")
+	rootDb, err := createConnForDb(ctx, options.rootDatabase)
 	if err != nil {
 		return &onInstanceFactory{}, err
 	}
-	if err := assertConnPoolIsOnExpectedDatabase(ctx, rootDb, "postgres"); err != nil {
+	if err := assertConnPoolIsOnExpectedDatabase(ctx, rootDb, options.rootDatabase); err != nil {
 		rootDb.Close()
 		return &onInstanceFactory{}, fmt.Errorf("assertConnPoolIsOnExpectedDatabase: %w", err)
 	}
