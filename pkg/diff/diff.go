@@ -122,6 +122,46 @@ type (
 	}
 )
 
+// partition partitions the listDiff into two listDiffs based on the inFirstGroup function.
+// The inFirstGroup will always have the second parameter as the zero value of the schema object, except for
+// alters, where the second parameter will be the old schema object
+func (ld listDiff[S, Diff]) partition(inFirstGroup func(a, b S) bool) (first, second listDiff[S, Diff]) {
+	first = listDiff[S, Diff]{}
+	second = listDiff[S, Diff]{}
+	for _, a := range ld.adds {
+		if inFirstGroup(a, *new(S)) {
+			first.adds = append(first.adds, a)
+		} else {
+			second.adds = append(second.adds, a)
+		}
+	}
+	for _, d := range ld.deletes {
+		if inFirstGroup(d, *new(S)) {
+			first.deletes = append(first.deletes, d)
+		} else {
+			second.deletes = append(second.deletes, d)
+		}
+	}
+	for _, a := range ld.alters {
+		if inFirstGroup(a.GetNew(), a.GetOld()) {
+			first.alters = append(first.alters, a)
+		} else {
+			second.alters = append(second.alters, a)
+		}
+	}
+	return first, second
+}
+
+// newSchema returns all of the objects in the new schema for the listDiff
+func (ld listDiff[S, Diff]) newSchema() []S {
+	var vals []S
+	vals = append(vals, ld.adds...)
+	for _, a := range ld.alters {
+		vals = append(vals, a.GetNew())
+	}
+	return vals
+}
+
 func (ld listDiff[S, D]) isEmpty() bool {
 	return len(ld.adds) == 0 || len(ld.alters) == 0 || len(ld.deletes) == 0
 }

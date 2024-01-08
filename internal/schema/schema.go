@@ -148,7 +148,9 @@ func (t Table) GetName() string {
 }
 
 type Column struct {
-	Name      string
+	Name string
+	// AttNum is the internal Postgres id of the column
+	AttNum    int32
 	Type      string
 	Collation SchemaQualifiedName
 	// If the column has a default value, this will be a SQL string representing that value.
@@ -240,7 +242,9 @@ func (i Index) IsPk() bool {
 }
 
 type CheckConstraint struct {
-	Name               string
+	Name string
+	// Column attributes numbers referenced by the constraint
+	Key                []int32
 	Expression         string
 	IsValid            bool
 	IsInheritable      bool
@@ -442,6 +446,7 @@ func fetchTables(ctx context.Context, q *queries.Queries) ([]Table, error) {
 
 			columns = append(columns, Column{
 				Name:       column.ColumnName,
+				AttNum:     column.AttNum,
 				Type:       column.ColumnType,
 				Collation:  collation,
 				IsNullable: !column.IsNotNull,
@@ -484,9 +489,9 @@ func fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Context, q *queries.Q
 		if err != nil {
 			return nil, fmt.Errorf("fetchDependsOnFunctions(%s): %w", cc.Oid, err)
 		}
-
 		checkCon := CheckConstraint{
 			Name:               cc.ConstraintName,
+			Key:                cc.ConKey,
 			Expression:         cc.ConstraintExpression,
 			IsValid:            cc.IsValid,
 			IsInheritable:      !cc.IsNotInheritable,

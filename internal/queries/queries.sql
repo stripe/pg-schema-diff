@@ -32,6 +32,7 @@ WHERE
 -- name: GetColumnsForTable :many
 SELECT
     a.attname::TEXT AS column_name,
+    a.attnum::INT as att_num,
     COALESCE(coll.collname, '')::TEXT AS collation_name,
     COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
     COALESCE(
@@ -103,6 +104,7 @@ ORDER BY a.attnum;
 SELECT
     pg_constraint.oid,
     pg_constraint.conname::TEXT AS constraint_name,
+    pg_constraint.conkey::INT[] as con_key,
     pg_class.relname::TEXT AS table_name,
     pg_constraint.convalidated AS is_valid,
     pg_constraint.connoinherit AS is_not_inheritable,

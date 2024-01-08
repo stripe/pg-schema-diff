@@ -733,6 +733,21 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 		return nil, fmt.Errorf("changing partition key def: %w", ErrNotImplemented)
 	}
 
+	// Split out the non-null check constraints, so they can be added separately, before the column alters.
+	// This enables us to leverage not-null check constraints to add not-null columns without a full table scan
+	notNullCCs, ccs := diff.checkConstraintDiff.partition(func(new, old schema.CheckConstraint) bool {
+		return isNotNullCC(new)
+	})
+	var tempCCs []schema.CheckConstraint
+	for _, colDiff := range getDangerousNotNullAlters(diff.columnsDiff.alters, notNullCCs.newSchema()) {
+		tempCC, err := buildTempNotNullConstraint(colDiff)
+		if err != nil {
+			return nil, fmt.Errorf("building temp check constraint: %w", err)
+		}
+		notNullCCs.adds = append(notNullCCs.adds, tempCC)
+		tempCCs = append(tempCCs, tempCC)
+	}
+
 	columnSQLGenerator := columnSQLGenerator{tableName: diff.new.Name}
 	columnGeneratedSQL, err := diff.columnsDiff.resolveToSQLGroupedByEffect(&columnSQLGenerator)
 	if err != nil {
@@ -740,16 +755,35 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	}
 
 	checkConSQLGenerator := checkConstraintSQLGenerator{tableName: publicSchemaName(diff.new.Name), isNewTable: false}
-	checkConGeneratedSQL, err := diff.checkConstraintDiff.resolveToSQLGroupedByEffect(&checkConSQLGenerator)
+	checkConGeneratedSQL, err := ccs.resolveToSQLGroupedByEffect(&checkConSQLGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("resolving check constraints diff: %w", err)
+	}
+	notNullConGeneratedSQL, err := notNullCCs.resolveToSQLGroupedByEffect(&checkConSQLGenerator)
+	if err != nil {
+		return nil, fmt.Errorf("resolving not null check constraints diff: %w", err)
+	}
+	var dropTempCCs []Statement
+	for _, tempCC := range tempCCs {
+		stmt, err := checkConSQLGenerator.Delete(tempCC)
+		if err != nil {
+			return nil, fmt.Errorf("deleting temp check constraint: %w", err)
+		}
+		dropTempCCs = append(dropTempCCs, stmt...)
 	}
 
 	var stmts []Statement
 	stmts = append(stmts, checkConGeneratedSQL.Deletes...)
+	stmts = append(stmts, notNullConGeneratedSQL.Deletes...)
 	stmts = append(stmts, columnGeneratedSQL.Deletes...)
 	stmts = append(stmts, columnGeneratedSQL.Adds...)
+	// Add the not-null check constraints before the column alters, so we can leverage them to add not-null columns
+	// This cannot be done for normal check constraints, which might rely on the column type being changed
+	stmts = append(stmts, notNullConGeneratedSQL.Adds...)
+	stmts = append(stmts, notNullConGeneratedSQL.Alters...)
 	stmts = append(stmts, columnGeneratedSQL.Alters...)
+	// Drop the temporary check constraints that were only added to make adding not-nulls online
+	stmts = append(stmts, dropTempCCs...)
 	stmts = append(stmts, checkConGeneratedSQL.Adds...)
 	stmts = append(stmts, checkConGeneratedSQL.Alters...)
 
@@ -777,6 +811,12 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 				DDL:         fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
 				Timeout:     statementTimeoutDefault,
 				LockTimeout: lockTimeoutDefault,
+			})
+		} else {
+			stmts = append(stmts, Statement{
+				DDL:         fmt.Sprintf("%s SET NOT NULL", alterColumnPrefix),
+				Timeout:     statementTimeoutDefault,
+				LockTimeout: lockTimeoutDefault,
 				Hazards: []MigrationHazard{
 					{
 						Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
@@ -784,12 +824,6 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 							"writes on the partition",
 					},
 				},
-			})
-		} else {
-			stmts = append(stmts, Statement{
-				DDL:         fmt.Sprintf("%s SET NOT NULL", alterColumnPrefix),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
 			})
 		}
 	}
@@ -843,6 +877,52 @@ func (t *tableSQLVertexGenerator) GetAddAlterDependencies(table, _ schema.Table)
 		)
 	}
 	return deps
+}
+
+func getDangerousNotNullAlters(alteredCols []columnDiff, newSchemaCCs []schema.CheckConstraint) []columnDiff {
+	// A dangerous not null alter is an alter that changes a column from nullable to not null, but does not have a
+	// check constraint backing it
+	safeColsByAttrId := make(map[int32]bool)
+	for _, cc := range newSchemaCCs {
+		if !cc.IsValid {
+			continue
+		}
+		if isNotNullCC(cc) {
+			safeColsByAttrId[cc.Key[0]] = true
+		}
+	}
+
+	var dangerousNotNullAlters []columnDiff
+	for _, colDiff := range alteredCols {
+		if colDiff.old.IsNullable && !colDiff.new.IsNullable && !safeColsByAttrId[colDiff.new.AttNum] {
+			dangerousNotNullAlters = append(dangerousNotNullAlters, colDiff)
+		}
+	}
+
+	return dangerousNotNullAlters
+}
+
+func isNotNullCC(cc schema.CheckConstraint) bool {
+	if len(cc.Key) != 1 {
+		return false
+	}
+	// TODO(bplunkett); Improve this regex
+	return strings.Contains(cc.Expression, "IS NOT NULL")
+}
+
+func buildTempNotNullConstraint(colDiff columnDiff) (schema.CheckConstraint, error) {
+	uuid, err := uuid.NewRandom()
+	if err != nil {
+		return schema.CheckConstraint{}, fmt.Errorf("generating uuid: %w", err)
+	}
+	return schema.CheckConstraint{
+		Name:               fmt.Sprintf("not_null_%s", uuid.String()),
+		Key:                []int32{colDiff.new.AttNum},
+		Expression:         fmt.Sprintf("%s IS NOT NULL", schema.EscapeIdentifier(colDiff.new.Name)),
+		IsValid:            true,
+		IsInheritable:      true,
+		DependsOnFunctions: nil,
+	}, nil
 }
 
 func (t *tableSQLVertexGenerator) GetDeleteDependencies(table schema.Table) []dependency {
@@ -901,12 +981,6 @@ func (csg *columnSQLGenerator) Alter(diff columnDiff) ([]Statement, error) {
 				DDL:         fmt.Sprintf("%s SET NOT NULL", alterColumnPrefix),
 				Timeout:     statementTimeoutDefault,
 				LockTimeout: lockTimeoutDefault,
-				Hazards: []MigrationHazard{
-					{
-						Type:    MigrationHazardTypeAcquiresAccessExclusiveLock,
-						Message: "Marking a column as not null requires a full table scan, which will lock out writes",
-					},
-				},
 			})
 		}
 	}
@@ -1507,25 +1581,27 @@ func (csg *checkConstraintSQLGenerator) Delete(con schema.CheckConstraint) ([]St
 }
 
 func (csg *checkConstraintSQLGenerator) Alter(diff checkConstraintDiff) ([]Statement, error) {
+	oldCopy := diff.old
+	oldCopy.Key = diff.new.Key // Ignore changes to the key. It's expected the column attribute id's might change.
 	if cmp.Equal(diff.old, diff.new) {
 		return nil, nil
 	}
 
-	oldCopy := diff.old
-	oldCopy.IsValid = diff.new.IsValid
+	var stmts []Statement
+	if !diff.old.IsValid && diff.new.IsValid {
+		stmts = append(stmts, validateConstraintStatement(csg.tableName, schema.EscapeIdentifier(diff.new.Name)))
+		oldCopy.IsValid = diff.new.IsValid
+	}
+
 	if !cmp.Equal(oldCopy, diff.new) {
 		// Technically, we could support altering expression, but I don't see the use case for it. it would require more test
 		// cases than force re-adding it, and I'm not convinced it unlocks any functionality
 		return nil, fmt.Errorf("altering check constraint to resolve the following diff %s: %w", cmp.Diff(oldCopy, diff.new), ErrNotImplemented)
-	} else if diff.old.IsValid && !diff.new.IsValid {
-		return nil, fmt.Errorf("check constraint can't go from invalid to valid")
 	} else if len(diff.old.DependsOnFunctions) > 0 || len(diff.new.DependsOnFunctions) > 0 {
 		return nil, fmt.Errorf("check constraints that depend on UDFs: %w", ErrNotImplemented)
 	}
 
-	return []Statement{
-		validateConstraintStatement(csg.tableName, schema.EscapeIdentifier(diff.new.Name)),
-	}, nil
+	return stmts, nil
 }
 
 type attachPartitionSQLVertexGenerator struct {

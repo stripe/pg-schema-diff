@@ -45,6 +45,7 @@ $ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgre
   * Online index replacement: If some index is changed, the new version will be built before the old version is dropped, preventing a window where no index is backing queries
   * Online check constraint builds: Check constraints are added as `INVALID` before being validated, eliminating the need
 	for a long access-exclusive lock on the table
+  * Online `ALTER ... SET NOT NULL` using check constraints to eliminate the need for an access-exclusive lock on the table
   * Prioritized index builds: Building new indexes is always prioritized over deleting old indexes
 * A comprehensive set of features to ensure the safety of planned migrations:
   * Operators warned of dangerous operations.

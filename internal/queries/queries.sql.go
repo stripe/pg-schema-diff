@@ -7,12 +7,15 @@ package queries
 
 import (
 	"context"
+
+	"github.com/lib/pq"
 )
 
 const getCheckConstraints = `-- name: GetCheckConstraints :many
 SELECT
     pg_constraint.oid,
     pg_constraint.conname::TEXT AS constraint_name,
+    pg_constraint.conkey::INT[] as con_key,
     pg_class.relname::TEXT AS table_name,
     pg_constraint.convalidated AS is_valid,
     pg_constraint.connoinherit AS is_not_inheritable,
@@ -31,6 +34,7 @@ WHERE
 type GetCheckConstraintsRow struct {
 	Oid                  interface{}
 	ConstraintName       string
+	ConKey               []int32
 	TableName            string
 	IsValid              bool
 	IsNotInheritable     bool
@@ -49,6 +53,7 @@ func (q *Queries) GetCheckConstraints(ctx context.Context) ([]GetCheckConstraint
 		if err := rows.Scan(
 			&i.Oid,
 			&i.ConstraintName,
+			pq.Array(&i.ConKey),
 			&i.TableName,
 			&i.IsValid,
 			&i.IsNotInheritable,
@@ -102,6 +107,7 @@ func (q *Queries) GetColumnsForIndex(ctx context.Context, attrelid interface{}) 
 const getColumnsForTable = `-- name: GetColumnsForTable :many
 SELECT
     a.attname::TEXT AS column_name,
+    a.attnum::INT as att_num,
     COALESCE(coll.collname, '')::TEXT AS collation_name,
     COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
     COALESCE(
@@ -127,6 +133,7 @@ ORDER BY a.attnum
 
 type GetColumnsForTableRow struct {
 	ColumnName          string
+	AttNum              int32
 	CollationName       string
 	CollationSchemaName string
 	DefaultValue        string
@@ -146,6 +153,7 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) 
 		var i GetColumnsForTableRow
 		if err := rows.Scan(
 			&i.ColumnName,
+			&i.AttNum,
 			&i.CollationName,
 			&i.CollationSchemaName,
 			&i.DefaultValue,
