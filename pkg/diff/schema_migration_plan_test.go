@@ -10,7 +10,7 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
-type rawSchemasPlanTestCase struct {
+type schemaMigrationPlanTestCase struct {
 	name                    string
 	oldSchema               schema.Schema
 	newSchema               schema.Schema
@@ -41,7 +41,7 @@ var (
 		SchemaName:  "pg_catalog",
 	}
 
-	schemaMigrationPlanTestCases = []rawSchemasPlanTestCase{
+	schemaMigrationPlanTestCases = []schemaMigrationPlanTestCase{
 		{
 			name: "Index replacement",
 			oldSchema: schema.Schema{

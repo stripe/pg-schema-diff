@@ -15,7 +15,7 @@ const getCheckConstraints = `-- name: GetCheckConstraints :many
 SELECT
     pg_constraint.oid,
     pg_constraint.conname::TEXT AS constraint_name,
-    pg_constraint.conkey::INT[] as con_key,
+    pg_constraint.conkey::INT [] AS con_key,
     pg_class.relname::TEXT AS table_name,
     pg_constraint.convalidated AS is_valid,
     pg_constraint.connoinherit AS is_not_inheritable,
@@ -107,7 +107,7 @@ func (q *Queries) GetColumnsForIndex(ctx context.Context, attrelid interface{}) 
 const getColumnsForTable = `-- name: GetColumnsForTable :many
 SELECT
     a.attname::TEXT AS column_name,
-    a.attnum::INT as att_num,
+    a.attnum::INT AS att_num,
     COALESCE(coll.collname, '')::TEXT AS collation_name,
     COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
     COALESCE(

@@ -479,10 +479,10 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((foobar IS NOT NULL)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"not_null_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"not_null_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((foobar IS NOT NULL)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"not_null_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 		},
 	},
@@ -589,6 +589,57 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Set NOT NULL (dropping valid CC)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255) NOT NULL
+			);
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"foobar\"",
+		},
+	},
+	{
+		name: "Set NOT NULL (dropping valid CC via recreation)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255) NOT NULL
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (LENGTH(foobar) > 0);
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"foobar\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((length((foobar)::text) > 0)) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar\"",
+		},
+	},
+	{
 		name: "Set NOT NULL (data type change with additional CC)",
 		oldSchemaDDL: []string{
 			`
@@ -611,17 +662,17 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
 		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"not_null_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID", "ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"not_null_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"not_null_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"not_null_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE integer using \"foobar\"::integer",
 			"ANALYZE \"foobar\" (\"foobar\")",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"not_null_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar_foobar_check\" CHECK((foobar > 0)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar_foobar_check\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"not_null_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 		},
 	},
 	// TODO(bplunkett) Add not null migration where valid cc is being dropped
-	// TODO(bplunkett): Add data type and not null
 	{
 		name: "Remove NOT NULL",
 		oldSchemaDDL: []string{
