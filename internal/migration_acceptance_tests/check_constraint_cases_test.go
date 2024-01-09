@@ -150,6 +150,29 @@ var checkConstraintCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add check constraint and change data type",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foo VARCHAR(255)
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foo INT CHECK ( foo > 0 )
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeImpactsDatabasePerformance,
+		},
+	},
+	{
 		name: "Add check constraint with quoted identifiers",
 		oldSchemaDDL: []string{
 			`
@@ -256,6 +279,31 @@ var checkConstraintCases = []acceptanceTestCase{
 			   	"Bar" BIGINT
 			);
 			`,
+		},
+	},
+	{
+		name: "Drop check constraint and change data type",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    "ID" INT PRIMARY KEY,
+				foo VARCHAR(255),
+				"Bar" BIGINT CHECK ( "Bar" > 0 )
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    "ID" INT PRIMARY KEY,
+				foo VARCHAR(255),
+			   	"Bar" TEXT
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
 	},
 	{

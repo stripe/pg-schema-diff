@@ -2,6 +2,8 @@ package diff
 
 import (
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -753,10 +755,12 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	}
 
 	checkConSqlVertexGenerator := checkConstraintSQLVertexGenerator{
-		tableName:               publicSchemaName(diff.new.Name),
-		newSchemaColumnsByAttId: buildMap(diff.new.Columns, func(col schema.Column) int32 { return col.AttNum }),
-		addedColumnsByName:      buildSchemaObjByNameMap(diff.columnsDiff.adds),
-		isNewTable:              false,
+		tableName:              publicSchemaName(diff.new.Name),
+		newSchemaColumnsByName: buildSchemaObjByNameMap(diff.new.Columns),
+		oldSchemaColumnsByName: buildSchemaObjByNameMap(diff.old.Columns),
+		addedColumnsByName:     buildSchemaObjByNameMap(diff.columnsDiff.adds),
+		deletedColumnsByName:   buildSchemaObjByNameMap(diff.columnsDiff.deletes),
+		isNewTable:             false,
 	}
 	checkConGraphs, err := diff.checkConstraintDiff.resolveToSQLGraph(&checkConSqlVertexGenerator)
 	if err != nil {
@@ -778,7 +782,8 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	if err != nil {
 		return nil, fmt.Errorf("getting ordered statements from columnGraphs: %w", err)
 	}
-	// Drop the temporary check constraints that were only added to make changing to not-nulls online
+	// Drop the temporary check constraints that were added to make changing columns to "NOT NULL" not require an
+	// extended table lock
 	stmts = append(stmts, dropTempCCs...)
 
 	return stmts, nil
@@ -874,31 +879,22 @@ func (t *tableSQLVertexGenerator) GetAddAlterDependencies(table, _ schema.Table)
 }
 
 func getDangerousNotNullAlters(alteredCols []columnDiff, newSchemaCCs []schema.CheckConstraint, oldSchemaCCs []schema.CheckConstraint) []columnDiff {
-	// A dangerous not null alter is an alter that changes a column from nullable to not null, but does not have a
-	// check constraint backing it
-	safeColsByNewAttId := make(map[int32]bool)
-	for _, cc := range newSchemaCCs {
-		if !cc.IsValid {
-			continue
-		}
-		if isValidNotNullCC(cc) {
-			safeColsByNewAttId[cc.Key[0]] = true
-		}
-	}
+	var ccs []schema.CheckConstraint
+	ccs = append(ccs, newSchemaCCs...)
+	ccs = append(ccs, oldSchemaCCs...)
 
-	safeColsByOldAttId := make(map[int32]bool)
-	for _, cc := range oldSchemaCCs {
-		if !cc.IsValid {
-			continue
-		}
+	// A dangerous not null alter is an alter that changes a column from nullable to not null, but does not have a
+	// valid NOT NULL check constraint backing it
+	safeColsByName := make(map[string]bool)
+	for _, cc := range ccs {
 		if isValidNotNullCC(cc) {
-			safeColsByOldAttId[cc.Key[0]] = true
+			safeColsByName[cc.KeyColumns[0]] = true
 		}
 	}
 
 	var dangerousNotNullAlters []columnDiff
 	for _, colDiff := range alteredCols {
-		if colDiff.old.IsNullable && !colDiff.new.IsNullable && !safeColsByNewAttId[colDiff.new.AttNum] && !safeColsByOldAttId[colDiff.old.AttNum] {
+		if colDiff.old.IsNullable && !colDiff.new.IsNullable && !safeColsByName[colDiff.new.Name] {
 			dangerousNotNullAlters = append(dangerousNotNullAlters, colDiff)
 		}
 	}
@@ -906,15 +902,23 @@ func getDangerousNotNullAlters(alteredCols []columnDiff, newSchemaCCs []schema.C
 	return dangerousNotNullAlters
 }
 
+var (
+	// isValidNotNullCCRegex is a regex that matches a valid NOT NULL check constraint. It's covers the simplest case,
+	// so we might have to improve it in the future.
+	// Notably, a false positive is much worse than a false negative because a false negative will result in an unnecessary
+	// check constraint being built, but a false positive will result in a column being changed to `NOT NULL` without
+	// a backing check constraint or a warning to the user. We should be very conservative with this regex.
+	isNotNullCCRegex = regexp.MustCompile(`^\(*((".*")|(\S*)) IS NOT NULL\)*$`)
+)
+
 func isValidNotNullCC(cc schema.CheckConstraint) bool {
-	if len(cc.Key) != 1 {
+	if len(cc.KeyColumns) != 1 {
 		return false
 	}
 	if !cc.IsValid {
 		return false
 	}
-	// TODO(bplunkett); Improve this regex
-	return strings.Contains(cc.Expression, "IS NOT NULL")
+	return isNotNullCCRegex.MatchString(cc.Expression)
 }
 
 func buildTempNotNullConstraint(colDiff columnDiff) (schema.CheckConstraint, error) {
@@ -924,7 +928,7 @@ func buildTempNotNullConstraint(colDiff columnDiff) (schema.CheckConstraint, err
 	}
 	return schema.CheckConstraint{
 		Name:               fmt.Sprintf("not_null_%s", uuid.String()),
-		Key:                []int32{colDiff.new.AttNum},
+		KeyColumns:         []string{colDiff.new.Name},
 		Expression:         fmt.Sprintf("%s IS NOT NULL", schema.EscapeIdentifier(colDiff.new.Name)),
 		IsValid:            true,
 		IsInheritable:      true,
@@ -1114,7 +1118,7 @@ func (csg *columnSQLVertexGenerator) GetAddAlterDependencies(col, _ schema.Colum
 	}, nil
 }
 
-func (csg *columnSQLVertexGenerator) GetDeleteDependencies(col schema.Column) ([]dependency, error) {
+func (csg *columnSQLVertexGenerator) GetDeleteDependencies(_ schema.Column) ([]dependency, error) {
 	return nil, nil
 }
 
@@ -1538,10 +1542,12 @@ func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index sche
 }
 
 type checkConstraintSQLVertexGenerator struct {
-	tableName               schema.SchemaQualifiedName
-	newSchemaColumnsByAttId map[int32]schema.Column
-	addedColumnsByName      map[string]schema.Column
-	isNewTable              bool
+	tableName              schema.SchemaQualifiedName
+	newSchemaColumnsByName map[string]schema.Column
+	oldSchemaColumnsByName map[string]schema.Column
+	addedColumnsByName     map[string]schema.Column
+	deletedColumnsByName   map[string]schema.Column
+	isNewTable             bool
 }
 
 func (csg *checkConstraintSQLVertexGenerator) Add(con schema.CheckConstraint) ([]Statement, error) {
@@ -1609,10 +1615,6 @@ func (csg *checkConstraintSQLVertexGenerator) Delete(con schema.CheckConstraint)
 
 func (csg *checkConstraintSQLVertexGenerator) Alter(diff checkConstraintDiff) ([]Statement, error) {
 	oldCopy := diff.old
-	oldCopy.Key = diff.new.Key // Ignore changes to the key. It's expected the column attribute id's might change.
-	if cmp.Equal(diff.old, diff.new) {
-		return nil, nil
-	}
 
 	var stmts []Statement
 	if !diff.old.IsValid && diff.new.IsValid {
@@ -1620,7 +1622,11 @@ func (csg *checkConstraintSQLVertexGenerator) Alter(diff checkConstraintDiff) ([
 		oldCopy.IsValid = diff.new.IsValid
 	}
 
-	if !cmp.Equal(oldCopy, diff.new) {
+	// Normalize the key columns, since order does not matter.
+	sort.Strings(oldCopy.KeyColumns)
+	newCopy := diff.new
+	sort.Strings(newCopy.KeyColumns)
+	if !cmp.Equal(oldCopy, newCopy) {
 		// Technically, we could support altering expression, but I don't see the use case for it. it would require more test
 		// cases than force re-adding it, and I'm not convinced it unlocks any functionality
 		return nil, fmt.Errorf("altering check constraint to resolve the following diff %s: %w", cmp.Diff(oldCopy, diff.new), ErrNotImplemented)
@@ -1640,13 +1646,9 @@ func (csg *checkConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ sch
 		mustRun(csg.GetSQLVertexId(con), diffTypeDelete).before(csg.GetSQLVertexId(con), diffTypeAddAlter),
 	}
 
-	var targetColumns []schema.Column
-	for _, attId := range con.Key {
-		targetColumn, ok := csg.newSchemaColumnsByAttId[attId]
-		if !ok {
-			return nil, fmt.Errorf("could not find column with attribute id %d", attId)
-		}
-		targetColumns = append(targetColumns, targetColumn)
+	targetColumns, err := getTargetColumns(con, csg.newSchemaColumnsByName)
+	if err != nil {
+		return nil, fmt.Errorf("getting target columns: %w", err)
 	}
 
 	isOnPreExistingColumn := false
@@ -1658,10 +1660,10 @@ func (csg *checkConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ sch
 	}
 
 	if isOnPreExistingColumn && isValidNotNullCC(con) {
-		// Ensure the not-null CC is built before the column is altered
+		// If the NOT NULL check constraint is on a pre-existing column, then we should ensure it is added before
+		// the column.
 		deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeAddAlter).before(buildColumnVertexId(targetColumns[0].Name), diffTypeAddAlter))
 	} else {
-		// CC"s
 		for _, tc := range targetColumns {
 			deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeAddAlter).after(buildColumnVertexId(tc.Name), diffTypeAddAlter))
 		}
@@ -1669,8 +1671,50 @@ func (csg *checkConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ sch
 	return deps, nil
 }
 
-func (*checkConstraintSQLVertexGenerator) GetDeleteDependencies(_ schema.CheckConstraint) ([]dependency, error) {
-	return nil, nil
+func (csg *checkConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.CheckConstraint) ([]dependency, error) {
+	var deps []dependency
+
+	targetColumns, err := getTargetColumns(con, csg.oldSchemaColumnsByName)
+	if err != nil {
+		return nil, fmt.Errorf("getting target columns: %w", err)
+	}
+
+	for _, tc := range targetColumns {
+		// This is a weird quirk of our graph system, where if a -> b and b -> c and b does-not-exist, b will be
+		// implicitly created s.t. a -> b -> c (https://github.com/stripe/pg-schema-diff/issues/84)
+		//
+		// In this case, "a" is the deletion of the check constraint, "b" is the deletion of
+		// the column, and "c" is the alter/addition of the column. We do not want this behavior. We only want
+		// a -> b -> c iff the column is being delted.
+		if _, ok := csg.deletedColumnsByName[tc.Name]; ok {
+			deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeDelete).before(buildColumnVertexId(tc.Name), diffTypeDelete))
+		}
+	}
+
+	// If it's a not-null check constraint, we can drop the check constraint whenever convenient, e.g., after
+	// the column has been altered because `NOT NULL` does not depend on the type of the column.
+	// For all other check constraints, they can rely on the type of the column. Thus, we should drop these
+	// check constraint before any columns are altered because the new type might not be compatible with the old
+	// check constraint.
+	if !isValidNotNullCC(con) {
+		for _, tc := range targetColumns {
+			deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeDelete).before(buildColumnVertexId(tc.Name), diffTypeAddAlter))
+		}
+	}
+
+	return deps, nil
+}
+
+func getTargetColumns(con schema.CheckConstraint, columnsByName map[string]schema.Column) ([]schema.Column, error) {
+	var targetColumns []schema.Column
+	for _, name := range con.KeyColumns {
+		targetColumn, ok := columnsByName[name]
+		if !ok {
+			return nil, fmt.Errorf("could not find column with name %s", name)
+		}
+		targetColumns = append(targetColumns, targetColumn)
+	}
+	return targetColumns, nil
 }
 
 type attachPartitionSQLVertexGenerator struct {

@@ -222,6 +222,27 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Delete column with valid not null check constraint",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL CHECK ( foo IS NOT NULL )
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
 		name: "Modify data type (int -> serial)",
 		oldSchemaDDL: []string{
 			`

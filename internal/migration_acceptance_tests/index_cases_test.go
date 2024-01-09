@@ -147,7 +147,6 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexBuild,
 		},
 	},

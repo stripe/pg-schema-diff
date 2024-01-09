@@ -32,7 +32,6 @@ WHERE
 -- name: GetColumnsForTable :many
 SELECT
     a.attname::TEXT AS column_name,
-    a.attnum::INT AS att_num,
     COALESCE(coll.collname, '')::TEXT AS collation_name,
     COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
     COALESCE(
@@ -104,7 +103,15 @@ ORDER BY a.attnum;
 SELECT
     pg_constraint.oid,
     pg_constraint.conname::TEXT AS constraint_name,
-    pg_constraint.conkey::INT [] AS con_key,
+    (
+        SELECT ARRAY_AGG(a.attname)
+        FROM UNNEST(pg_constraint.conkey) AS conkey
+        INNER JOIN pg_catalog.pg_attribute AS a ON conkey = a.attnum
+        WHERE
+            a.attrelid = pg_constraint.conrelid
+            AND a.attnum = ANY(pg_constraint.conkey)
+            AND NOT a.attisdropped
+    )::TEXT [] AS column_names,
     pg_class.relname::TEXT AS table_name,
     pg_constraint.convalidated AS is_valid,
     pg_constraint.connoinherit AS is_not_inheritable,

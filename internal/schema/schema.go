@@ -63,6 +63,9 @@ func (s Schema) Normalize() Schema {
 		var normCheckConstraints []CheckConstraint
 		for _, checkConstraint := range sortSchemaObjectsByName(table.CheckConstraints) {
 			checkConstraint.DependsOnFunctions = sortSchemaObjectsByName(checkConstraint.DependsOnFunctions)
+			checkConstraint.KeyColumns = sortByKey(checkConstraint.KeyColumns, func(s string) string {
+				return s
+			})
 			normCheckConstraints = append(normCheckConstraints, checkConstraint)
 		}
 		table.CheckConstraints = normCheckConstraints
@@ -89,10 +92,16 @@ func (s Schema) Normalize() Schema {
 
 // sortSchemaObjectsByName returns a (copied) sorted list of schema objects.
 func sortSchemaObjectsByName[S Object](vals []S) []S {
+	return sortByKey(vals, func(v S) string {
+		return v.GetName()
+	})
+}
+
+func sortByKey[S any](vals []S, getValFn func(S) string) []S {
 	clonedVals := make([]S, len(vals))
 	copy(clonedVals, vals)
 	sort.Slice(clonedVals, func(i, j int) bool {
-		return clonedVals[i].GetName() < clonedVals[j].GetName()
+		return getValFn(clonedVals[i]) < getValFn(clonedVals[j])
 	})
 	return clonedVals
 }
@@ -148,9 +157,7 @@ func (t Table) GetName() string {
 }
 
 type Column struct {
-	Name string
-	// AttNum is the internal Postgres id of the column
-	AttNum    int32
+	Name      string
 	Type      string
 	Collation SchemaQualifiedName
 	// If the column has a default value, this will be a SQL string representing that value.
@@ -243,8 +250,8 @@ func (i Index) IsPk() bool {
 
 type CheckConstraint struct {
 	Name string
-	// Column attributes numbers referenced by the constraint
-	Key                []int32
+	// KeyColumns are the columns that the constraint applies to
+	KeyColumns         []string
 	Expression         string
 	IsValid            bool
 	IsInheritable      bool
@@ -446,7 +453,6 @@ func fetchTables(ctx context.Context, q *queries.Queries) ([]Table, error) {
 
 			columns = append(columns, Column{
 				Name:       column.ColumnName,
-				AttNum:     column.AttNum,
 				Type:       column.ColumnType,
 				Collation:  collation,
 				IsNullable: !column.IsNotNull,
@@ -491,7 +497,7 @@ func fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Context, q *queries.Q
 		}
 		checkCon := CheckConstraint{
 			Name:               cc.ConstraintName,
-			Key:                cc.ConKey,
+			KeyColumns:         cc.ColumnNames,
 			Expression:         cc.ConstraintExpression,
 			IsValid:            cc.IsValid,
 			IsInheritable:      !cc.IsNotInheritable,
