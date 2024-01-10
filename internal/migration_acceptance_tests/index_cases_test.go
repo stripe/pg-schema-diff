@@ -689,7 +689,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			    foo TEXT,
 			    bar INT
 			);
-			CREATE INDEX some_idx ON foobar(foo);
+			CREATE INDEX some_idx_with_a_very_long_name ON foobar(foo);
 			CREATE INDEX old_idx ON foobar(bar);
 		`},
 		newSchemaDDL: []string{`
@@ -697,15 +697,15 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			    foo TEXT,
 			    bar INT
 			);
-			CREATE INDEX some_idx ON foobar(foo, bar);
+			CREATE INDEX some_idx_with_a_very_long_name ON foobar(foo, bar);
 			CREATE INDEX new_idx ON foobar(bar);
 		`},
 		ddl: []string{
-			"ALTER INDEX \"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_EBESExQVRheYGRobHB0eHw\"",
+			"ALTER INDEX \"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_with_a_very_EBESExQVRheYGRobHB0eHw\"",
 			"CREATE INDEX CONCURRENTLY new_idx ON public.foobar USING btree (bar)",
-			"CREATE INDEX CONCURRENTLY some_idx ON public.foobar USING btree (foo, bar)",
+			"CREATE INDEX CONCURRENTLY some_idx_with_a_very_long_name ON public.foobar USING btree (foo, bar)",
 			"DROP INDEX CONCURRENTLY \"old_idx\"",
-			"DROP INDEX CONCURRENTLY \"pgschemadiff_tmpidx_some_idx_EBESExQVRheYGRobHB0eHw\"",
+			"DROP INDEX CONCURRENTLY \"pgschemadiff_tmpidx_some_idx_with_a_very_EBESExQVRheYGRobHB0eHw\"",
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeIndexBuild,
