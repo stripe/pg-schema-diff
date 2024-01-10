@@ -1172,16 +1172,13 @@ func (rsg *renameConflictingIndexSQLVertexGenerator) generateNonConflictingName(
 		return "", fmt.Errorf("generating UUID: %w", err)
 	}
 
-	prefix := fmt.Sprintf("%sidx_", tmpObjNamePrefix)
-	suffix := fmt.Sprintf("_%s", uuid.String())
-	prefixAndSuffixSize := len(prefix) + len(suffix)
-
+	newNameSuffix := fmt.Sprintf("_%s", uuid.String())
 	idxNameTruncationIdx := len(index.Name)
-	if len(index.Name) > maxPostgresIdentifierSize-prefixAndSuffixSize {
-		idxNameTruncationIdx = maxPostgresIdentifierSize - prefixAndSuffixSize
+	if len(index.Name) > maxPostgresIdentifierSize-len(newNameSuffix) {
+		idxNameTruncationIdx = maxPostgresIdentifierSize - len(newNameSuffix)
 	}
 
-	return fmt.Sprintf("%s%s%s", prefix, index.Name[:idxNameTruncationIdx], suffix), nil
+	return index.Name[:idxNameTruncationIdx] + newNameSuffix, nil
 }
 
 // rename gets the rename for the index if it eixsts, otherwise it returns an empty stringa nd false

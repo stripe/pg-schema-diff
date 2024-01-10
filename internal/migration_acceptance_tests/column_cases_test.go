@@ -474,10 +474,10 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 		},
 	},
 	{
@@ -500,11 +500,11 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((foobar IS NOT NULL)) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 		},
 	},
 
@@ -529,10 +529,10 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 		},
 	},
 	{
@@ -683,14 +683,14 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
 		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE integer using \"foobar\"::integer",
 			"ANALYZE \"foobar\" (\"foobar\")",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar_foobar_check\" CHECK((foobar > 0)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar_foobar_check\"",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmp_nn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 		},
 	},
 	// TODO(bplunkett) Add not null migration where valid cc is being dropped
