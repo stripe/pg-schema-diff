@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgx/v4 v4.14.0
 	github.com/kr/pretty v0.3.1
+	github.com/lib/pq v1.10.2
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/spf13/cobra v1.7.0

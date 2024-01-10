@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	DefaultOnInstanceDbPrefix       = "pgschemadifftmp_"
-	DefaultOnInstanceMetadataSchema = "pgschemadifftmp_metadata"
+	DefaultOnInstanceDbPrefix       = "pgschemadiff_tmp_"
+	DefaultOnInstanceMetadataSchema = "pgschemadiff_tmp_metadata"
 	DefaultOnInstanceMetadataTable  = "metadata"
 )
 

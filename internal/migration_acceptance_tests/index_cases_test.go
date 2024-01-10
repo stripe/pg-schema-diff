@@ -147,7 +147,6 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexBuild,
 		},
 	},
@@ -210,9 +209,6 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_primary_key PRIMARY KEY USING INDEX foobar_primary_key;
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
-		},
 	},
 	{
 		name: "Add a unique constraint when the index already exists",
@@ -255,7 +251,6 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
 		},
@@ -305,7 +300,6 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
 		},
@@ -377,7 +371,6 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexDropped,
 		},
 	},

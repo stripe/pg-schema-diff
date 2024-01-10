@@ -391,11 +391,11 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    new_id INT PRIMARY KEY CHECK (new_id > 0), CHECK (new_id < new_buzz),
-				new_foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL,
 			    new_bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				new_buzz REAL CHECK (new_buzz IS NOT NULL),
 			    new_fizz SERIAL NOT NULL UNIQUE,
-				new_buzz REAL CHECK (new_buzz IS NOT NULL)
+				new_foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL,
+			    new_id INT PRIMARY KEY CHECK (new_id > 0), CHECK (new_id < new_buzz)
 			);
 			CREATE INDEX normal_idx ON foobar USING hash (new_fizz);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(new_foo, new_bar);

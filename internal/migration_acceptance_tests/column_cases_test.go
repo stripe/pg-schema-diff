@@ -222,6 +222,27 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Delete column with valid not null check constraint",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL CHECK ( foo IS NOT NULL )
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
 		name: "Modify data type (int -> serial)",
 		oldSchemaDDL: []string{
 			`
@@ -452,10 +473,227 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
 		},
 	},
+	{
+		name: "Set NOT NULL (add invalid CC)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255) NOT NULL
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((foobar IS NOT NULL)) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+		},
+	},
+
+	{
+		name: "Set NOT NULL (invalid CC already exists)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255) NOT NULL
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+		},
+	},
+	{
+		name: "Set NOT NULL (invalid to valid CC)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255) NOT NULL
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar\"",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+		},
+	},
+	{
+		name: "Set NOT NULL (add valid CC)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255) NOT NULL
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((foobar IS NOT NULL)) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar\"",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+		},
+	},
+	{
+		name: "Set NOT NULL (valid CC already exists)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255) NOT NULL
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+		},
+	},
+	{
+		name: "Set NOT NULL (dropping valid CC)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255) NOT NULL
+			);
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"foobar\"",
+		},
+	},
+	{
+		name: "Set NOT NULL (dropping valid CC via recreation)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255) NOT NULL
+			);
+			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (LENGTH(foobar) > 0);
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"foobar\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((length((foobar)::text) > 0)) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar\"",
+		},
+	},
+	{
+		name: "Set NOT NULL (data type change with additional CC)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar VARCHAR(255)
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foobar INT NOT NULL CHECK (foobar > 0)
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeImpactsDatabasePerformance,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE integer using \"foobar\"::integer",
+			"ANALYZE \"foobar\" (\"foobar\")",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar_foobar_check\" CHECK((foobar > 0)) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar_foobar_check\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+		},
+	},
+	// TODO(bplunkett) Add not null migration where valid cc is being dropped
 	{
 		name: "Remove NOT NULL",
 		oldSchemaDDL: []string{
@@ -551,28 +789,6 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Change to not null",
-		oldSchemaDDL: []string{
-			`
-			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
-				foobar INT DEFAULT NULL
-			);
-			`,
-		},
-		newSchemaDDL: []string{
-			`
-			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
-				foobar INT NOT NULL
-			);
-			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
-		},
-	},
-	{
 		name: "Change from NULL default to no default and NOT NULL",
 		oldSchemaDDL: []string{
 			`
@@ -589,9 +805,6 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 				foobar INT NOT NULL
 			);
 			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{

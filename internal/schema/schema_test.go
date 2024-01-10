@@ -72,7 +72,7 @@ var (
 				CHECK ( function_with_dependencies(id, id) > 0)
 			);
 
-			ALTER TABLE foo ADD CONSTRAINT author_check CHECK (author IS NOT NULL AND LENGTH(author) > 0) NO INHERIT NOT VALID;
+			ALTER TABLE foo ADD CONSTRAINT author_content_check CHECK ( LENGTH(content) > 0 AND LENGTH(author) > 0 ) NO INHERIT NOT VALID;
 			CREATE INDEX some_idx ON foo (created_at DESC, author ASC);
 			CREATE UNIQUE INDEX some_unique_idx ON foo (content);
 			CREATE INDEX some_gin_idx ON foo USING GIN (author gin_trgm_ops);
@@ -101,7 +101,7 @@ var (
 				ON DELETE CASCADE
 				NOT VALID;
 		`},
-			expectedHash: "3ba99555d461fb94",
+			expectedHash: "10eb7629f8cb55d0",
 			expectedSchema: schema.Schema{
 				Extensions: []schema.Extension{
 					{
@@ -123,8 +123,8 @@ var (
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
 						CheckConstraints: []schema.CheckConstraint{
-							{Name: "author_check", Expression: "((author IS NOT NULL) AND (length(author) > 0))"},
-							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true},
+							{Name: "author_content_check", Expression: "((length(content) > 0) AND (length(author) > 0))", KeyColumns: []string{"author", "content"}},
+							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true, KeyColumns: []string{"created_at"}},
 							{
 								Name:          "foo_id_check",
 								Expression:    "(function_with_dependencies(id, id) > 0)",
@@ -133,6 +133,7 @@ var (
 								DependsOnFunctions: []schema.SchemaQualifiedName{
 									{EscapedName: "\"function_with_dependencies\"(a integer, b integer)", SchemaName: "public"},
 								},
+								KeyColumns: []string{"id"},
 							},
 						},
 						ReplicaIdentity: schema.ReplicaIdentityIndex,
@@ -338,7 +339,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "400d9fe0b0b047a",
+			expectedHash: "fa946361e7596d1e",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -352,9 +353,9 @@ var (
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
 						CheckConstraints: []schema.CheckConstraint{
-							{Name: "author_check", Expression: "((author IS NOT NULL) AND (length(author) > 0))", IsInheritable: true},
-							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true, IsInheritable: true},
-							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true},
+							{Name: "author_check", Expression: "((author IS NOT NULL) AND (length(author) > 0))", IsInheritable: true, KeyColumns: []string{"author"}},
+							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true, IsInheritable: true, KeyColumns: []string{"created_at"}},
+							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
 						},
 						ReplicaIdentity: schema.ReplicaIdentityFull,
 						PartitionKeyDef: "LIST (author)",
@@ -810,7 +811,7 @@ var (
 			ALTER TABLE foo ADD CONSTRAINT foo_fk FOREIGN KEY (id) REFERENCES test.foo(test_schema_id);
 			ALTER TABLE test.foo ADD CONSTRAINT foo_fk FOREIGN KEY (test_schema_id) REFERENCES foo(id);
 		`},
-			expectedHash: "dc511bd1c4467e44",
+			expectedHash: "de77f34d39ecfce2",
 			expectedSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
@@ -821,7 +822,7 @@ var (
 							{Name: "content", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
 						},
 						CheckConstraints: []schema.CheckConstraint{
-							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true},
+							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
 						},
 						ReplicaIdentity: schema.ReplicaIdentityDefault,
 					},
@@ -832,7 +833,7 @@ var (
 							{Name: "author", Type: "text", Default: "", Size: -1, Collation: schema.SchemaQualifiedName{SchemaName: "test", EscapedName: `"some collation"`}},
 						},
 						CheckConstraints: []schema.CheckConstraint{
-							{Name: "bar_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true},
+							{Name: "bar_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
 						},
 						ReplicaIdentity: schema.ReplicaIdentityDefault,
 						PartitionKeyDef: "LIST (author)",

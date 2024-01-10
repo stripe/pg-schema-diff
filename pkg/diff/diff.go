@@ -93,7 +93,7 @@ type sqlVertexGenerator[S schema.Object, Diff diff[S]] interface {
 	//
 	// These dependencies can also be built in reverse: the SQL returned by the sqlVertexGenerator to resolve the
 	// diff for the object must always be run before the SQL required to resolve another SQL vertex diff
-	GetAddAlterDependencies(new S, old S) []dependency
+	GetAddAlterDependencies(new S, old S) ([]dependency, error)
 
 	// GetDeleteDependencies is the same as above but for deletes.
 	// Invariant to maintain:
@@ -102,7 +102,7 @@ type sqlVertexGenerator[S schema.Object, Diff diff[S]] interface {
 	// (Y, diffTypeDelete) statements deleted Y or something that vertex depended on deleted Y. In other words, if a
 	// delete is cascaded by another delete (e.g., index dropped by table drop) and the index SQL is empty,
 	// the index delete vertex must still have dependency from itself to the object from which the delete cascades down from
-	GetDeleteDependencies(S) []dependency
+	GetDeleteDependencies(S) ([]dependency, error)
 }
 
 type (
@@ -167,11 +167,15 @@ func (ld listDiff[S, D]) resolveToSQLGraph(generator sqlVertexGenerator[S, D]) (
 			return nil, fmt.Errorf("generating SQL for add %s: %w", a.GetName(), err)
 		}
 
+		deps, err := generator.GetAddAlterDependencies(a, *new(S))
+		if err != nil {
+			return nil, fmt.Errorf("getting dependencies for add %s: %w", a.GetName(), err)
+		}
 		if err := addSQLVertexToGraph(graph, sqlVertex{
 			ObjId:      generator.GetSQLVertexId(a),
 			Statements: statements,
 			DiffType:   diffTypeAddAlter,
-		}, generator.GetAddAlterDependencies(a, *new(S))); err != nil {
+		}, deps); err != nil {
 			return nil, fmt.Errorf("adding SQL Vertex for add %s: %w", a.GetName(), err)
 		}
 	}
@@ -188,11 +192,16 @@ func (ld listDiff[S, D]) resolveToSQLGraph(generator sqlVertexGenerator[S, D]) (
 			return nil, fmt.Errorf("an alter lead to a node with a different id: old=%s, new=%s", vertexId, vertexIdAfterAlter)
 		}
 
+		deps, err := generator.GetAddAlterDependencies(a.GetNew(), a.GetOld())
+		if err != nil {
+			return nil, fmt.Errorf("getting dependencies for alter %s: %w", a.GetOld().GetName(), err)
+		}
+
 		if err := addSQLVertexToGraph(graph, sqlVertex{
 			ObjId:      vertexId,
 			Statements: statements,
 			DiffType:   diffTypeAddAlter,
-		}, generator.GetAddAlterDependencies(a.GetNew(), a.GetOld())); err != nil {
+		}, deps); err != nil {
 			return nil, fmt.Errorf("adding SQL Vertex for alter %s: %w", a.GetOld().GetName(), err)
 		}
 	}
@@ -203,11 +212,16 @@ func (ld listDiff[S, D]) resolveToSQLGraph(generator sqlVertexGenerator[S, D]) (
 			return nil, fmt.Errorf("generating SQL for delete %s: %w", d.GetName(), err)
 		}
 
+		deps, err := generator.GetDeleteDependencies(d)
+		if err != nil {
+			return nil, fmt.Errorf("getting dependencies for delete %s: %w", d.GetName(), err)
+		}
+
 		if err := addSQLVertexToGraph(graph, sqlVertex{
 			ObjId:      generator.GetSQLVertexId(d),
 			Statements: statements,
 			DiffType:   diffTypeDelete,
-		}, generator.GetDeleteDependencies(d)); err != nil {
+		}, deps); err != nil {
 			return nil, fmt.Errorf("adding SQL Vertex for delete %s: %w", d.GetName(), err)
 		}
 	}
