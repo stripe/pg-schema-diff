@@ -31,7 +31,7 @@ const (
 	// statementTimeoutAnalyzeColumn is the statement timeout for analyzing the column of a table
 	statementTimeoutAnalyzeColumn = 20 * time.Minute
 
-	tmpObjNamePrefix = "pgschemadiff_tmp_"
+	tmpObjNamePrefix = "pgschemadiff_tmp"
 )
 
 var (
@@ -1172,13 +1172,16 @@ func (rsg *renameConflictingIndexSQLVertexGenerator) generateNonConflictingName(
 		return "", fmt.Errorf("generating UUID: %w", err)
 	}
 
-	newNameSuffix := fmt.Sprintf("%s%s", tmpObjNamePrefix, uuid.String())
+	prefix := fmt.Sprintf("%sidx_", tmpObjNamePrefix)
+	suffix := fmt.Sprintf("_%s", uuid.String())
+	prefixAndSuffixSize := len(prefix) + len(suffix)
+
 	idxNameTruncationIdx := len(index.Name)
-	if len(index.Name) > maxPostgresIdentifierSize-len(newNameSuffix) {
-		idxNameTruncationIdx = maxPostgresIdentifierSize - len(newNameSuffix)
+	if len(index.Name) > maxPostgresIdentifierSize-prefixAndSuffixSize {
+		idxNameTruncationIdx = maxPostgresIdentifierSize - prefixAndSuffixSize
 	}
 
-	return index.Name[:idxNameTruncationIdx] + newNameSuffix, nil
+	return fmt.Sprintf("%s%s%s", prefix, index.Name[:idxNameTruncationIdx], suffix), nil
 }
 
 // rename gets the rename for the index if it eixsts, otherwise it returns an empty stringa nd false
