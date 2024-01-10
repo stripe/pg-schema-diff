@@ -489,39 +489,100 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Change an index columns",
-		oldSchemaDDL: []string{
-			`
+		name: "Local index and columns deleted (index dropped first)",
+		oldSchemaDDL: []string{`
 			CREATE TABLE foobar(
-			    id INT,
-				foo VARCHAR(255),
-			   	bar INT
+				id INT,
+				bar INT,
+				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
+			
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
 
-			CREATE INDEX some_idx ON foobar(id, foo);
-			`,
-		},
-		newSchemaDDL: []string{
-			`
+			CREATE INDEX some_idx ON foobar(foo, id);
+			CREATE INDEX foobar_1_some_local_idx ON foobar_1(foo, bar, id);
+		`},
+		newSchemaDDL: []string{`
 			CREATE TABLE foobar(
-			    id INT,
-				foo VARCHAR(255),
-			   	bar INT
+				bar INT,
+				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
+			
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
-
-			CREATE INDEX some_idx ON foobar(foo, bar);
-			`,
-		},
+		`},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeDeletesData,
+		},
+		ddl: []string{
+			"DROP INDEX CONCURRENTLY \"foobar_1_some_local_idx\"",
+			"DROP INDEX \"some_idx\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"id\"",
+		},
+	},
+	{
+		name: "Alter index columns (index replacement and prioritized builds)",
+		oldSchemaDDL: []string{`
+			CREATE TABLE foobar(
+				id INT,
+				bar INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+
+			CREATE INDEX some_idx ON foobar(foo, id);
+			CREATE INDEX old_idx ON foobar_1(foo, bar);
+
+			CREATE INDEX foobar_1_some_local_idx ON foobar_1(foo, bar, id);
+		`},
+		newSchemaDDL: []string{`
+			CREATE TABLE foobar(
+				id INT,
+				bar INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+
+			ALTER TABLE foobar ADD CONSTRAINT some_idx PRIMARY KEY (foo, id);
+			CREATE INDEX new_idx ON foobar_1(foo, bar);
+
+			CREATE INDEX new_foobar_1_some_local_idx ON foobar_1(foo, bar, id);
+		`},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+		ddl: []string{
+			"ALTER INDEX \"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_MjM0NTY3SDm6Ozw9Pj9AQQ\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EhMUFRYXSBmaGxwdHh8gIQ\" CHECK(\"id\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EhMUFRYXSBmaGxwdHh8gIQ\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_IiMkJSYnSCmqKywtLi8wMQ\" CHECK(\"foo\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_IiMkJSYnSCmqKywtLi8wMQ\"",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foo\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"id\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EhMUFRYXSBmaGxwdHh8gIQ\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_IiMkJSYnSCmqKywtLi8wMQ\"",
+			"ALTER TABLE ONLY \"public\".\"foobar\" ADD CONSTRAINT \"some_idx\" PRIMARY KEY (foo, id)",
+			"ALTER TABLE \"public\".\"foobar_1\" ALTER COLUMN \"id\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar_1\" ALTER COLUMN \"foo\" SET NOT NULL",
+			"CREATE UNIQUE INDEX CONCURRENTLY foobar_1_pkey ON public.foobar_1 USING btree (foo, id)",
+			"ALTER TABLE \"public\".\"foobar_1\" ADD CONSTRAINT \"foobar_1_pkey\" PRIMARY KEY USING INDEX \"foobar_1_pkey\"",
+			"ALTER INDEX \"some_idx\" ATTACH PARTITION \"foobar_1_pkey\"",
+			"CREATE INDEX CONCURRENTLY new_foobar_1_some_local_idx ON public.foobar_1 USING btree (foo, bar, id)",
+			"CREATE INDEX CONCURRENTLY new_idx ON public.foobar_1 USING btree (foo, bar)",
+			"ALTER TABLE \"public\".\"foobar_2\" ALTER COLUMN \"id\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar_2\" ALTER COLUMN \"foo\" SET NOT NULL",
+			"CREATE UNIQUE INDEX CONCURRENTLY foobar_2_pkey ON public.foobar_2 USING btree (foo, id)",
+			"ALTER TABLE \"public\".\"foobar_2\" ADD CONSTRAINT \"foobar_2_pkey\" PRIMARY KEY USING INDEX \"foobar_2_pkey\"",
+			"ALTER INDEX \"some_idx\" ATTACH PARTITION \"foobar_2_pkey\"", "DROP INDEX CONCURRENTLY \"foobar_1_some_local_idx\"",
+			"DROP INDEX CONCURRENTLY \"old_idx\"",
+			"DROP INDEX \"pgschemadiff_tmpidx_some_idx_MjM0NTY3SDm6Ozw9Pj9AQQ\"",
 		},
 	},
 	{

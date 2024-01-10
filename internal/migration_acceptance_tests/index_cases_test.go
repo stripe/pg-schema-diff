@@ -352,6 +352,33 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Delete a normal index and columns (index dropped concurrently first)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL
+			);
+			CREATE INDEX some_idx ON foobar(foo);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeIndexDropped,
+		},
+		ddl: []string{
+			"DROP INDEX CONCURRENTLY \"some_idx\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"foo\"",
+		},
+	},
+	{
 		name: "Delete a normal index with quoted names",
 		oldSchemaDDL: []string{
 			`
@@ -653,6 +680,36 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
+		name: "Alter index columns (index replacement and prioritized builds)",
+		oldSchemaDDL: []string{`
+			CREATE TABLE foobar(
+			    foo TEXT,
+			    bar INT
+			);
+			CREATE INDEX some_idx ON foobar(foo);
+			CREATE INDEX old_idx ON foobar(bar);
+		`},
+		newSchemaDDL: []string{`
+			CREATE TABLE foobar(
+			    foo TEXT,
+			    bar INT
+			);
+			CREATE INDEX some_idx ON foobar(foo, bar);
+			CREATE INDEX new_idx ON foobar(bar);
+		`},
+		ddl: []string{
+			"ALTER INDEX \"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_EBESExQVRheYGRobHB0eHw\"",
+			"CREATE INDEX CONCURRENTLY new_idx ON public.foobar USING btree (bar)",
+			"CREATE INDEX CONCURRENTLY some_idx ON public.foobar USING btree (foo, bar)",
+			"DROP INDEX CONCURRENTLY \"old_idx\"",
+			"DROP INDEX CONCURRENTLY \"pgschemadiff_tmpidx_some_idx_EBESExQVRheYGRobHB0eHw\"",
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+			diff.MigrationHazardTypeIndexDropped,
 		},
 	},
 }
