@@ -30,6 +30,8 @@ const (
 	statementTimeoutTableDrop = 20 * time.Minute
 	// statementTimeoutAnalyzeColumn is the statement timeout for analyzing the column of a table
 	statementTimeoutAnalyzeColumn = 20 * time.Minute
+
+	tmpObjNamePrefix = "pgschemadiff_tmp_"
 )
 
 var (
@@ -927,7 +929,7 @@ func buildTempNotNullConstraint(colDiff columnDiff) (schema.CheckConstraint, err
 		return schema.CheckConstraint{}, fmt.Errorf("generating uuid: %w", err)
 	}
 	return schema.CheckConstraint{
-		Name:               fmt.Sprintf("not_null_%s", uuid.String()),
+		Name:               fmt.Sprintf("%snn_%s", tmpObjNamePrefix, uuid.String()),
 		KeyColumns:         []string{colDiff.new.Name},
 		Expression:         fmt.Sprintf("%s IS NOT NULL", schema.EscapeIdentifier(colDiff.new.Name)),
 		IsValid:            true,
@@ -1170,7 +1172,7 @@ func (rsg *renameConflictingIndexSQLVertexGenerator) generateNonConflictingName(
 		return "", fmt.Errorf("generating UUID: %w", err)
 	}
 
-	newNameSuffix := fmt.Sprintf("_%s", uuid.String())
+	newNameSuffix := fmt.Sprintf("%s%s", tmpObjNamePrefix, uuid.String())
 	idxNameTruncationIdx := len(index.Name)
 	if len(index.Name) > maxPostgresIdentifierSize-len(newNameSuffix) {
 		idxNameTruncationIdx = maxPostgresIdentifierSize - len(newNameSuffix)
@@ -1651,17 +1653,17 @@ func (csg *checkConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ sch
 		return nil, fmt.Errorf("getting target columns: %w", err)
 	}
 
-	isOnPreExistingColumn := false
+	isOnValidNotNullPreExistingColumn := false
 	if len(targetColumns) == 1 {
 		targetColumn := targetColumns[0]
-		if _, ok := csg.addedColumnsByName[targetColumn.Name]; !ok {
-			isOnPreExistingColumn = true
+		if _, ok := csg.addedColumnsByName[targetColumn.Name]; !ok && isValidNotNullCC(con) {
+			isOnValidNotNullPreExistingColumn = true
 		}
 	}
 
-	if isOnPreExistingColumn && isValidNotNullCC(con) {
+	if isOnValidNotNullPreExistingColumn {
 		// If the NOT NULL check constraint is on a pre-existing column, then we should ensure it is added before
-		// the column.
+		// the column alter.
 		deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeAddAlter).before(buildColumnVertexId(targetColumns[0].Name), diffTypeAddAlter))
 	} else {
 		for _, tc := range targetColumns {
@@ -1679,26 +1681,37 @@ func (csg *checkConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.C
 		return nil, fmt.Errorf("getting target columns: %w", err)
 	}
 
-	for _, tc := range targetColumns {
-		// This is a weird quirk of our graph system, where if a -> b and b -> c and b does-not-exist, b will be
-		// implicitly created s.t. a -> b -> c (https://github.com/stripe/pg-schema-diff/issues/84)
-		//
-		// In this case, "a" is the deletion of the check constraint, "b" is the deletion of
-		// the column, and "c" is the alter/addition of the column. We do not want this behavior. We only want
-		// a -> b -> c iff the column is being delted.
-		if _, ok := csg.deletedColumnsByName[tc.Name]; ok {
-			deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeDelete).before(buildColumnVertexId(tc.Name), diffTypeDelete))
-		}
-	}
-
-	// If it's a not-null check constraint, we can drop the check constraint whenever convenient, e.g., after
-	// the column has been altered because `NOT NULL` does not depend on the type of the column.
+	// If it's a not-null check constraint, we can drop the check constraint whenever convenient, i.e., after
+	// the column has been altered because `NOT NULL` does not depend on the type of the column. It is important we
+	// delete the NOT NULL check constraint AFTER the column is altered because we want to ensure any `SET NULL` alters
+	// are backed with a check constraint.
+	//
 	// For all other check constraints, they can rely on the type of the column. Thus, we should drop these
 	// check constraint before any columns are altered because the new type might not be compatible with the old
 	// check constraint.
-	if !isValidNotNullCC(con) {
+	if isValidNotNullCC(con) {
+		tc := targetColumns[0]
+		if _, ok := csg.deletedColumnsByName[tc.Name]; ok {
+			// If the column is being deleted, we should drop the not null check constraint before the column is deleted.
+			deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeDelete).before(buildColumnVertexId(tc.Name), diffTypeDelete))
+		} else {
+			// Otherwise, we should drop the not null check constraint after the column is altered. This dependency
+			// doesn't need to be explicitly, since our topological sort prioritizes adds/alters over deletes. Nevertheless,
+			// we'll add it for clarity and to ensure that an error is returned if the delete is not placed after the alter.
+			deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeDelete).after(buildColumnVertexId(tc.Name), diffTypeAddAlter))
+		}
+	} else {
 		for _, tc := range targetColumns {
 			deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeDelete).before(buildColumnVertexId(tc.Name), diffTypeAddAlter))
+			// This is a weird quirk of our graph system, where if a -> b and b -> c and b does-not-exist, b will be
+			// implicitly created s.t. a -> b -> c (https://github.com/stripe/pg-schema-diff/issues/84)
+			//
+			// In this case, "a" is the deletion of the check constraint, "b" is the deletion of
+			// the column, and "c" is the alter/addition of the column. We do not want this behavior. We only want
+			// a -> b -> c iff the column is being deleted.
+			if _, ok := csg.deletedColumnsByName[tc.Name]; ok {
+				deps = append(deps, mustRun(csg.GetSQLVertexId(con), diffTypeDelete).before(buildColumnVertexId(tc.Name), diffTypeDelete))
+			}
 		}
 	}
 
