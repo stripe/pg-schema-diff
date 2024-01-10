@@ -20,8 +20,7 @@ type schemaMigrationPlanTestCase struct {
 }
 
 // schemaMigrationPlanTestCases -- these test cases assert the exact migration plan that is expected
-// to be generated when migrating from the oldSchema to the newSchema. They assert how the migration
-// should occur by asserting the DDL
+// to be generated when migrating from the oldSchema to the newSchema.
 //
 // Most test cases should be added to //pg-schema-diff/internal/migration_acceptance_test_cases (acceptance
 // tests) instead of here.
@@ -31,7 +30,7 @@ type schemaMigrationPlanTestCase struct {
 // no expectation on how the migration should be done.
 //
 // The tests added here should just cover niche cases where you want to assert HOW the migration should be done (e.g.,
-// adding an index concurrently)
+// adding an index concurrently) AND the schema cannot be derived via DDL, e.g., an invalid index.
 var (
 	defaultCollation = schema.SchemaQualifiedName{
 		EscapedName: `"default"`,

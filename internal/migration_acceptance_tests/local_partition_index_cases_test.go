@@ -150,6 +150,7 @@ var localPartitionIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeIndexBuild,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{

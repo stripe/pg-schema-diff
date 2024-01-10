@@ -3,6 +3,7 @@ package graph
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 type Vertex interface {
@@ -190,7 +191,12 @@ func (g *Graph[V]) TopologicallySortWithPriority(isLowerPriority func(V, V) bool
 			}
 		}
 		if indexOfSourceWithHighestPri == -1 {
-			return nil, fmt.Errorf("cycle detected: %+v, %+v", graph, incomingEdgeCountByVertex)
+			dotSB := strings.Builder{}
+			if err := EncodeDOT(g, &dotSB, true); err != nil {
+				dotSB.Reset()
+				dotSB.WriteString(fmt.Sprintf("failed to encode graph to DOT: %v", err))
+			}
+			return nil, fmt.Errorf("cycle detected: %+v, %+v\n%s", graph, incomingEdgeCountByVertex, dotSB.String())
 		}
 		sourceWithHighestPriority := sources[indexOfSourceWithHighestPri]
 

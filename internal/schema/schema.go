@@ -63,6 +63,9 @@ func (s Schema) Normalize() Schema {
 		var normCheckConstraints []CheckConstraint
 		for _, checkConstraint := range sortSchemaObjectsByName(table.CheckConstraints) {
 			checkConstraint.DependsOnFunctions = sortSchemaObjectsByName(checkConstraint.DependsOnFunctions)
+			checkConstraint.KeyColumns = sortByKey(checkConstraint.KeyColumns, func(s string) string {
+				return s
+			})
 			normCheckConstraints = append(normCheckConstraints, checkConstraint)
 		}
 		table.CheckConstraints = normCheckConstraints
@@ -89,10 +92,16 @@ func (s Schema) Normalize() Schema {
 
 // sortSchemaObjectsByName returns a (copied) sorted list of schema objects.
 func sortSchemaObjectsByName[S Object](vals []S) []S {
+	return sortByKey(vals, func(v S) string {
+		return v.GetName()
+	})
+}
+
+func sortByKey[S any](vals []S, getValFn func(S) string) []S {
 	clonedVals := make([]S, len(vals))
 	copy(clonedVals, vals)
 	sort.Slice(clonedVals, func(i, j int) bool {
-		return clonedVals[i].GetName() < clonedVals[j].GetName()
+		return getValFn(clonedVals[i]) < getValFn(clonedVals[j])
 	})
 	return clonedVals
 }
@@ -240,7 +249,9 @@ func (i Index) IsPk() bool {
 }
 
 type CheckConstraint struct {
-	Name               string
+	Name string
+	// KeyColumns are the columns that the constraint applies to
+	KeyColumns         []string
 	Expression         string
 	IsValid            bool
 	IsInheritable      bool
@@ -484,9 +495,9 @@ func fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Context, q *queries.Q
 		if err != nil {
 			return nil, fmt.Errorf("fetchDependsOnFunctions(%s): %w", cc.Oid, err)
 		}
-
 		checkCon := CheckConstraint{
 			Name:               cc.ConstraintName,
+			KeyColumns:         cc.ColumnNames,
 			Expression:         cc.ConstraintExpression,
 			IsValid:            cc.IsValid,
 			IsInheritable:      !cc.IsNotInheritable,

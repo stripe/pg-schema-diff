@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/suite"
@@ -41,6 +42,10 @@ type (
 		name         string
 		oldSchemaDDL []string
 		newSchemaDDL []string
+
+		// ddl is used to assert the exact DDL (of the statements) that  generated. This is useful when asserting
+		// exactly how a migration is performed
+		ddl []string
 
 		// expectedHazardTypes should contain all the unique migration hazard types that are expected to be within the
 		// generated plan
@@ -86,6 +91,8 @@ func (suite *acceptanceTestSuite) runTestCases(acceptanceTestCases []acceptanceT
 }
 
 func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expectations, planOpts []diff.PlanOpt) {
+	uuid.SetRand(&deterministicRandReader{})
+
 	// normalize the subtest
 	if expects.outputState == nil {
 		expects.outputState = tc.newSchemaDDL
@@ -145,6 +152,14 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	newDbDump := suite.directlyRunDDLAndGetDump(expects.outputState)
 	suite.Equal(newDbDump, oldDbDump, prettySprintPlan(plan))
 
+	if tc.ddl != nil {
+		var generatedDDL []string
+		for _, stmt := range plan.Statements {
+			generatedDDL = append(generatedDDL, stmt.DDL)
+		}
+		suite.Equal(tc.ddl, generatedDDL)
+	}
+
 	// Make sure no diff is found if we try to regenerate a plan
 	plan, err = diff.GeneratePlan(context.Background(), oldDbConn, tempDbFactory, tc.newSchemaDDL, planOpts...)
 	suite.Require().NoError(err)
@@ -202,6 +217,18 @@ func getUniqueHazardTypesFromStatements(statements []diff.Statement) []diff.Migr
 
 func prettySprintPlan(plan diff.Plan) string {
 	return fmt.Sprintf("%# v", pretty.Formatter(plan.Statements))
+}
+
+type deterministicRandReader struct {
+	counter int8
+}
+
+func (r *deterministicRandReader) Read(p []byte) (int, error) {
+	for i := 0; i < len(p); i++ {
+		p[i] = byte(r.counter)
+		r.counter++
+	}
+	return len(p), nil
 }
 
 func TestAcceptanceSuite(t *testing.T) {
