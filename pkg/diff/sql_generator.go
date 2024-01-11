@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/uuid"
+	"github.com/stripe/pg-schema-diff/internal/pgidentifier"
 	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
@@ -924,12 +924,12 @@ func isValidNotNullCC(cc schema.CheckConstraint) bool {
 }
 
 func buildTempNotNullConstraint(colDiff columnDiff) (schema.CheckConstraint, error) {
-	uuid, err := uuid.NewRandom()
+	uuid, err := pgidentifier.RandomUUID()
 	if err != nil {
 		return schema.CheckConstraint{}, fmt.Errorf("generating uuid: %w", err)
 	}
 	return schema.CheckConstraint{
-		Name:               fmt.Sprintf("%snn_%s", tmpObjNamePrefix, uuid.String()),
+		Name:               fmt.Sprintf("%snn_%s", tmpObjNamePrefix, uuid),
 		KeyColumns:         []string{colDiff.new.Name},
 		Expression:         fmt.Sprintf("%s IS NOT NULL", schema.EscapeIdentifier(colDiff.new.Name)),
 		IsValid:            true,
@@ -1167,18 +1167,21 @@ func (rsg *renameConflictingIndexSQLVertexGenerator) Add(index schema.Index) ([]
 }
 
 func (rsg *renameConflictingIndexSQLVertexGenerator) generateNonConflictingName(index schema.Index) (string, error) {
-	uuid, err := uuid.NewRandom()
+	uuid, err := pgidentifier.RandomUUID()
 	if err != nil {
-		return "", fmt.Errorf("generating UUID: %w", err)
+		return "", fmt.Errorf("generating RandomUUID: %w", err)
 	}
 
-	newNameSuffix := fmt.Sprintf("_%s", uuid.String())
+	prefix := fmt.Sprintf("%sidx_", tmpObjNamePrefix)
+	suffix := fmt.Sprintf("_%s", uuid)
+	prefixAndSuffixSize := len(prefix) + len(suffix)
+
 	idxNameTruncationIdx := len(index.Name)
-	if len(index.Name) > maxPostgresIdentifierSize-len(newNameSuffix) {
-		idxNameTruncationIdx = maxPostgresIdentifierSize - len(newNameSuffix)
+	if len(index.Name) > maxPostgresIdentifierSize-prefixAndSuffixSize {
+		idxNameTruncationIdx = maxPostgresIdentifierSize - prefixAndSuffixSize
 	}
 
-	return index.Name[:idxNameTruncationIdx] + newNameSuffix, nil
+	return fmt.Sprintf("%s%s%s", prefix, index.Name[:idxNameTruncationIdx], suffix), nil
 }
 
 // rename gets the rename for the index if it eixsts, otherwise it returns an empty stringa nd false

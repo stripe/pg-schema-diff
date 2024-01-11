@@ -289,7 +289,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter FK (not valid to valid)",
+		name: "Alter FK not valid to valid (validate FK isn't dropped and re-added)",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -318,6 +318,9 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 			ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
 			    FOREIGN KEY (fk_id) REFERENCES foobar(id);
 			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar fk\" VALIDATE CONSTRAINT \"some_fk\"",
 		},
 	},
 	{
