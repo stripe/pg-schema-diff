@@ -479,6 +479,7 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	tableGraphs, err := diff.tableDiffs.resolveToSQLGraph(&tableSQLVertexGenerator{
 		deletedTablesByName:     deletedTablesByName,
 		tablesInNewSchemaByName: tablesInNewSchemaByName,
+		tableDiffsByName:        buildDiffByNameMap[schema.Table, tableDiff](diff.tableDiffs.alters),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolving table sql graphs: %w", err)
@@ -614,6 +615,7 @@ func buildMap[K comparable, V any](v []V, getKey func(V) K) map[K]V {
 type tableSQLVertexGenerator struct {
 	deletedTablesByName     map[string]schema.Table
 	tablesInNewSchemaByName map[string]schema.Table
+	tableDiffsByName        map[string]tableDiff
 }
 
 var _ sqlVertexGenerator[schema.Table, tableDiff] = &tableSQLVertexGenerator{}
@@ -799,6 +801,11 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 		return nil, fmt.Errorf("check constraints on partitions: %w", ErrNotImplemented)
 	}
 
+	var alteredParentColumnsByName map[string]columnDiff
+	if parentDiff, ok := t.tableDiffsByName[diff.new.ParentTableName]; ok {
+		alteredParentColumnsByName = buildDiffByNameMap[schema.Column, columnDiff](parentDiff.columnsDiff.alters)
+	}
+
 	var stmts []Statement
 	// ColumnsDiff should only have nullability changes. Partitioned tables
 	// aren't concerned about old/new columns added
@@ -806,6 +813,16 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 		if colDiff.old.IsNullable == colDiff.new.IsNullable {
 			continue
 		}
+
+		if parentCol, ok := alteredParentColumnsByName[colDiff.new.Name]; ok {
+			if colDiff.new.IsNullable == parentCol.new.IsNullable && parentCol.new.IsNullable != parentCol.old.IsNullable {
+				// If the parent column's new nullability matches the child column, and the parent column's nullability
+				// is being altered, then we don't need to alter the child column's nullability because the DDL required
+				// to alter the parent's nullability will alter the child's nullability as well.
+				continue
+			}
+		}
+
 		alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(publicSchemaName(diff.new.Name)), schema.EscapeIdentifier(colDiff.new.Name))
 		if colDiff.new.IsNullable {
 			stmts = append(stmts, Statement{
