@@ -33,7 +33,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Add check constraint",
+		name: "Add check constraint (validate constraint added online)",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -51,6 +51,10 @@ var checkConstraintCases = []acceptanceTestCase{
 				bar BIGINT CHECK ( bar > id )
 			);
 			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar_check\" CHECK((bar > id)) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar_check\"",
 		},
 	},
 	{
@@ -383,7 +387,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter an invalid check constraint to be valid",
+		name: "Alter an invalid check constraint to be valid (validate constraint isn't dropped and re-added)",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -403,6 +407,9 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			ALTER TABLE foobar ADD CONSTRAINT bar_check CHECK ( bar > id );
 			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"bar_check\"",
 		},
 	},
 	{

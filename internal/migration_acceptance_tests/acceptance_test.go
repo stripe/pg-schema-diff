@@ -157,7 +157,12 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 		for _, stmt := range plan.Statements {
 			generatedDDL = append(generatedDDL, stmt.DDL)
 		}
-		suite.Equal(tc.ddl, generatedDDL)
+		// In the future, we might want to allow users to assert expectations for vanilla options and data packing
+		//
+		// We can also make the system more advanced by using tokens in place of the "randomly" generated UUIDs, such
+		// the test case doesn't need to be updated if the UUID generation changes. If we built this functionality, we
+		// should also integrate it with the schema_migration_plan_test.go tests.
+		suite.Equal(tc.ddl, generatedDDL, "data packing can change the the generated UUID and DDL")
 	}
 
 	// Make sure no diff is found if we try to regenerate a plan

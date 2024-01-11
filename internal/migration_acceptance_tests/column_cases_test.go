@@ -284,6 +284,33 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Change BIGINT to TIMESTAMP (validate conversion and ANALYZE)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE "Foobar"(
+			    id INT PRIMARY KEY,
+				some_time_col BIGINT
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE "Foobar"(
+			    id INT PRIMARY KEY,
+				some_time_col TIMESTAMP 
+			);
+			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"Foobar\" ALTER COLUMN \"some_time_col\" SET DATA TYPE timestamp without time zone using to_timestamp(\"some_time_col\" / 1000)",
+			"ANALYZE \"Foobar\" (\"some_time_col\")",
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeImpactsDatabasePerformance,
+		},
+	},
+	{
 		name: "Modify data type (varchar -> TEXT) with compatible default",
 		oldSchemaDDL: []string{
 			`
@@ -353,7 +380,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Modify collation (default -> non-default)",
+		name: "Modify collation (default -> non-default) (validate ANALYZE is run)",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -369,6 +396,10 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 				foobar VARCHAR(255) COLLATE "POSIX" NOT NULL
 			);
 			`,
+		},
+		ddl: []string{
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE character varying(255) COLLATE \"pg_catalog\".\"POSIX\" using \"foobar\"::character varying(255)",
+			"ANALYZE \"foobar\" (\"foobar\")",
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
@@ -473,12 +504,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
-			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
-		},
+		ddl: []string{"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID", "ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"", "ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL", "ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\""},
 	},
 	{
 		name: "Set NOT NULL (add invalid CC)",
@@ -500,11 +526,11 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((foobar IS NOT NULL)) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 		},
 	},
 
@@ -529,10 +555,10 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 		},
 	},
 	{
@@ -683,17 +709,16 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
 		ddl: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE integer using \"foobar\"::integer",
 			"ANALYZE \"foobar\" (\"foobar\")",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar_foobar_check\" CHECK((foobar > 0)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar_foobar_check\"",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_10111213-1415-4617-9819-1a1b1c1d1e1f\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 		},
 	},
-	// TODO(bplunkett) Add not null migration where valid cc is being dropped
 	{
 		name: "Remove NOT NULL",
 		oldSchemaDDL: []string{
@@ -910,29 +935,6 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE "Foobar"(
 			    id INT PRIMARY KEY,
 				"Foobar" CHAR COLLATE "POSIX" NOT NULL DEFAULT 'A'
-			);
-			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
-			diff.MigrationHazardTypeImpactsDatabasePerformance,
-		},
-	},
-	{
-		name: "Change BIGINT to TIMESTAMP, nullability (NOT NULL), and default with current_timestamp",
-		oldSchemaDDL: []string{
-			`
-			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
-				some_time_col BIGINT
-			);
-			`,
-		},
-		newSchemaDDL: []string{
-			`
-			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
-				some_time_col TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 			);
 			`,
 		},
