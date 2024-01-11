@@ -193,7 +193,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexBuild,
 		},
 	},
@@ -281,7 +280,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexBuild,
 		},
 	},
@@ -308,7 +306,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
 		},
@@ -364,7 +361,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexBuild,
 		},
 	},
@@ -554,9 +550,9 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE INDEX new_foobar_1_some_local_idx ON foobar_1(foo, bar, id);
 		`},
 		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
-			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 		ddl: []string{
 			"ALTER INDEX \"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_MDEyMzQ1Rje4OTo7PD0$Pw\"",
@@ -569,15 +565,11 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_ICEiIyQlRieoKSorLC0uLw\"",
 			"ALTER TABLE ONLY \"public\".\"foobar\" ADD CONSTRAINT \"some_idx\" PRIMARY KEY (foo, id)",
-			"ALTER TABLE \"public\".\"foobar_1\" ALTER COLUMN \"id\" SET NOT NULL",
-			"ALTER TABLE \"public\".\"foobar_1\" ALTER COLUMN \"foo\" SET NOT NULL",
 			"CREATE UNIQUE INDEX CONCURRENTLY foobar_1_pkey ON public.foobar_1 USING btree (foo, id)",
 			"ALTER TABLE \"public\".\"foobar_1\" ADD CONSTRAINT \"foobar_1_pkey\" PRIMARY KEY USING INDEX \"foobar_1_pkey\"",
 			"ALTER INDEX \"some_idx\" ATTACH PARTITION \"foobar_1_pkey\"",
 			"CREATE INDEX CONCURRENTLY new_foobar_1_some_local_idx ON public.foobar_1 USING btree (foo, bar, id)",
 			"CREATE INDEX CONCURRENTLY new_idx ON public.foobar_1 USING btree (foo, bar)",
-			"ALTER TABLE \"public\".\"foobar_2\" ALTER COLUMN \"id\" SET NOT NULL",
-			"ALTER TABLE \"public\".\"foobar_2\" ALTER COLUMN \"foo\" SET NOT NULL",
 			"CREATE UNIQUE INDEX CONCURRENTLY foobar_2_pkey ON public.foobar_2 USING btree (foo, id)",
 			"ALTER TABLE \"public\".\"foobar_2\" ADD CONSTRAINT \"foobar_2_pkey\" PRIMARY KEY USING INDEX \"foobar_2_pkey\"",
 			"ALTER INDEX \"some_idx\" ATTACH PARTITION \"foobar_2_pkey\"",

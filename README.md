@@ -6,36 +6,68 @@ The tooling attempts to use native postgres migration operations to perform onli
 be lock-free and some might require downtime, but the hazards system will warn you ahead of time when that's the case.
 Stateful online migration techniques, like shadow tables, aren't yet supported.
 
+### Online index Replacement
 Your project's diff:
 ```
 $ git diff
 diff --git a/schema/schema.sql b/schema/schema.sql
-index 062816a..08a6a40 100644
+index cc3a14b..cf4b32d 100644
 --- a/schema/schema.sql
 +++ b/schema/schema.sql
-@@ -4,4 +4,4 @@ CREATE TABLE foobar(
- 	sender text,
- 	created_at timestamp
+@@ -2,5 +2,5 @@ CREATE TABLE foobar(
+  	created_at timestamp,
+ 	message text
  );
 -CREATE INDEX message_idx ON foobar(message);
 +CREATE INDEX message_idx ON foobar(message, created_at);
 ```
-The generated plan (*online index replacement, i.e., queries using `message_idx` will always have an index backing them*):
+The generated plan (*queries using `message_idx` will always have an index backing them, even while the new index is being built*):
 ```
 $ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres" --schema-dir ./schema
 ################################ Generated plan ################################
-1. ALTER INDEX "message_idx" RENAME TO "message_idx_0ef03fcb-2368-4d57-9c81-f44cb58e7325";
-	-- Statement Timeout: 3s
+1. ALTER INDEX "message_idx" RENAME TO "pgschemadiff_tmpidx_message_idx_IiaKzkvPQtyA7ob9piVqiQ";
+        -- Statement Timeout: 3s
 
 2. CREATE INDEX CONCURRENTLY message_idx ON public.foobar USING btree (message, created_at);
-	-- Statement Timeout: 20m0s
-	-- Lock Timeout: 3s
-	-- Hazard INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.
+        -- Statement Timeout: 20m0s
+        -- Lock Timeout: 3s
+        -- Hazard INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.
 
-3. DROP INDEX CONCURRENTLY "message_idx_0ef03fcb-2368-4d57-9c81-f44cb58e7325";
-	-- Statement Timeout: 20m0s
-	-- Lock Timeout: 3s
-	-- Hazard INDEX_DROPPED: Dropping this index means queries that use this index might perform worse because they will no longer will be able to leverage it.
+3. DROP INDEX CONCURRENTLY "pgschemadiff_tmpidx_message_idx_IiaKzkvPQtyA7ob9piVqiQ";
+        -- Statement Timeout: 20m0s
+        -- Lock Timeout: 3s
+        -- Hazard INDEX_DROPPED: Dropping this index means queries that use this index might perform worse because they will no longer will be able to leverage it.
+```
+### Online `NOT NULL` constraint creation
+Your project's diff:
+```
+diff --git a/schema/schema.sql b/schema/schema.sql
+index cc3a14b..5a1cec2 100644
+--- a/schema/schema.sql
++++ b/schema/schema.sql
+@@ -1,5 +1,5 @@
+ CREATE TABLE foobar(
+- 	created_at timestamp,
++ 	created_at timestamp NOT NULL,
+ 	message text
+ );
+ CREATE INDEX message_idx ON foobar(message);
+```
+The generated plan (*leverages check constraints to eliminate the need for a long-lived access-exclusive lock on the table*):
+```
+$ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgres" --schema-dir ./schema
+################################ Generated plan ################################
+1. ALTER TABLE "public"."foobar" ADD CONSTRAINT "pgschemadiff_tmpnn_BCOxMXqAQwaXlKPCRXoMMg" CHECK("created_at" IS NOT NULL) NOT VALID;
+        -- Statement Timeout: 3s
+
+2. ALTER TABLE "public"."foobar" VALIDATE CONSTRAINT "pgschemadiff_tmpnn_BCOxMXqAQwaXlKPCRXoMMg";
+        -- Statement Timeout: 3s
+
+3. ALTER TABLE "public"."foobar" ALTER COLUMN "created_at" SET NOT NULL;
+        -- Statement Timeout: 3s
+
+4. ALTER TABLE "public"."foobar" DROP CONSTRAINT "pgschemadiff_tmpnn_BCOxMXqAQwaXlKPCRXoMMg";
+        -- Statement Timeout: 3s
 ```
 
 # Key features
@@ -45,7 +77,7 @@ $ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgre
   * Online index replacement: If some index is changed, the new version will be built before the old version is dropped, preventing a window where no index is backing queries
   * Online check constraint builds: Check constraints are added as `INVALID` before being validated, eliminating the need
 	for a long access-exclusive lock on the table
-  * Online `ALTER ... SET NOT NULL` using check constraints to eliminate the need for an access-exclusive lock on the table
+  * Online `NOT NULL` constraint creation using check constraints to eliminate the need for an access-exclusive lock on the table
   * Prioritized index builds: Building new indexes is always prioritized over deleting old indexes
 * A comprehensive set of features to ensure the safety of planned migrations:
   * Operators warned of dangerous operations.
