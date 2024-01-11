@@ -816,9 +816,9 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 
 		if parentCol, ok := alteredParentColumnsByName[colDiff.new.Name]; ok {
 			if colDiff.new.IsNullable == parentCol.new.IsNullable && parentCol.new.IsNullable != parentCol.old.IsNullable {
-				// If the parent column nullability matches and we are altering the parent column nullability,
-				// then the column in the partition will just inherit the parent's via the DDL required to alter the
-				// parent's nullability
+				// If the parent column's new nullability matches the child column, and the parent column's nullability
+				// is being altered, then we don't need to alter the child column's nullability because the DDL required
+				// to alter the parent's nullability will alter the child's nullability as well.
 				continue
 			}
 		}
