@@ -136,7 +136,7 @@ if err != nil {
 }
 defer tempDbFactory.Close()
 // Generate the migration plan
-plan, err := diff.GeneratePlan(ctx, conn, tempDbFactory, ddl,
+plan, err := diff.GeneratePlan(ctx, connPool, tempDbFactory, ddl,
 	diff.WithDataPackNewTables(),
 )
 if err != nil {

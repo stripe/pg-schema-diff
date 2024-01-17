@@ -86,24 +86,23 @@ func (suite *simpleMigratorTestSuite) TestPlanAndApplyMigration() {
 
 	suite.mustApplyDDLToTestDb([]string{initialDDL})
 
-	conn, poolCloser := suite.mustGetTestDBConn()
-	defer poolCloser.Close()
-	defer conn.Close()
+	connPool := suite.mustGetTestDBPool()
+	defer connPool.Close()
 
 	tempDbFactory := suite.mustBuildTempDbFactory(context.Background())
 	defer tempDbFactory.Close()
 
-	plan, err := diff.GeneratePlan(context.Background(), conn, tempDbFactory, []string{newSchemaDDL})
+	plan, err := diff.GeneratePlan(context.Background(), connPool, tempDbFactory, []string{newSchemaDDL})
 	suite.NoError(err)
 
 	// Run the migration
 	for _, stmt := range plan.Statements {
-		_, err = conn.ExecContext(context.Background(), stmt.ToSQL())
+		_, err = connPool.ExecContext(context.Background(), stmt.ToSQL())
 		suite.Require().NoError(err)
 	}
 	// Ensure that some sort of migration ran. we're really not testing the correctness of the
 	// migration in this test suite
-	_, err = conn.ExecContext(context.Background(),
+	_, err = connPool.ExecContext(context.Background(),
 		"SELECT new_column FROM foobar;")
 	suite.NoError(err)
 }

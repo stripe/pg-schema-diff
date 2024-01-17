@@ -109,8 +109,6 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	oldDBConnPool, err := sql.Open("pgx", oldDb.GetDSN())
 	suite.Require().NoError(err)
 	defer oldDBConnPool.Close()
-	oldDbConn, _ := oldDBConnPool.Conn(context.Background())
-	defer oldDbConn.Close()
 
 	tempDbFactory, err := tempdb.NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*sql.DB, error) {
 		return sql.Open("pgx", suite.pgEngine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
@@ -122,7 +120,7 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 		suite.Require().NoError(tempDbFactory.Close())
 	}(tempDbFactory)
 
-	plan, err := diff.GeneratePlan(context.Background(), oldDbConn, tempDbFactory, tc.newSchemaDDL, planOpts...)
+	plan, err := diff.GeneratePlan(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
 
 	if expects.planErrorIs != nil || len(expects.planErrorContains) > 0 {
 		if expects.planErrorIs != nil {
@@ -166,7 +164,7 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	}
 
 	// Make sure no diff is found if we try to regenerate a plan
-	plan, err = diff.GeneratePlan(context.Background(), oldDbConn, tempDbFactory, tc.newSchemaDDL, planOpts...)
+	plan, err = diff.GeneratePlan(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
 	suite.Require().NoError(err)
 	suite.Empty(plan.Statements, prettySprintPlan(plan))
 }
