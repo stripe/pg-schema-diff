@@ -2,12 +2,14 @@ package schema
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"regexp"
 	"sort"
 
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/stripe/pg-schema-diff/internal/queries"
+	"github.com/stripe/pg-schema-diff/internal/util"
 )
 
 type (
@@ -348,41 +350,110 @@ func (t Trigger) GetName() string {
 
 // GetPublicSchema fetches the "public" schema. It is a non-atomic operation.
 func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
-	q := queries.New(db)
-
-	extensions, err := fetchExtensions(ctx, q)
-	if err != nil {
-		return Schema{}, fmt.Errorf("fetchExtensions: %w", err)
+	// To allow backwards compatibility with connections, we will not use concurrency if passed in a db that is not a
+	// *sql.DB. This is because not all implementations are thread safe, e.g., pgx.Connection.
+	//
+	// In the future, we should maybe create options where users can pass in a DB pool (WithPool(db) or WithConnection(db))
+	// and we can set concurrency to 1 if the passed in db is not a *sql.DB.
+	goRoutineRunner := util.NewSynchronousGoRoutineRunner()
+	if _, ok := db.(*sql.DB); ok {
+		goRoutineRunner = util.NewGoroutineLimiter(50)
 	}
 
-	tables, err := fetchTables(ctx, q)
+	return (&schemaFetcher{
+		q:               queries.New(db),
+		goroutineRunner: goRoutineRunner,
+	}).getPublicSchema(ctx)
+}
+
+type schemaFetcher struct {
+	q               *queries.Queries
+	goroutineRunner util.GoRoutineRunner
+}
+
+func (s *schemaFetcher) getPublicSchema(ctx context.Context) (Schema, error) {
+	extensionsFuture, err := util.NewFuture(ctx, s.goroutineRunner, func() ([]Extension, error) {
+		return s.fetchExtensions(ctx)
+	})
 	if err != nil {
-		return Schema{}, fmt.Errorf("fetchTables: %w", err)
+		return Schema{}, fmt.Errorf("starting extensions future: %w", err)
 	}
 
-	indexes, err := fetchIndexes(ctx, q)
+	tablesFuture, err := util.NewFuture(ctx, s.goroutineRunner, func() ([]Table, error) {
+		return s.fetchTables(ctx)
+	})
 	if err != nil {
-		return Schema{}, fmt.Errorf("fetchIndexes: %w", err)
+		return Schema{}, fmt.Errorf("starting tables future: %w", err)
 	}
 
-	fkCons, err := fetchForeignKeyCons(ctx, q)
+	indexesFuture, err := util.NewFuture(ctx, s.goroutineRunner, func() ([]Index, error) {
+		return s.fetchIndexes(ctx)
+	})
 	if err != nil {
-		return Schema{}, fmt.Errorf("fetchForeignKeyCons: %w", err)
+		return Schema{}, fmt.Errorf("starting indexes future: %w", err)
 	}
 
-	sequences, err := fetchSequences(ctx, q)
+	fkConsFuture, err := util.NewFuture(ctx, s.goroutineRunner, func() ([]ForeignKeyConstraint, error) {
+		return s.fetchForeignKeyCons(ctx)
+	})
 	if err != nil {
-		return Schema{}, fmt.Errorf("fetchSequences: %w", err)
+		return Schema{}, fmt.Errorf("starting foreign key constraints future: %w", err)
 	}
 
-	functions, err := fetchFunctions(ctx, q)
+	sequencesFuture, err := util.NewFuture(ctx, s.goroutineRunner, func() ([]Sequence, error) {
+		return s.fetchSequences(ctx)
+	})
 	if err != nil {
-		return Schema{}, fmt.Errorf("fetchFunctions: %w", err)
+		return Schema{}, fmt.Errorf("starting sequences future: %w", err)
 	}
 
-	triggers, err := fetchTriggers(ctx, q)
+	functionsFuture, err := util.NewFuture(ctx, s.goroutineRunner, func() ([]Function, error) {
+		return s.fetchFunctions(ctx)
+	})
 	if err != nil {
-		return Schema{}, fmt.Errorf("fetchTriggers: %w", err)
+		return Schema{}, fmt.Errorf("starting functions future: %w", err)
+	}
+
+	triggersFuture, err := util.NewFuture(ctx, s.goroutineRunner, func() ([]Trigger, error) {
+		return s.fetchTriggers(ctx)
+	})
+	if err != nil {
+		return Schema{}, fmt.Errorf("starting triggers future: %w", err)
+	}
+
+	extensions, err := extensionsFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting extensions: %w", err)
+	}
+
+	tables, err := tablesFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting tables: %w", err)
+	}
+
+	indexes, err := indexesFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting indexes: %w", err)
+	}
+
+	fkCons, err := fkConsFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting foreign key constraints: %w", err)
+	}
+
+	sequences, err := sequencesFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting sequences: %w", err)
+	}
+
+	functions, err := functionsFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting functions: %w", err)
+	}
+
+	triggers, err := triggersFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting triggers: %w", err)
 	}
 
 	return Schema{
@@ -396,8 +467,8 @@ func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
 	}, nil
 }
 
-func fetchExtensions(ctx context.Context, q *queries.Queries) ([]Extension, error) {
-	rawExtensions, err := q.GetExtensions(ctx)
+func (s *schemaFetcher) fetchExtensions(ctx context.Context) ([]Extension, error) {
+	rawExtensions, err := s.q.GetExtensions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetExtensions(): %w", err)
 	}
@@ -415,144 +486,201 @@ func fetchExtensions(ctx context.Context, q *queries.Queries) ([]Extension, erro
 	return extensions, nil
 }
 
-func fetchTables(ctx context.Context, q *queries.Queries) ([]Table, error) {
-	rawTables, err := q.GetTables(ctx)
+func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
+	rawTables, err := s.q.GetTables(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetTables(): %w", err)
 	}
 
-	tablesToCheckConsMap, err := fetchCheckConsAndBuildTableToCheckConsMap(ctx, q)
+	tablesToCheckConsMap, err := s.fetchCheckConsAndBuildTableToCheckConsMap(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fetchCheckConsAndBuildTableToCheckConsMap: %w", err)
 	}
 
-	var tables []Table
-	for _, table := range rawTables {
-		if len(table.ParentTableName) > 0 && table.ParentTableSchemaName != "public" {
-			return nil, fmt.Errorf(
-				"table %s has parent table in schema %s. only parent tables in public schema are supported: %w",
-				table.TableName,
-				table.ParentTableSchemaName,
-				err,
-			)
-		}
-
-		rawColumns, err := q.GetColumnsForTable(ctx, table.Oid)
+	var tableFutures []util.Future[Table]
+	for _, _rawTable := range rawTables {
+		rawTable := _rawTable // Capture loop variables for go routine
+		tableFuture, err := util.NewFuture(ctx, s.goroutineRunner, func() (Table, error) {
+			return s.buildTable(ctx, rawTable, tablesToCheckConsMap)
+		})
 		if err != nil {
-			return nil, fmt.Errorf("GetColumnsForTable(%s): %w", table.Oid, err)
+			return nil, fmt.Errorf("starting table future: %w", err)
 		}
-		var columns []Column
-		for _, column := range rawColumns {
-			collation := SchemaQualifiedName{}
-			if len(column.CollationName) > 0 {
-				collation = SchemaQualifiedName{
-					EscapedName: EscapeIdentifier(column.CollationName),
-					SchemaName:  column.CollationSchemaName,
-				}
+		tableFutures = append(tableFutures, tableFuture)
+	}
+
+	return util.ResolveAll(ctx, tableFutures...)
+}
+
+func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesRow, tablesToCheckConsMap map[string][]CheckConstraint) (Table, error) {
+	if len(table.ParentTableName) > 0 && table.ParentTableSchemaName != "public" {
+		return Table{}, fmt.Errorf(
+			"table %s has parent table in schema %s. only parent tables in public schema are supported",
+			table.TableName,
+			table.ParentTableSchemaName,
+		)
+	}
+
+	rawColumns, err := s.q.GetColumnsForTable(ctx, table.Oid)
+	if err != nil {
+		return Table{}, fmt.Errorf("GetColumnsForTable(%s): %w", table.Oid, err)
+	}
+	var columns []Column
+	for _, column := range rawColumns {
+		collation := SchemaQualifiedName{}
+		if len(column.CollationName) > 0 {
+			collation = SchemaQualifiedName{
+				EscapedName: EscapeIdentifier(column.CollationName),
+				SchemaName:  column.CollationSchemaName,
 			}
-
-			columns = append(columns, Column{
-				Name:       column.ColumnName,
-				Type:       column.ColumnType,
-				Collation:  collation,
-				IsNullable: !column.IsNotNull,
-				// If the column has a default value, this will be a SQL string representing that value.
-				// Examples:
-				//   ''::text
-				//   CURRENT_TIMESTAMP
-				// If empty, indicates that there is no default value.
-				Default: column.DefaultValue,
-				Size:    int(column.ColumnSize),
-			})
 		}
 
-		tables = append(tables, Table{
-			Name:             table.TableName,
-			Columns:          columns,
-			CheckConstraints: tablesToCheckConsMap[table.TableName],
-			ReplicaIdentity:  ReplicaIdentity(table.ReplicaIdentity),
-
-			PartitionKeyDef: table.PartitionKeyDef,
-
-			ParentTableName: table.ParentTableName,
-			ForValues:       table.PartitionForValues,
+		columns = append(columns, Column{
+			Name:       column.ColumnName,
+			Type:       column.ColumnType,
+			Collation:  collation,
+			IsNullable: !column.IsNotNull,
+			// If the column has a default value, this will be a SQL string representing that value.
+			// Examples:
+			//   ''::text
+			//   CURRENT_TIMESTAMP
+			// If empty, indicates that there is no default value.
+			Default: column.DefaultValue,
+			Size:    int(column.ColumnSize),
 		})
 	}
-	return tables, nil
+
+	return Table{
+		Name:             table.TableName,
+		Columns:          columns,
+		CheckConstraints: tablesToCheckConsMap[table.TableName],
+		ReplicaIdentity:  ReplicaIdentity(table.ReplicaIdentity),
+
+		PartitionKeyDef: table.PartitionKeyDef,
+
+		ParentTableName: table.ParentTableName,
+		ForValues:       table.PartitionForValues,
+	}, nil
 }
 
 // fetchCheckConsAndBuildTableToCheckConsMap fetches the check constraints and builds a map of table name to the check
 // constraints within the table
-func fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Context, q *queries.Queries) (map[string][]CheckConstraint, error) {
-	rawCheckCons, err := q.GetCheckConstraints(ctx)
+func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Context) (map[string][]CheckConstraint, error) {
+	rawCheckCons, err := s.q.GetCheckConstraints(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetCheckConstraints: %w", err)
 	}
 
-	result := make(map[string][]CheckConstraint)
-	for _, cc := range rawCheckCons {
-		dependsOnFunctions, err := fetchDependsOnFunctions(ctx, q, "pg_constraint", cc.Oid)
-		if err != nil {
-			return nil, fmt.Errorf("fetchDependsOnFunctions(%s): %w", cc.Oid, err)
-		}
-		checkCon := CheckConstraint{
-			Name:               cc.ConstraintName,
-			KeyColumns:         cc.ColumnNames,
-			Expression:         cc.ConstraintExpression,
-			IsValid:            cc.IsValid,
-			IsInheritable:      !cc.IsNotInheritable,
-			DependsOnFunctions: dependsOnFunctions,
-		}
-		result[cc.TableName] = append(result[cc.TableName], checkCon)
+	type checkConstraintAndTable struct {
+		checkConstraint CheckConstraint
+		tableName       string
 	}
 
-	return result, nil
+	var ccFutures []util.Future[checkConstraintAndTable]
+	for _, _rawCC := range rawCheckCons {
+		rawCC := _rawCC // Capture loop variable for go routine
+		f, err := util.NewFuture(ctx, s.goroutineRunner, func() (checkConstraintAndTable, error) {
+			cc, err := s.buildCheckConstraint(ctx, rawCC)
+			if err != nil {
+				return checkConstraintAndTable{}, fmt.Errorf("building check constraint: %w", err)
+			}
+			return checkConstraintAndTable{
+				checkConstraint: cc,
+				tableName:       rawCC.TableName,
+			}, nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("starting check constraint future: %w", err)
+		}
+
+		ccFutures = append(ccFutures, f)
+	}
+
+	ccs, err := util.ResolveAll(ctx, ccFutures...)
+	if err != nil {
+		return nil, fmt.Errorf("getting check constraints: %w", err)
+	}
+
+	// Build a map of table name to check constraints
+	tablesToCheckConsMap := make(map[string][]CheckConstraint)
+	for _, cc := range ccs {
+		tablesToCheckConsMap[cc.tableName] = append(tablesToCheckConsMap[cc.tableName], cc.checkConstraint)
+	}
+
+	return tablesToCheckConsMap, nil
+}
+
+func (s *schemaFetcher) buildCheckConstraint(ctx context.Context, cc queries.GetCheckConstraintsRow) (CheckConstraint, error) {
+	dependsOnFunctions, err := s.fetchDependsOnFunctions(ctx, "pg_constraint", cc.Oid)
+	if err != nil {
+		return CheckConstraint{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", cc.Oid, err)
+	}
+	return CheckConstraint{
+		Name:               cc.ConstraintName,
+		KeyColumns:         cc.ColumnNames,
+		Expression:         cc.ConstraintExpression,
+		IsValid:            cc.IsValid,
+		IsInheritable:      !cc.IsNotInheritable,
+		DependsOnFunctions: dependsOnFunctions,
+	}, nil
 }
 
 // fetchIndexes fetches the indexes We fetch all indexes at once to minimize number of queries, since each index needs
 // to fetch columns
-func fetchIndexes(ctx context.Context, q *queries.Queries) ([]Index, error) {
-	rawIndexes, err := q.GetIndexes(ctx)
+func (s *schemaFetcher) fetchIndexes(ctx context.Context) ([]Index, error) {
+	rawIndexes, err := s.q.GetIndexes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetIndexes: %w", err)
 	}
 
-	var indexes []Index
-	for _, rawIndex := range rawIndexes {
-		rawColumns, err := q.GetColumnsForIndex(ctx, rawIndex.Oid)
-		if err != nil {
-			return nil, fmt.Errorf("GetColumnsForIndex(%s): %w", rawIndex.Oid, err)
-		}
-
-		var indexConstraint *IndexConstraint
-		if rawIndex.ConstraintName != "" {
-			indexConstraint = &IndexConstraint{
-				Type:                  IndexConstraintType(rawIndex.ConstraintType),
-				EscapedConstraintName: EscapeIdentifier(rawIndex.ConstraintName),
-				ConstraintDef:         rawIndex.ConstraintDef,
-				IsLocal:               rawIndex.ConstraintIsLocal,
-			}
-		}
-
-		indexes = append(indexes, Index{
-			TableName:       rawIndex.TableName,
-			Name:            rawIndex.IndexName,
-			Columns:         rawColumns,
-			GetIndexDefStmt: GetIndexDefStatement(rawIndex.DefStmt),
-			IsInvalid:       !rawIndex.IndexIsValid,
-			IsUnique:        rawIndex.IndexIsUnique,
-
-			Constraint: indexConstraint,
-
-			ParentIdxName: rawIndex.ParentIndexName,
+	var idxFutures []util.Future[Index]
+	for _, _rawIndex := range rawIndexes {
+		rawIndex := _rawIndex // Capture loop variable for go routine
+		f, err := util.NewFuture(ctx, s.goroutineRunner, func() (Index, error) {
+			return s.buildIndex(ctx, rawIndex)
 		})
+		if err != nil {
+			return nil, fmt.Errorf("starting index future: %w", err)
+		}
+
+		idxFutures = append(idxFutures, f)
 	}
 
-	return indexes, nil
+	return util.ResolveAll(ctx, idxFutures...)
 }
 
-func fetchForeignKeyCons(ctx context.Context, q *queries.Queries) ([]ForeignKeyConstraint, error) {
-	rawFkCons, err := q.GetForeignKeyConstraints(ctx)
+func (s *schemaFetcher) buildIndex(ctx context.Context, rawIndex queries.GetIndexesRow) (Index, error) {
+	rawColumns, err := s.q.GetColumnsForIndex(ctx, rawIndex.Oid)
+	if err != nil {
+		return Index{}, fmt.Errorf("GetColumnsForIndex(%s): %w", rawIndex.Oid, err)
+	}
+
+	var indexConstraint *IndexConstraint
+	if rawIndex.ConstraintName != "" {
+		indexConstraint = &IndexConstraint{
+			Type:                  IndexConstraintType(rawIndex.ConstraintType),
+			EscapedConstraintName: EscapeIdentifier(rawIndex.ConstraintName),
+			ConstraintDef:         rawIndex.ConstraintDef,
+			IsLocal:               rawIndex.ConstraintIsLocal,
+		}
+	}
+
+	return Index{
+		TableName:       rawIndex.TableName,
+		Name:            rawIndex.IndexName,
+		Columns:         rawColumns,
+		GetIndexDefStmt: GetIndexDefStatement(rawIndex.DefStmt),
+		IsInvalid:       !rawIndex.IndexIsValid,
+		IsUnique:        rawIndex.IndexIsUnique,
+
+		Constraint: indexConstraint,
+
+		ParentIdxName: rawIndex.ParentIndexName,
+	}, nil
+}
+
+func (s *schemaFetcher) fetchForeignKeyCons(ctx context.Context) ([]ForeignKeyConstraint, error) {
+	rawFkCons, err := s.q.GetForeignKeyConstraints(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetForeignKeyConstraints: %w", err)
 	}
@@ -578,8 +706,8 @@ func fetchForeignKeyCons(ctx context.Context, q *queries.Queries) ([]ForeignKeyC
 	return fkCons, nil
 }
 
-func fetchSequences(ctx context.Context, q *queries.Queries) ([]Sequence, error) {
-	rawSeqs, err := q.GetSequences(ctx)
+func (s *schemaFetcher) fetchSequences(ctx context.Context) ([]Sequence, error) {
+	rawSeqs, err := s.q.GetSequences(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetSequences: %w", err)
 	}
@@ -615,32 +743,43 @@ func fetchSequences(ctx context.Context, q *queries.Queries) ([]Sequence, error)
 	return seqs, nil
 }
 
-func fetchFunctions(ctx context.Context, q *queries.Queries) ([]Function, error) {
-	rawFunctions, err := q.GetFunctions(ctx)
+func (s *schemaFetcher) fetchFunctions(ctx context.Context) ([]Function, error) {
+	rawFunctions, err := s.q.GetFunctions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetFunctions: %w", err)
 	}
 
-	var functions []Function
-	for _, rawFunction := range rawFunctions {
-		dependsOnFunctions, err := fetchDependsOnFunctions(ctx, q, "pg_proc", rawFunction.Oid)
-		if err != nil {
-			return nil, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
-		}
-
-		functions = append(functions, Function{
-			SchemaQualifiedName: buildFuncName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
-			FunctionDef:         rawFunction.FuncDef,
-			Language:            rawFunction.FuncLang,
-			DependsOnFunctions:  dependsOnFunctions,
+	var functionFutures []util.Future[Function]
+	for _, _rawFunction := range rawFunctions {
+		rawFunction := _rawFunction // Capture loop variable for go routine
+		f, err := util.NewFuture(ctx, s.goroutineRunner, func() (Function, error) {
+			return s.buildFunction(ctx, rawFunction)
 		})
+		if err != nil {
+			return nil, fmt.Errorf("starting function future: %w", err)
+		}
+		functionFutures = append(functionFutures, f)
 	}
 
-	return functions, nil
+	return util.ResolveAll(ctx, functionFutures...)
 }
 
-func fetchDependsOnFunctions(ctx context.Context, q *queries.Queries, systemCatalog string, oid any) ([]SchemaQualifiedName, error) {
-	dependsOnFunctions, err := q.GetDependsOnFunctions(ctx, queries.GetDependsOnFunctionsParams{
+func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.GetFunctionsRow) (Function, error) {
+	dependsOnFunctions, err := s.fetchDependsOnFunctions(ctx, "pg_proc", rawFunction.Oid)
+	if err != nil {
+		return Function{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
+	}
+
+	return Function{
+		SchemaQualifiedName: buildFuncName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
+		FunctionDef:         rawFunction.FuncDef,
+		Language:            rawFunction.FuncLang,
+		DependsOnFunctions:  dependsOnFunctions,
+	}, nil
+}
+
+func (s *schemaFetcher) fetchDependsOnFunctions(ctx context.Context, systemCatalog string, oid any) ([]SchemaQualifiedName, error) {
+	dependsOnFunctions, err := s.q.GetDependsOnFunctions(ctx, queries.GetDependsOnFunctionsParams{
 		SystemCatalog: systemCatalog,
 		ObjectID:      oid,
 	})
@@ -656,8 +795,8 @@ func fetchDependsOnFunctions(ctx context.Context, q *queries.Queries, systemCata
 	return functionNames, nil
 }
 
-func fetchTriggers(ctx context.Context, q *queries.Queries) ([]Trigger, error) {
-	rawTriggers, err := q.GetTriggers(ctx)
+func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {
+	rawTriggers, err := s.q.GetTriggers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetTriggers: %w", err)
 	}

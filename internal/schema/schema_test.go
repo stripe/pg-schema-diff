@@ -3,6 +3,7 @@ package schema_test
 import (
 	"context"
 	"database/sql"
+	"io"
 	"testing"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
+	"github.com/stripe/pg-schema-diff/internal/queries"
 	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
@@ -953,43 +955,64 @@ func TestSchemaTestCases(t *testing.T) {
 	engine, err := pgengine.StartEngine()
 	require.NoError(t, err)
 	defer engine.Close()
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			db, err := engine.CreateDatabase()
-			require.NoError(t, err)
-			conn, err := sql.Open("pgx", db.GetDSN())
-			require.NoError(t, err)
-
-			for _, stmt := range testCase.ddl {
-				_, err := conn.Exec(stmt)
-				require.NoError(t, err)
-			}
-
-			fetchedSchema, err := schema.GetPublicSchema(context.TODO(), conn)
-			if testCase.expectedErrIs != nil {
-				require.ErrorIs(t, err, testCase.expectedErrIs)
-				return
-			} else {
-				require.NoError(t, err)
-			}
-
-			expectedNormalized := testCase.expectedSchema.Normalize()
-			fetchedNormalized := fetchedSchema.Normalize()
-			assert.Equal(t, expectedNormalized, fetchedNormalized, "expected=\n%# v \n fetched=%# v\n", pretty.Formatter(expectedNormalized), pretty.Formatter(fetchedNormalized))
-
-			fetchedSchemaHash, err := fetchedSchema.Hash()
-			require.NoError(t, err)
-			expectedSchemaHash, err := testCase.expectedSchema.Hash()
-			require.NoError(t, err)
-			assert.Equal(t, testCase.expectedHash, fetchedSchemaHash)
-			// same schemas should have the same hashes
-			assert.Equal(t, expectedSchemaHash, fetchedSchemaHash, "hash of expected schema should match fetched hash")
-
-			require.NoError(t, conn.Close())
-			require.NoError(t, db.DropDB())
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("Conn pool", func(t *testing.T) {
+				runTestCase(t, engine, tc, func(db *sql.DB) (queries.DBTX, io.Closer) {
+					return db, nil
+				})
+			})
+			t.Run("Connection", func(t *testing.T) {
+				runTestCase(t, engine, tc, func(db *sql.DB) (queries.DBTX, io.Closer) {
+					conn, err := db.Conn(context.Background())
+					require.NoError(t, err)
+					return conn, conn
+				})
+			})
 		})
 	}
+}
+
+func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getDBTX func(db *sql.DB) (queries.DBTX, io.Closer)) {
+	db, err := engine.CreateDatabase()
+	require.NoError(t, err)
+	connPool, err := sql.Open("pgx", db.GetDSN())
+	require.NoError(t, err)
+
+	for _, stmt := range testCase.ddl {
+		_, err := connPool.Exec(stmt)
+		require.NoError(t, err)
+	}
+
+	dbtx, closer := getDBTX(connPool)
+	if closer != nil {
+		defer func() {
+			require.NoError(t, closer.Close())
+		}()
+	}
+
+	fetchedSchema, err := schema.GetPublicSchema(context.TODO(), dbtx)
+	if testCase.expectedErrIs != nil {
+		require.ErrorIs(t, err, testCase.expectedErrIs)
+		return
+	} else {
+		require.NoError(t, err)
+	}
+
+	expectedNormalized := testCase.expectedSchema.Normalize()
+	fetchedNormalized := fetchedSchema.Normalize()
+	assert.Equal(t, expectedNormalized, fetchedNormalized, "expected=\n%# v \n fetched=%# v\n", pretty.Formatter(expectedNormalized), pretty.Formatter(fetchedNormalized))
+
+	fetchedSchemaHash, err := fetchedSchema.Hash()
+	require.NoError(t, err)
+	expectedSchemaHash, err := testCase.expectedSchema.Hash()
+	require.NoError(t, err)
+	assert.Equal(t, testCase.expectedHash, fetchedSchemaHash)
+	// same schemas should have the same hashes
+	assert.Equal(t, expectedSchemaHash, fetchedSchemaHash, "hash of expected schema should match fetched hash")
+
+	require.NoError(t, connPool.Close())
+	require.NoError(t, db.DropDB())
 }
 
 func TestIdxDefStmtToCreateIdxConcurrently(t *testing.T) {
