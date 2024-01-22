@@ -10,7 +10,7 @@ type (
 		res T
 	}
 
-	GoRoutineRunner interface {
+	GoroutineRunner interface {
 		// Go starts a go routine and returns an error if the go routine could not be started.
 		Go(context.Context, func()) error
 	}
@@ -20,24 +20,24 @@ type (
 	}
 )
 
-type SynchronousGoRoutineRunner struct{}
+type SynchronousGoroutineRunner struct{}
 
-// NewSynchronousGoRoutineRunner creates a new goroutine runner that runs the goroutines synchronously
-func NewSynchronousGoRoutineRunner() GoRoutineRunner {
-	return &SynchronousGoRoutineRunner{}
+// NewSynchronousGoroutineRunner creates a new goroutine runner that runs the goroutines synchronously
+func NewSynchronousGoroutineRunner() GoroutineRunner {
+	return &SynchronousGoroutineRunner{}
 }
 
-func (r *SynchronousGoRoutineRunner) Go(_ context.Context, fn func()) error {
+func (r *SynchronousGoroutineRunner) Go(_ context.Context, fn func()) error {
 	fn()
 	return nil
 }
 
 // SubmitFuture creates a new future that will run the given function in a go routine.
 //
-// This function will potentially block depending on the underlying GoRoutineRunner implementation. E.g., the
-// GoRoutineRunner could be a worker pool with a limited number of workers, in which case this function could block until
+// This function will potentially block depending on the underlying GoroutineRunner implementation. E.g., the
+// GoroutineRunner could be a worker pool with a limited number of workers, in which case this function could block until
 // a worker is available.
-func SubmitFuture[T any](ctx context.Context, runner GoRoutineRunner, fn func() (T, error)) (Future[T], error) {
+func SubmitFuture[T any](ctx context.Context, runner GoroutineRunner, fn func() (T, error)) (Future[T], error) {
 	future := Future[T]{
 		resultChan: make(chan result[T], 1),
 	}

@@ -18,11 +18,11 @@ func (a *asyncGoroutineRunner) Go(_ context.Context, fn func()) error {
 	return nil
 }
 
-type errGoRoutineRunner struct {
+type errGoroutineRunner struct {
 	err error
 }
 
-func (e *errGoRoutineRunner) Go(_ context.Context, _ func()) error {
+func (e *errGoroutineRunner) Go(_ context.Context, _ func()) error {
 	if e.err == nil {
 		panic("err must be provided")
 	}
@@ -31,7 +31,7 @@ func (e *errGoRoutineRunner) Go(_ context.Context, _ func()) error {
 
 func TestFuture_GoroutineRunnerError(t *testing.T) {
 	expectedErr := errors.New("some error")
-	_, err := SubmitFuture(context.Background(), &errGoRoutineRunner{err: expectedErr}, func() (int, error) {
+	_, err := SubmitFuture(context.Background(), &errGoroutineRunner{err: expectedErr}, func() (int, error) {
 		return 5, nil
 	})
 	require.ErrorIs(t, err, expectedErr)
@@ -49,7 +49,7 @@ func TestFuture_Get_Error(t *testing.T) {
 }
 
 func TestFuture_Get_FinishesBeforeRead(t *testing.T) {
-	future, err := SubmitFuture(context.Background(), NewSynchronousGoRoutineRunner(), func() (int, error) {
+	future, err := SubmitFuture(context.Background(), NewSynchronousGoroutineRunner(), func() (int, error) {
 		return 5, nil
 	})
 	require.NoError(t, err)
