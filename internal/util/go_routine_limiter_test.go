@@ -3,7 +3,6 @@ package util
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,20 +15,23 @@ func TestGoroutineLimiter_Go_Concurrent(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	routine2CompleteChan := make(chan any)
-	firstRoutineComplete := atomic.Int64{}
-	firstRoutineComplete.Store(0)
+	completionOrderChan := make(chan int, 3)
 
 	wg.Add(3)
 	require.NoError(t, limiter.Go(context.Background(), func() {
 		defer wg.Done()
-		defer firstRoutineComplete.CompareAndSwap(0, 1)
+		defer func() {
+			completionOrderChan <- 1
+		}()
 
 		// Block until routine 2 completes to validate that the function is being running concurrently
 		<-routine2CompleteChan
 	}))
 	require.NoError(t, limiter.Go(context.Background(), func() {
 		defer wg.Done()
-		defer firstRoutineComplete.CompareAndSwap(0, 2)
+		defer func() {
+			completionOrderChan <- 2
+		}()
 
 		time.Sleep(500 * time.Millisecond) // Make the routine take longer than the third routine in most cases
 
@@ -38,11 +40,22 @@ func TestGoroutineLimiter_Go_Concurrent(t *testing.T) {
 	// Spin up a third go routine to validate the limit is being respected
 	require.NoError(t, limiter.Go(context.Background(), func() {
 		defer wg.Done()
-		defer firstRoutineComplete.CompareAndSwap(0, 3)
+		defer func() {
+			completionOrderChan <- 3
+		}()
 	}))
 
 	wg.Wait()
-	require.NotEqual(t, int64(3), firstRoutineComplete.Load(), "the third routine cannot complete first, otherwise the go routine limit is not being respected.")
+
+	var completionOrder []int
+	for val := range completionOrderChan {
+		completionOrder = append(completionOrder, val)
+		if len(completionOrder) == 3 {
+			close(completionOrderChan)
+		}
+	}
+
+	require.NotEqual(t, int64(3), completionOrder[0], "the third routine cannot complete first, otherwise the go routine limit is not being respected.")
 }
 
 func TestGoroutineLimiter_Go_Serial(t *testing.T) {
