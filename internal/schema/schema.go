@@ -355,24 +355,24 @@ func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
 	//
 	// In the future, we should maybe create options where users can pass in a DB pool (WithPool(db) or WithConnection(db))
 	// and we can set concurrency to 1 if the passed in db is not a *sql.DB.
-	goRoutineRunnerFactory := concurrent.NewSynchronousGoRoutineRunner
+	goroutineRunnerFactory := concurrent.NewSynchronousGoroutineRunner
 	if _, ok := db.(*sql.DB); ok {
-		goRoutineRunnerFactory = func() concurrent.GoRoutineRunner {
+		goroutineRunnerFactory = func() concurrent.GoroutineRunner {
 			return concurrent.NewGoroutineLimiter(50)
 		}
 	}
 
 	return (&schemaFetcher{
 		q:                      queries.New(db),
-		goroutineRunnerFactory: goRoutineRunnerFactory,
+		goroutineRunnerFactory: goroutineRunnerFactory,
 	}).getPublicSchema(ctx)
 }
 
 type schemaFetcher struct {
 	q *queries.Queries
-	// goroutineRunnerFactory is a factory function that returns a GoRoutineRunner. We need to be able to construct
-	// multiple GoRoutineRunners to avoid deadlock created by circular dependencies of submitted go routines.
-	goroutineRunnerFactory func() concurrent.GoRoutineRunner
+	// goroutineRunnerFactory is a factory function that returns a GoroutineRunner. We need to be able to construct
+	// multiple GoroutineRunners to avoid deadlock created by circular dependencies of submitted go routines.
+	goroutineRunnerFactory func() concurrent.GoroutineRunner
 }
 
 func (s *schemaFetcher) getPublicSchema(ctx context.Context) (Schema, error) {
@@ -583,11 +583,11 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 		tableName       string
 	}
 
-	goRoutineRunner := s.goroutineRunnerFactory()
+	goroutineRunner := s.goroutineRunnerFactory()
 	var ccFutures []concurrent.Future[checkConstraintAndTable]
 	for _, _rawCC := range rawCheckCons {
 		rawCC := _rawCC // Capture loop variable for go routine
-		f, err := concurrent.SubmitFuture(ctx, goRoutineRunner, func() (checkConstraintAndTable, error) {
+		f, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() (checkConstraintAndTable, error) {
 			cc, err := s.buildCheckConstraint(ctx, rawCC)
 			if err != nil {
 				return checkConstraintAndTable{}, fmt.Errorf("building check constraint: %w", err)
