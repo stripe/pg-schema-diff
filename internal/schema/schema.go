@@ -372,49 +372,49 @@ type schemaFetcher struct {
 }
 
 func (s *schemaFetcher) getPublicSchema(ctx context.Context) (Schema, error) {
-	extensionsFuture, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() ([]Extension, error) {
+	extensionsFuture, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() ([]Extension, error) {
 		return s.fetchExtensions(ctx)
 	})
 	if err != nil {
 		return Schema{}, fmt.Errorf("starting extensions future: %w", err)
 	}
 
-	tablesFuture, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() ([]Table, error) {
+	tablesFuture, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() ([]Table, error) {
 		return s.fetchTables(ctx)
 	})
 	if err != nil {
 		return Schema{}, fmt.Errorf("starting tables future: %w", err)
 	}
 
-	indexesFuture, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() ([]Index, error) {
+	indexesFuture, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() ([]Index, error) {
 		return s.fetchIndexes(ctx)
 	})
 	if err != nil {
 		return Schema{}, fmt.Errorf("starting indexes future: %w", err)
 	}
 
-	fkConsFuture, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() ([]ForeignKeyConstraint, error) {
+	fkConsFuture, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() ([]ForeignKeyConstraint, error) {
 		return s.fetchForeignKeyCons(ctx)
 	})
 	if err != nil {
 		return Schema{}, fmt.Errorf("starting foreign key constraints future: %w", err)
 	}
 
-	sequencesFuture, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() ([]Sequence, error) {
+	sequencesFuture, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() ([]Sequence, error) {
 		return s.fetchSequences(ctx)
 	})
 	if err != nil {
 		return Schema{}, fmt.Errorf("starting sequences future: %w", err)
 	}
 
-	functionsFuture, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() ([]Function, error) {
+	functionsFuture, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() ([]Function, error) {
 		return s.fetchFunctions(ctx)
 	})
 	if err != nil {
 		return Schema{}, fmt.Errorf("starting functions future: %w", err)
 	}
 
-	triggersFuture, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() ([]Trigger, error) {
+	triggersFuture, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() ([]Trigger, error) {
 		return s.fetchTriggers(ctx)
 	})
 	if err != nil {
@@ -500,7 +500,7 @@ func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 	var tableFutures []concurrent.Future[Table]
 	for _, _rawTable := range rawTables {
 		rawTable := _rawTable // Capture loop variables for go routine
-		tableFuture, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() (Table, error) {
+		tableFuture, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() (Table, error) {
 			return s.buildTable(ctx, rawTable, tablesToCheckConsMap)
 		})
 		if err != nil {
@@ -579,7 +579,7 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 	var ccFutures []concurrent.Future[checkConstraintAndTable]
 	for _, _rawCC := range rawCheckCons {
 		rawCC := _rawCC // Capture loop variable for go routine
-		f, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() (checkConstraintAndTable, error) {
+		f, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() (checkConstraintAndTable, error) {
 			cc, err := s.buildCheckConstraint(ctx, rawCC)
 			if err != nil {
 				return checkConstraintAndTable{}, fmt.Errorf("building check constraint: %w", err)
@@ -636,7 +636,7 @@ func (s *schemaFetcher) fetchIndexes(ctx context.Context) ([]Index, error) {
 	var idxFutures []concurrent.Future[Index]
 	for _, _rawIndex := range rawIndexes {
 		rawIndex := _rawIndex // Capture loop variable for go routine
-		f, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() (Index, error) {
+		f, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() (Index, error) {
 			return s.buildIndex(ctx, rawIndex)
 		})
 		if err != nil {
@@ -752,7 +752,7 @@ func (s *schemaFetcher) fetchFunctions(ctx context.Context) ([]Function, error) 
 	var functionFutures []concurrent.Future[Function]
 	for _, _rawFunction := range rawFunctions {
 		rawFunction := _rawFunction // Capture loop variable for go routine
-		f, err := concurrent.NewFuture(ctx, s.goroutineRunner, func() (Function, error) {
+		f, err := concurrent.SubmitFuture(ctx, s.goroutineRunner, func() (Function, error) {
 			return s.buildFunction(ctx, rawFunction)
 		})
 		if err != nil {

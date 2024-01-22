@@ -32,9 +32,12 @@ func (r *SynchronousGoRoutineRunner) Go(_ context.Context, fn func()) error {
 	return nil
 }
 
-// NewFuture creates a new future that will run the given function in a go routine. This function will potentially
-// block depending on the underlying GoRoutineRunner implementation.
-func NewFuture[T any](ctx context.Context, runner GoRoutineRunner, fn func() (T, error)) (Future[T], error) {
+// SubmitFuture creates a new future that will run the given function in a go routine.
+//
+// This function will potentially block depending on the underlying GoRoutineRunner implementation. E.g., the
+// GoRoutineRunner could be a worker pool with a limited number of workers, in which case this function could block until
+// a worker is available.
+func SubmitFuture[T any](ctx context.Context, runner GoRoutineRunner, fn func() (T, error)) (Future[T], error) {
 	future := Future[T]{
 		resultChan: make(chan result[T], 1),
 	}

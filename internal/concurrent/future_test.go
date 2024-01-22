@@ -31,7 +31,7 @@ func (e *errGoRoutineRunner) Go(_ context.Context, _ func()) error {
 
 func TestFuture_GoroutineRunnerError(t *testing.T) {
 	expectedErr := errors.New("some error")
-	_, err := NewFuture(context.Background(), &errGoRoutineRunner{err: expectedErr}, func() (int, error) {
+	_, err := SubmitFuture(context.Background(), &errGoRoutineRunner{err: expectedErr}, func() (int, error) {
 		return 5, nil
 	})
 	require.ErrorIs(t, err, expectedErr)
@@ -39,7 +39,7 @@ func TestFuture_GoroutineRunnerError(t *testing.T) {
 
 func TestFuture_Get_Error(t *testing.T) {
 	expectedErr := errors.New("some error")
-	future, err := NewFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
+	future, err := SubmitFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
 		return 5, expectedErr
 	})
 	require.NoError(t, err)
@@ -49,7 +49,7 @@ func TestFuture_Get_Error(t *testing.T) {
 }
 
 func TestFuture_Get_FinishesBeforeRead(t *testing.T) {
-	future, err := NewFuture(context.Background(), NewSynchronousGoRoutineRunner(), func() (int, error) {
+	future, err := SubmitFuture(context.Background(), NewSynchronousGoRoutineRunner(), func() (int, error) {
 		return 5, nil
 	})
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestFuture_Get_FinishesBeforeRead(t *testing.T) {
 
 func TestFuture_Get_ReadStartsBeforeFinish(t *testing.T) {
 	readStartedChan := make(chan struct{})
-	future, err := NewFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
+	future, err := SubmitFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
 		<-readStartedChan
 		return 5, nil
 	})
@@ -88,7 +88,7 @@ func TestFuture_Get_ReadStartsBeforeFinish(t *testing.T) {
 }
 
 func TestFuture_Get_ConcurrentReads(t *testing.T) {
-	future, err := NewFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
+	future, err := SubmitFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
 		return 5, nil
 	})
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestFuture_Get_ConcurrentReads(t *testing.T) {
 func TestFuture_Get_ConcurrentReadsCancel(t *testing.T) {
 	someLock := sync.Mutex{}
 	someLock.Lock()
-	future, err := NewFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
+	future, err := SubmitFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
 		someLock.Lock() // This lock will be stuck
 		return 5, nil
 	})
@@ -136,11 +136,11 @@ func TestFuture_Get_ConcurrentReadsCancel(t *testing.T) {
 }
 
 func TestResolveAll_Success(t *testing.T) {
-	future1, err := NewFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
+	future1, err := SubmitFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
 		return 1, nil
 	})
 	require.NoError(t, err)
-	future2, err := NewFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
+	future2, err := SubmitFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
 		return 2, nil
 	})
 	require.NoError(t, err)
@@ -152,15 +152,15 @@ func TestResolveAll_Success(t *testing.T) {
 
 func TestResolveAll_Error(t *testing.T) {
 	expectedErr := errors.New("some error")
-	future1, err := NewFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
+	future1, err := SubmitFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
 		return 1, nil
 	})
 	require.NoError(t, err)
-	future2, err := NewFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
+	future2, err := SubmitFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
 		return 2, expectedErr
 	})
 	require.NoError(t, err)
-	future3, err := NewFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
+	future3, err := SubmitFuture(context.Background(), &asyncGoroutineRunner{}, func() (int, error) {
 		return 3, nil
 	})
 	require.NoError(t, err)
