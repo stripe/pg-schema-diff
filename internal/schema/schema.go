@@ -509,7 +509,7 @@ func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 		tableFutures = append(tableFutures, tableFuture)
 	}
 
-	return concurrent.ResolveAll(ctx, tableFutures...)
+	return concurrent.GetAll(ctx, tableFutures...)
 }
 
 func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesRow, tablesToCheckConsMap map[string][]CheckConstraint) (Table, error) {
@@ -596,7 +596,7 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 		ccFutures = append(ccFutures, f)
 	}
 
-	ccs, err := concurrent.ResolveAll(ctx, ccFutures...)
+	ccs, err := concurrent.GetAll(ctx, ccFutures...)
 	if err != nil {
 		return nil, fmt.Errorf("getting check constraints: %w", err)
 	}
@@ -646,7 +646,7 @@ func (s *schemaFetcher) fetchIndexes(ctx context.Context) ([]Index, error) {
 		idxFutures = append(idxFutures, f)
 	}
 
-	return concurrent.ResolveAll(ctx, idxFutures...)
+	return concurrent.GetAll(ctx, idxFutures...)
 }
 
 func (s *schemaFetcher) buildIndex(ctx context.Context, rawIndex queries.GetIndexesRow) (Index, error) {
@@ -761,7 +761,7 @@ func (s *schemaFetcher) fetchFunctions(ctx context.Context) ([]Function, error) 
 		functionFutures = append(functionFutures, f)
 	}
 
-	return concurrent.ResolveAll(ctx, functionFutures...)
+	return concurrent.GetAll(ctx, functionFutures...)
 }
 
 func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.GetFunctionsRow) (Function, error) {

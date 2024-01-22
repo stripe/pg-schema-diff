@@ -2,7 +2,7 @@ package concurrent
 
 import "context"
 
-// Future are a way to easily start a go routine and get the result of the go routine later. Avoid building any
+// Future provides a way to easily start a go routine and get the result of the go routine later. Avoid building any
 // mapping functionality into futures, as that can make them difficult to reason about
 type (
 	result[T any] struct {
@@ -32,6 +32,8 @@ func (r *SynchronousGoRoutineRunner) Go(_ context.Context, fn func()) error {
 	return nil
 }
 
+// NewFuture creates a new future that will run the given function in a go routine. This function will potentially
+// block depending on the underlying GoRoutineRunner implementation.
 func NewFuture[T any](ctx context.Context, runner GoRoutineRunner, fn func() (T, error)) (Future[T], error) {
 	future := Future[T]{
 		resultChan: make(chan result[T], 1),
@@ -63,7 +65,7 @@ func (f Future[T]) Get(ctx context.Context) (T, error) {
 	}
 }
 
-func ResolveAll[T any](ctx context.Context, futures ...Future[T]) ([]T, error) {
+func GetAll[T any](ctx context.Context, futures ...Future[T]) ([]T, error) {
 	vals := make([]T, len(futures))
 	for i, future := range futures {
 		val, err := future.Get(ctx)

@@ -13,7 +13,7 @@ import (
 
 type asyncGoroutineRunner struct{}
 
-func (a *asyncGoroutineRunner) Go(ctx context.Context, fn func()) error {
+func (a *asyncGoroutineRunner) Go(_ context.Context, fn func()) error {
 	go fn()
 	return nil
 }
@@ -22,7 +22,7 @@ type errGoRoutineRunner struct {
 	err error
 }
 
-func (e *errGoRoutineRunner) Go(ctx context.Context, fn func()) error {
+func (e *errGoRoutineRunner) Go(_ context.Context, _ func()) error {
 	if e.err == nil {
 		panic("err must be provided")
 	}
@@ -58,7 +58,7 @@ func TestFuture_Get_FinishesBeforeRead(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 5, res)
 
-	// Read-reading should produce the same result
+	// Re-reading should produce the same result
 	res, err = future.Get(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, 5, res)
@@ -81,7 +81,7 @@ func TestFuture_Get_ReadStartsBeforeFinish(t *testing.T) {
 	readStartedChan <- struct{}{}
 	assert.Equal(t, 5, <-resChan)
 
-	// Read-reading should produce the same result
+	// Re-reading should produce the same result
 	res, err := future.Get(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, 5, res)
@@ -145,7 +145,7 @@ func TestResolveAll_Success(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	res, err := ResolveAll(context.Background(), future1, future2)
+	res, err := GetAll(context.Background(), future1, future2)
 	require.NoError(t, err)
 	assert.Equal(t, []int{1, 2}, res)
 }
@@ -165,6 +165,6 @@ func TestResolveAll_Error(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = ResolveAll(context.Background(), future1, future2, future3)
+	_, err = GetAll(context.Background(), future1, future2, future3)
 	require.ErrorIs(t, expectedErr, err)
 }
