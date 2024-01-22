@@ -12,6 +12,7 @@ require (
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.8.2
+	golang.org/x/sync v0.6.0
 )
 
 require (

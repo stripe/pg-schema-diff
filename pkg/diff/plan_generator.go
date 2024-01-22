@@ -12,17 +12,9 @@ import (
 
 	"github.com/stripe/pg-schema-diff/internal/queries"
 	"github.com/stripe/pg-schema-diff/pkg/log"
+	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
-
-// SQLQueryable represents a queryable database. It is recommended to use *sql.DB or *sql.Conn.
-// In a future major version update, we will probably deprecate *sql.Conn support and only support *sql.DB.
-type SQLQueryable interface {
-	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
-	PrepareContext(context.Context, string) (*sql.Stmt, error)
-	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
-}
 
 type (
 	planOptions struct {
@@ -69,13 +61,13 @@ func WithLogger(logger log.Logger) PlanOpt {
 // GeneratePlan generates a migration plan to migrate the database to the target schema.
 //
 // Parameters:
-// sqlQueryable: 	The target database to generate the diff for. It is recommended to pass in *sql.DB of the db you
+// queryable: 	The target database to generate the diff for. It is recommended to pass in *sql.DB of the db you
 // wish to migrate.
 // tempDbFactory:  	used to create a temporary database instance to extract the schema from the new DDL and validate the
 // migration plan. It is recommended to use tempdb.NewOnInstanceFactory, or you can provide your own.
 // newDDL:  		DDL encoding the new schema
 // opts:  			Additional options to configure the plan generation
-func GeneratePlan(ctx context.Context, sqlQueryable SQLQueryable, tempDbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
+func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempDbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
 	planOptions := &planOptions{
 		validatePlan:            true,
 		ignoreChangesToColOrder: true,
@@ -85,7 +77,7 @@ func GeneratePlan(ctx context.Context, sqlQueryable SQLQueryable, tempDbFactory 
 		opt(planOptions)
 	}
 
-	currentSchema, err := schema.GetPublicSchema(ctx, sqlQueryable)
+	currentSchema, err := schema.GetPublicSchema(ctx, queryable)
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting current schema: %w", err)
 	}
