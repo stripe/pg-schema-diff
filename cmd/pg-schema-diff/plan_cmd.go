@@ -242,6 +242,8 @@ func generatePlan(ctx context.Context, logger log.Logger, connConfig *pgx.ConnCo
 	}
 	defer connPool.Close()
 
+	connPool.SetMaxOpenConns(5)
+
 	plan, err := diff.GeneratePlan(ctx, connPool, tempDbFactory, ddl,
 		diff.WithDataPackNewTables(),
 	)

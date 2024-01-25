@@ -62,7 +62,7 @@ func WithLogger(logger log.Logger) PlanOpt {
 //
 // Parameters:
 // queryable: 	The target database to generate the diff for. It is recommended to pass in *sql.DB of the db you
-// wish to migrate.
+// wish to migrate. If using a connection pool, it is RECOMMENDED to set a maximum number of connections.
 // tempDbFactory:  	used to create a temporary database instance to extract the schema from the new DDL and validate the
 // migration plan. It is recommended to use tempdb.NewOnInstanceFactory, or you can provide your own.
 // newDDL:  		DDL encoding the new schema
