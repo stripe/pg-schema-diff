@@ -16,6 +16,10 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
+const (
+	tempDbMaxConnections = 5
+)
+
 type (
 	planOptions struct {
 		dataPackNewTables       bool
@@ -170,27 +174,44 @@ func assertValidPlan(ctx context.Context,
 			planOptions.logger.Errorf("an error occurred while dropping the temp database: %s", err)
 		}
 	}(dropTempDb)
+	// Set a max connections if a user has not set one. This is to prevent us from exploding the number of connections
+	// on the database.
+	setMaxConnectionsIfNotSet(tempDb, tempDbMaxConnections)
 
-	tempDbConn, err := tempDb.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("opening database connection: %w", err)
-	}
-	defer tempDbConn.Close()
-
-	if err := setSchemaForEmptyDatabase(ctx, tempDbConn, currentSchema); err != nil {
-		return fmt.Errorf("inserting schema in temporary database: %w", err)
+	if err := executeMigrationPlanOnFreshDatabase(ctx, tempDb, currentSchema, plan); err != nil {
+		return err
 	}
 
-	if err := executeStatements(ctx, tempDbConn, plan.Statements); err != nil {
-		return fmt.Errorf("running migration plan: %w", err)
-	}
-
-	migratedSchema, err := schema.GetPublicSchema(ctx, tempDbConn)
+	migratedSchema, err := schema.GetPublicSchema(ctx, tempDb)
 	if err != nil {
 		return fmt.Errorf("fetching schema from migrated database: %w", err)
 	}
 
 	return assertMigratedSchemaMatchesTarget(migratedSchema, newSchema, planOptions)
+}
+
+func setMaxConnectionsIfNotSet(db *sql.DB, defaultMax int) {
+	if db.Stats().MaxOpenConnections <= 0 {
+		db.SetMaxOpenConns(defaultMax)
+	}
+}
+
+func executeMigrationPlanOnFreshDatabase(ctx context.Context, emptyDb *sql.DB, currentSchema schema.Schema, plan Plan) error {
+	conn, err := emptyDb.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("opening database connection: %w", err)
+	}
+	defer conn.Close()
+
+	if err := setSchemaForEmptyDatabase(ctx, conn, currentSchema); err != nil {
+		return fmt.Errorf("inserting schema in temporary database: %w", err)
+	}
+
+	if err := executeStatements(ctx, conn, plan.Statements); err != nil {
+		return fmt.Errorf("running migration plan: %w", err)
+	}
+
+	return nil
 }
 
 func setSchemaForEmptyDatabase(ctx context.Context, conn *sql.Conn, dbSchema schema.Schema) error {
