@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/kr/pretty"
@@ -14,6 +15,10 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
+)
+
+const (
+	tempDbMaxConnections = 5
 )
 
 type (
@@ -170,27 +175,44 @@ func assertValidPlan(ctx context.Context,
 			planOptions.logger.Errorf("an error occurred while dropping the temp database: %s", err)
 		}
 	}(dropTempDb)
+	// Set a max connections if a user has not set one. This is to prevent us from exploding the number of connections
+	// on the database.
+	setMaxConnectionsIfNotSet(tempDb, tempDbMaxConnections)
 
-	tempDbConn, err := tempDb.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("opening database connection: %w", err)
-	}
-	defer tempDbConn.Close()
-
-	if err := setSchemaForEmptyDatabase(ctx, tempDbConn, currentSchema); err != nil {
-		return fmt.Errorf("inserting schema in temporary database: %w", err)
+	if err := executeMigrationPlanOnFreshDatabase(ctx, tempDb, currentSchema, plan); err != nil {
+		return err
 	}
 
-	if err := executeStatements(ctx, tempDbConn, plan.Statements); err != nil {
-		return fmt.Errorf("running migration plan: %w", err)
-	}
-
-	migratedSchema, err := schema.GetPublicSchema(ctx, tempDbConn)
+	migratedSchema, err := schema.GetPublicSchema(ctx, tempDb)
 	if err != nil {
 		return fmt.Errorf("fetching schema from migrated database: %w", err)
 	}
 
 	return assertMigratedSchemaMatchesTarget(migratedSchema, newSchema, planOptions)
+}
+
+func setMaxConnectionsIfNotSet(db *sql.DB, defaultMax int) {
+	if db.Stats().MaxOpenConnections <= 0 {
+		db.SetMaxOpenConns(defaultMax)
+	}
+}
+
+func executeMigrationPlanOnFreshDatabase(ctx context.Context, emptyDb *sql.DB, currentSchema schema.Schema, plan Plan) error {
+	conn, err := emptyDb.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("opening database connection: %w", err)
+	}
+	defer conn.Close()
+
+	if err := setSchemaForEmptyDatabase(ctx, conn, currentSchema); err != nil {
+		return fmt.Errorf("inserting schema in temporary database: %w", err)
+	}
+
+	if err := executeStatementsIgnoreTimeouts(ctx, conn, plan.Statements); err != nil {
+		return fmt.Errorf("running migration plan: %w", err)
+	}
+
+	return nil
 }
 
 func setSchemaForEmptyDatabase(ctx context.Context, conn *sql.Conn, dbSchema schema.Schema) error {
@@ -215,7 +237,7 @@ func setSchemaForEmptyDatabase(ctx context.Context, conn *sql.Conn, dbSchema sch
 	if err != nil {
 		return fmt.Errorf("building schema diff: %w", err)
 	}
-	if err := executeStatements(ctx, conn, statements); err != nil {
+	if err := executeStatementsIgnoreTimeouts(ctx, conn, statements); err != nil {
 		return fmt.Errorf("executing statements: %w\n%# v", err, pretty.Formatter(statements))
 	}
 	return nil
@@ -238,9 +260,13 @@ func assertMigratedSchemaMatchesTarget(migratedSchema, targetSchema schema.Schem
 	return nil
 }
 
-// executeStatements executes the statements using the sql connection. It will modify the session-level
-// statement timeout of the underlying connection.
-func executeStatements(ctx context.Context, conn queries.DBTX, statements []Statement) error {
+// executeStatementsIgnoreTimeouts executes the statements using the sql connection but ignores any provided timeouts.
+// This function is currently used to validate migration plans.
+func executeStatementsIgnoreTimeouts(ctx context.Context, conn queries.DBTX, statements []Statement) error {
+	// Set a session-level statement_timeout to bound the execution of the migration plan.
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", (10*time.Second).Milliseconds())); err != nil {
+		return fmt.Errorf("setting statement timeout: %w", err)
+	}
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.
 	//
@@ -248,14 +274,7 @@ func executeStatements(ctx context.Context, conn queries.DBTX, statements []Stat
 	// must be executed within its own transaction block. Postgres will error if you try to set a TRANSACTION-level
 	// timeout for it. SESSION-level statement_timeouts are respected by `ADD INDEX CONCURRENTLY`
 	for _, stmt := range statements {
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
-			return fmt.Errorf("setting statement timeout: %w", err)
-		}
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION lock_timeout = %d", stmt.LockTimeout.Milliseconds())); err != nil {
-			return fmt.Errorf("setting lock timeout: %w", err)
-		}
 		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
-			// could the migration statement contain sensitive information?
 			return fmt.Errorf("executing migration statement: %s: %w", stmt, err)
 		}
 	}
