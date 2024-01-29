@@ -1,4 +1,4 @@
-package schema_test
+package schema
 
 import (
 	"context"
@@ -12,59 +12,78 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	"github.com/stripe/pg-schema-diff/internal/queries"
-	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
 type testCase struct {
 	name           string
 	ddl            []string
-	expectedSchema schema.Schema
-	expectedHash   string
-	expectedErrIs  error
+	opts           []GetSchemaOpt
+	expectedSchema Schema
+	// expectedHash is the expected hash of the schema. If it is not provided, the test will not validate the hash.
+	expectedHash  string
+	expectedErrIs error
 }
 
 var (
-	defaultCollation = schema.SchemaQualifiedName{
+	defaultCollation = SchemaQualifiedName{
 		EscapedName: `"default"`,
 		SchemaName:  "pg_catalog",
 	}
-	cCollation = schema.SchemaQualifiedName{
+	cCollation = SchemaQualifiedName{
 		EscapedName: `"C"`,
 		SchemaName:  "pg_catalog",
 	}
 
 	testCases = []*testCase{
 		{
-			name: "Simple test",
+			name: "Simple schema (validate all schema objects and schema name filters)",
+			opts: []GetSchemaOpt{
+				WithSchemas("public", "schema_1", "schema_2"),
+			},
 			ddl: []string{`
-			CREATE EXTENSION pg_trgm WITH VERSION '1.6';
+			CREATE SCHEMA schema_1;
+			CREATE SCHEMA schema_2;
+			-- Validate schemas are filtered out
+			CREATE SCHEMA schema_filtered_1;
 
-			CREATE SEQUENCE foobar_sequence
+			CREATE EXTENSION pg_trgm WITH SCHEMA schema_1 VERSION '1.6';
+			CREATE EXTENSION pg_visibility WITH SCHEMA schema_filtered_1 VERSION '1.2';
+
+			CREATE SEQUENCE schema_1.foobar_sequence
 			    AS BIGINT
 				INCREMENT BY 2
 				MINVALUE 5 MAXVALUE 100
 				START WITH 10 CACHE 5 CYCLE
 				OWNED BY NONE;
 
-			CREATE FUNCTION add(a integer, b integer) RETURNS integer
-				LANGUAGE SQL
-				IMMUTABLE
-				RETURNS NULL ON NULL INPUT
-				RETURN a + b;
+			-- Validate sequences are filtered out
+			CREATE SEQUENCE schema_filtered_1.foobar_sequence
+			    AS BIGINT
+				INCREMENT BY 2	
+				MINVALUE 5 MAXVALUE 100
+				START WITH 10 CACHE 5 CYCLE
+				OWNED BY NONE;
 
-			CREATE FUNCTION increment(i integer) RETURNS integer AS $$
+			CREATE FUNCTION schema_1.increment(i integer) RETURNS integer AS $$
 					BEGIN
 							RETURN i + 1;
 					END;
 			$$ LANGUAGE plpgsql;
 
+			-- Validate functions are filtered out
+			CREATE FUNCTION schema_filtered_1.add(a integer, b integer) RETURNS integer
+				LANGUAGE SQL
+				IMMUTABLE
+				RETURNS NULL ON NULL INPUT
+				RETURN a + b;
+
 			CREATE FUNCTION function_with_dependencies(a integer, b integer) RETURNS integer
 				LANGUAGE SQL
 				IMMUTABLE
 				RETURNS NULL ON NULL INPUT
-				RETURN add(a, b) + increment(a);
+				RETURN schema_filtered_1.add(a, b) + schema_1.increment(a);
 
-			CREATE TABLE foo (
+			CREATE TABLE schema_2.foo (
 				id SERIAL,
 				author TEXT COLLATE "C",
 				content TEXT NOT NULL DEFAULT '',
@@ -73,13 +92,11 @@ var (
 				PRIMARY KEY(id, version),
 				CHECK ( function_with_dependencies(id, id) > 0)
 			);
-
-			ALTER TABLE foo ADD CONSTRAINT author_content_check CHECK ( LENGTH(content) > 0 AND LENGTH(author) > 0 ) NO INHERIT NOT VALID;
-			CREATE INDEX some_idx ON foo (created_at DESC, author ASC);
-			CREATE UNIQUE INDEX some_unique_idx ON foo (content);
-			CREATE INDEX some_gin_idx ON foo USING GIN (author gin_trgm_ops);
-
-			ALTER TABLE foo REPLICA IDENTITY USING INDEX some_unique_idx;
+			ALTER TABLE schema_2.foo ADD CONSTRAINT author_content_check CHECK ( LENGTH(content) > 0 AND LENGTH(author) > 0 ) NO INHERIT NOT VALID;
+			CREATE INDEX some_idx ON schema_2.foo (created_at DESC, author ASC);
+			CREATE UNIQUE INDEX some_unique_idx ON schema_2.foo (content);
+			CREATE INDEX some_gin_idx ON schema_2.foo USING GIN (author schema_1.gin_trgm_ops);
+			ALTER TABLE schema_2.foo REPLICA IDENTITY USING INDEX some_unique_idx;
 
 			CREATE FUNCTION increment_version() RETURNS TRIGGER AS $$
 				BEGIN
@@ -88,43 +105,79 @@ var (
 				END;
 			$$ language 'plpgsql';
 
+			CREATE FUNCTION schema_filtered_1.increment_version() RETURNS TRIGGER AS $$
+				BEGIN
+					NEW.version = OLD.version + 1;
+					RETURN NEW;
+				END;
+			$$ language 'plpgsql';
+
 			CREATE TRIGGER some_trigger
-				BEFORE UPDATE ON foo
+				BEFORE UPDATE ON schema_2.foo
 				FOR EACH ROW
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
-				EXECUTE PROCEDURE increment_version();
+				-- Reference a function in a filtered out schema. The trigger should still be included.
+				EXECUTE PROCEDURE schema_filtered_1.increment_version();
 
-			CREATE TABLE foo_fk(
+			-- Create table with conflicting name that has check constraints
+			CREATE TABLE schema_1.foo(
+				id INT NOT NULL,
+				CHECK (id > 0)
+			);
+
+			CREATE TABLE schema_1.foo_fk(
 				id INT,
 				version INT
 			);
-			ALTER TABLE foo_fk ADD CONSTRAINT foo_fk_fk FOREIGN KEY (id, version) REFERENCES foo (id, version)
+			CREATE INDEX some_idx on schema_1.foo_fk (id, version);
+			ALTER TABLE schema_1.foo_fk ADD CONSTRAINT foo_fk_fk FOREIGN KEY (id, version) REFERENCES schema_2.foo (id, version)
 				ON UPDATE CASCADE
 				ON DELETE CASCADE
 				NOT VALID;
+
+			-- Validate tables are filtered out
+			CREATE TABLE schema_filtered_1.foo_fk(
+				id INT,
+				version INT CHECK (version > 0) -- Validate check constraints are filtered out
+			);
+			-- Validate indexes are filtered out
+			CREATE INDEX some_idx on schema_filtered_1.foo_fk (id, version);
+			-- Validate FK are filtered out
+			ALTER TABLE schema_filtered_1.foo_fk ADD CONSTRAINT foo_fk_fk FOREIGN KEY (id, version) REFERENCES schema_2.foo (id, version)
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
+				NOT VALID;
+			-- Validate triggers are filtered out
+			CREATE TRIGGER some_trigger
+				BEFORE UPDATE ON schema_filtered_1.foo_fk
+				FOR EACH ROW
+				WHEN (OLD.* IS DISTINCT FROM NEW.*)
+				-- Reference a function in a filtered out schema. The trigger should still be included.
+				EXECUTE PROCEDURE public.increment_version();
 		`},
-			expectedHash: "10eb7629f8cb55d0",
-			expectedSchema: schema.Schema{
-				Extensions: []schema.Extension{
+			expectedHash: "40f91d12dd055b1a",
+			expectedSchema: Schema{
+				Extensions: []Extension{
 					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{
-							EscapedName: schema.EscapeIdentifier("pg_trgm"),
-							SchemaName:  "public",
+						SchemaQualifiedName: SchemaQualifiedName{
+							EscapedName: EscapeIdentifier("pg_trgm"),
+							SchemaName:  "schema_1",
 						},
 						Version: "1.6",
 					},
 				},
-				Tables: []schema.Table{
+				Tables: []Table{
 					{
-						Name: "foo",
-						Columns: []schema.Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
+						Name:                "foo",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						Columns: []Column{
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('schema_2.foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", IsNullable: true, Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
-						CheckConstraints: []schema.CheckConstraint{
+						CheckConstraints: []CheckConstraint{
 							{Name: "author_content_check", Expression: "((length(content) > 0) AND (length(author) > 0))", KeyColumns: []string{"author", "content"}},
 							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true, KeyColumns: []string{"created_at"}},
 							{
@@ -132,21 +185,33 @@ var (
 								Expression:    "(function_with_dependencies(id, id) > 0)",
 								IsValid:       true,
 								IsInheritable: true,
-								DependsOnFunctions: []schema.SchemaQualifiedName{
+								DependsOnFunctions: []SchemaQualifiedName{
 									{EscapedName: "\"function_with_dependencies\"(a integer, b integer)", SchemaName: "public"},
 								},
 								KeyColumns: []string{"id"},
 							},
 						},
-						ReplicaIdentity: schema.ReplicaIdentityIndex,
+						ReplicaIdentity: ReplicaIdentityIndex,
 					},
 					{
-						Name: "foo_fk",
-						Columns: []schema.Column{
+						Name:                "foo",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foo\""},
+						Columns: []Column{
+							{Name: "id", Type: "integer", Size: 4, Default: ""},
+						},
+						CheckConstraints: []CheckConstraint{
+							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
+						},
+						ReplicaIdentity: ReplicaIdentityDefault,
+					},
+					{
+						Name:                "foo_fk",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foo_fk\""},
+						Columns: []Column{
 							{
 								Name:       "id",
 								Type:       "integer",
-								Collation:  schema.SchemaQualifiedName{},
+								Collation:  SchemaQualifiedName{},
 								Default:    "",
 								IsNullable: true,
 								Size:       4,
@@ -154,41 +219,41 @@ var (
 							{
 								Name:       "version",
 								Type:       "integer",
-								Collation:  schema.SchemaQualifiedName{},
+								Collation:  SchemaQualifiedName{},
 								Default:    "",
 								IsNullable: true,
 								Size:       4,
 							},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
+						ReplicaIdentity:  ReplicaIdentityDefault,
 						PartitionKeyDef:  "",
 						ParentTableName:  "",
 						ForValues:        "",
 					},
 				},
-				ForeignKeyConstraints: []schema.ForeignKeyConstraint{
+				ForeignKeyConstraints: []ForeignKeyConstraint{
 					{
 						EscapedName: "\"foo_fk_fk\"",
-						OwningTable: schema.SchemaQualifiedName{
-							SchemaName:  "public",
+						OwningTable: SchemaQualifiedName{
+							SchemaName:  "schema_1",
 							EscapedName: "\"foo_fk\"",
 						},
 						OwningTableUnescapedName: "foo_fk",
-						ForeignTable: schema.SchemaQualifiedName{
-							SchemaName:  "public",
+						ForeignTable: SchemaQualifiedName{
+							SchemaName:  "schema_2",
 							EscapedName: "\"foo\"",
 						},
 						ForeignTableUnescapedName: "foo",
-						ConstraintDef:             "FOREIGN KEY (id, version) REFERENCES foo(id, version) ON UPDATE CASCADE ON DELETE CASCADE NOT VALID",
+						ConstraintDef:             "FOREIGN KEY (id, version) REFERENCES schema_2.foo(id, version) ON UPDATE CASCADE ON DELETE CASCADE NOT VALID",
 						IsValid:                   false,
 					},
 				},
-				Sequences: []schema.Sequence{
+				Sequences: []Sequence{
 					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_id_seq\""},
-						Owner: &schema.SequenceOwner{
-							TableName:          schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo_id_seq\""},
+						Owner: &SequenceOwner{
+							TableName:          SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
 							TableUnescapedName: "foo",
 							ColumnName:         "id",
 						},
@@ -201,7 +266,7 @@ var (
 						Cycle:      false,
 					},
 					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_sequence\""},
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foobar_sequence\""},
 						Type:                "bigint",
 						StartValue:          10,
 						Increment:           2,
@@ -211,74 +276,86 @@ var (
 						Cycle:               true,
 					},
 				},
-				Indexes: []schema.Index{
+				Indexes: []Index{
 					{
 						TableName:       "foo",
+						OwningTable:     SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
 						Name:            "foo_pkey",
 						Columns:         []string{"id", "version"},
 						IsUnique:        true,
-						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (id, version)", IsLocal: true},
-						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foo USING btree (id, version)",
+						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (id, version)", IsLocal: true},
+						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON schema_2.foo USING btree (id, version)",
 					},
 					{
 						TableName:       "foo",
+						OwningTable:     SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
 						Name:            "some_idx",
 						Columns:         []string{"created_at", "author"},
-						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foo USING btree (created_at DESC, author)",
+						GetIndexDefStmt: "CREATE INDEX some_idx ON schema_2.foo USING btree (created_at DESC, author)",
 					},
 					{
 						TableName:       "foo",
+						OwningTable:     SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
 						Name:            "some_unique_idx",
 						Columns:         []string{"content"},
 						IsUnique:        true,
-						GetIndexDefStmt: "CREATE UNIQUE INDEX some_unique_idx ON public.foo USING btree (content)",
+						GetIndexDefStmt: "CREATE UNIQUE INDEX some_unique_idx ON schema_2.foo USING btree (content)",
 					},
 					{
 						TableName:       "foo",
+						OwningTable:     SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
 						Name:            "some_gin_idx",
 						Columns:         []string{"author"},
-						GetIndexDefStmt: "CREATE INDEX some_gin_idx ON public.foo USING gin (author gin_trgm_ops)",
+						GetIndexDefStmt: "CREATE INDEX some_gin_idx ON schema_2.foo USING gin (author schema_1.gin_trgm_ops)",
+					},
+					{
+						Name:      "some_idx",
+						TableName: "foo_fk",
+						OwningTable: SchemaQualifiedName{
+							SchemaName:  "schema_1",
+							EscapedName: "\"foo_fk\"",
+						},
+						Columns: []string{
+							"id",
+							"version",
+						},
+						GetIndexDefStmt: "CREATE INDEX some_idx ON schema_1.foo_fk USING btree (id, version)",
 					},
 				},
-				Functions: []schema.Function{
+				Functions: []Function{
 					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{EscapedName: "\"add\"(a integer, b integer)", SchemaName: "public"},
-						FunctionDef:         "CREATE OR REPLACE FUNCTION public.add(a integer, b integer)\n RETURNS integer\n LANGUAGE sql\n IMMUTABLE STRICT\nRETURN (a + b)\n",
+						SchemaQualifiedName: SchemaQualifiedName{EscapedName: "\"function_with_dependencies\"(a integer, b integer)", SchemaName: "public"},
+						FunctionDef:         "CREATE OR REPLACE FUNCTION public.function_with_dependencies(a integer, b integer)\n RETURNS integer\n LANGUAGE sql\n IMMUTABLE STRICT\nRETURN (schema_filtered_1.add(a, b) + schema_1.increment(a))\n",
 						Language:            "sql",
-					},
-					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{EscapedName: "\"function_with_dependencies\"(a integer, b integer)", SchemaName: "public"},
-						FunctionDef:         "CREATE OR REPLACE FUNCTION public.function_with_dependencies(a integer, b integer)\n RETURNS integer\n LANGUAGE sql\n IMMUTABLE STRICT\nRETURN (add(a, b) + increment(a))\n",
-						Language:            "sql",
-						DependsOnFunctions: []schema.SchemaQualifiedName{
-							{EscapedName: "\"add\"(a integer, b integer)", SchemaName: "public"},
-							{EscapedName: "\"increment\"(i integer)", SchemaName: "public"},
+						DependsOnFunctions: []SchemaQualifiedName{
+							{EscapedName: "\"add\"(a integer, b integer)", SchemaName: "schema_filtered_1"},
+							{EscapedName: "\"increment\"(i integer)", SchemaName: "schema_1"},
 						},
 					},
 					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{EscapedName: "\"increment\"(i integer)", SchemaName: "public"},
-						FunctionDef:         "CREATE OR REPLACE FUNCTION public.increment(i integer)\n RETURNS integer\n LANGUAGE plpgsql\nAS $function$\n\t\t\t\t\tBEGIN\n\t\t\t\t\t\t\tRETURN i + 1;\n\t\t\t\t\tEND;\n\t\t\t$function$\n",
+						SchemaQualifiedName: SchemaQualifiedName{EscapedName: "\"increment\"(i integer)", SchemaName: "schema_1"},
+						FunctionDef:         "CREATE OR REPLACE FUNCTION schema_1.increment(i integer)\n RETURNS integer\n LANGUAGE plpgsql\nAS $function$\n\t\t\t\t\tBEGIN\n\t\t\t\t\t\t\tRETURN i + 1;\n\t\t\t\t\tEND;\n\t\t\t$function$\n",
 						Language:            "plpgsql",
 					},
 					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
+						SchemaQualifiedName: SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
 						FunctionDef:         "CREATE OR REPLACE FUNCTION public.increment_version()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\n\t\t\t\tBEGIN\n\t\t\t\t\tNEW.version = OLD.version + 1;\n\t\t\t\t\tRETURN NEW;\n\t\t\t\tEND;\n\t\t\t$function$\n",
 						Language:            "plpgsql",
 					},
 				},
-				Triggers: []schema.Trigger{
+				Triggers: []Trigger{
 					{
 						EscapedName:              "\"some_trigger\"",
-						OwningTable:              schema.SchemaQualifiedName{EscapedName: "\"foo\"", SchemaName: "public"},
+						OwningTable:              SchemaQualifiedName{EscapedName: "\"foo\"", SchemaName: "schema_2"},
 						OwningTableUnescapedName: "foo",
-						Function:                 schema.SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
-						GetTriggerDefStmt:        "CREATE TRIGGER some_trigger BEFORE UPDATE ON public.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
+						Function:                 SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "schema_filtered_1"},
+						GetTriggerDefStmt:        "CREATE TRIGGER some_trigger BEFORE UPDATE ON schema_2.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION schema_filtered_1.increment_version()",
 					},
 				},
 			},
 		},
 		{
-			name: "Simple partition test",
+			name: "Partition test",
 			ddl: []string{`
 			CREATE TABLE foo (
 				id SERIAL CHECK (id > 0),
@@ -341,12 +418,13 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "fa946361e7596d1e",
-			expectedSchema: schema.Schema{
-				Tables: []schema.Table{
+			expectedHash: "ba797969f2071303",
+			expectedSchema: Schema{
+				Tables: []Table{
 					{
-						Name: "foo",
-						Columns: []schema.Column{
+						Name:                "foo",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Columns: []Column{
 							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
@@ -354,18 +432,20 @@ var (
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
-						CheckConstraints: []schema.CheckConstraint{
+						CheckConstraints: []CheckConstraint{
 							{Name: "author_check", Expression: "((author IS NOT NULL) AND (length(author) > 0))", IsInheritable: true, KeyColumns: []string{"author"}},
 							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true, IsInheritable: true, KeyColumns: []string{"created_at"}},
 							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
 						},
-						ReplicaIdentity: schema.ReplicaIdentityFull,
+						ReplicaIdentity: ReplicaIdentityFull,
 						PartitionKeyDef: "LIST (author)",
 					},
 					{
-						ParentTableName: "foo",
-						Name:            "foo_1",
-						Columns: []schema.Column{
+						ParentTableName:     "foo",
+						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Name:                "foo_1",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						Columns: []Column{
 							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
@@ -374,13 +454,15 @@ var (
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityNothing,
+						ReplicaIdentity:  ReplicaIdentityNothing,
 						ForValues:        "FOR VALUES IN ('some author 1')",
 					},
 					{
-						ParentTableName: "foo",
-						Name:            "foo_2",
-						Columns: []schema.Column{
+						ParentTableName:     "foo",
+						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Name:                "foo_2",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
+						Columns: []Column{
 							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
@@ -389,13 +471,15 @@ var (
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
+						ReplicaIdentity:  ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some author 2')",
 					},
 					{
-						ParentTableName: "foo",
-						Name:            "foo_3",
-						Columns: []schema.Column{
+						ParentTableName:     "foo",
+						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Name:                "foo_3",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
+						Columns: []Column{
 							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
@@ -404,16 +488,17 @@ var (
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
+						ReplicaIdentity:  ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some author 3')",
 					},
 					{
-						Name: "foo_fk",
-						Columns: []schema.Column{
+						Name:                "foo_fk",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_fk\""},
+						Columns: []Column{
 							{
 								Name:       "author",
 								Type:       "text",
-								Collation:  schema.SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
+								Collation:  SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
 								Default:    "",
 								IsNullable: true,
 								Size:       -1,
@@ -421,7 +506,7 @@ var (
 							{
 								Name:       "id",
 								Type:       "integer",
-								Collation:  schema.SchemaQualifiedName{},
+								Collation:  SchemaQualifiedName{},
 								Default:    "",
 								IsNullable: true,
 								Size:       4,
@@ -429,25 +514,28 @@ var (
 							{
 								Name:       "content",
 								Type:       "text",
-								Collation:  schema.SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
+								Collation:  SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
 								Default:    "''::text",
 								IsNullable: true,
 								Size:       -1,
 							},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
+						ReplicaIdentity:  ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST (author)",
 						ParentTableName:  "",
 						ForValues:        "",
 					},
 					{
-						Name: "foo_fk_1",
-						Columns: []schema.Column{
+						Name:                "foo_fk_1",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_fk_1\""},
+						ParentTableName:     "foo_fk",
+						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_fk\""},
+						Columns: []Column{
 							{
 								Name:       "author",
 								Type:       "text",
-								Collation:  schema.SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
+								Collation:  SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
 								Default:    "",
 								IsNullable: true,
 								Size:       -1,
@@ -455,7 +543,7 @@ var (
 							{
 								Name:       "id",
 								Type:       "integer",
-								Collation:  schema.SchemaQualifiedName{},
+								Collation:  SchemaQualifiedName{},
 								Default:    "",
 								IsNullable: true,
 								Size:       4,
@@ -463,133 +551,148 @@ var (
 							{
 								Name:       "content",
 								Type:       "text",
-								Collation:  schema.SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
+								Collation:  SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
 								Default:    "''::text",
 								IsNullable: true,
 								Size:       -1,
 							},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
+						ReplicaIdentity:  ReplicaIdentityDefault,
 						PartitionKeyDef:  "",
-						ParentTableName:  "foo_fk",
 						ForValues:        "FOR VALUES IN ('some author 1')",
 					},
 				},
-				Indexes: []schema.Index{
+				Indexes: []Index{
 					{
-						TableName: "foo",
-						Name:      "foo_pkey", Columns: []string{"author", "id"}, IsUnique: true,
-						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true},
+						TableName:   "foo",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Name:        "foo_pkey", Columns: []string{"author", "id"}, IsUnique: true,
+						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON ONLY public.foo USING btree (author, id)",
 					},
 					{
-						TableName: "foo",
-						Name:      "some_partitioned_idx", Columns: []string{"author"},
+						TableName:   "foo",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Name:        "some_partitioned_idx", Columns: []string{"author"},
 						GetIndexDefStmt: "CREATE INDEX some_partitioned_idx ON ONLY public.foo USING hash (author)",
 					},
 					{
-						TableName: "foo",
-						Name:      "some_unique_partitioned_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
+						TableName:   "foo",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Name:        "some_unique_partitioned_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX some_unique_partitioned_idx ON ONLY public.foo USING btree (author, created_at DESC)",
 					},
 					{
-						TableName: "foo",
-						Name:      "some_invalid_idx", Columns: []string{"author", "genre"}, IsInvalid: true, IsUnique: false,
+						TableName:   "foo",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Name:        "some_invalid_idx", Columns: []string{"author", "genre"}, IsInvalid: true, IsUnique: false,
 						GetIndexDefStmt: "CREATE INDEX some_invalid_idx ON ONLY public.foo USING btree (author, genre)",
 					},
 					// foo_1 indexes
 					{
-						TableName: "foo_1",
-						Name:      "foo_1_author_idx", Columns: []string{"author"}, ParentIdxName: "some_partitioned_idx",
+						TableName:   "foo_1",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						Name:        "foo_1_author_idx", Columns: []string{"author"}, ParentIdxName: "some_partitioned_idx",
 						GetIndexDefStmt: "CREATE INDEX foo_1_author_idx ON public.foo_1 USING hash (author)",
 					},
 					{
-						TableName: "foo_1",
-						Name:      "foo_1_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true, ParentIdxName: "some_unique_partitioned_idx",
+						TableName:   "foo_1",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						Name:        "foo_1_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true, ParentIdxName: "some_unique_partitioned_idx",
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_author_created_at_idx ON public.foo_1 USING btree (author, created_at DESC)",
 					},
 					{
-						TableName: "foo_1",
-						Name:      "foo_1_local_idx", Columns: []string{"author", "content"}, IsUnique: true,
+						TableName:   "foo_1",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						Name:        "foo_1_local_idx", Columns: []string{"author", "content"}, IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_local_idx ON public.foo_1 USING btree (author, content)",
 					},
 					{
-						TableName: "foo_1",
-						Name:      "foo_1_pkey", Columns: []string{"author", "id"}, ParentIdxName: "foo_pkey", IsUnique: true,
-						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
+						TableName:   "foo_1",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						Name:        "foo_1_pkey", Columns: []string{"author", "id"}, ParentIdxName: "foo_pkey", IsUnique: true,
+						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_pkey ON public.foo_1 USING btree (author, id)",
 					},
 					// foo_2 indexes
 					{
-						TableName: "foo_2",
-						Name:      "foo_2_author_idx", Columns: []string{"author"}, ParentIdxName: "some_partitioned_idx",
+						TableName:   "foo_2",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
+						Name:        "foo_2_author_idx", Columns: []string{"author"}, ParentIdxName: "some_partitioned_idx",
 						GetIndexDefStmt: "CREATE INDEX foo_2_author_idx ON public.foo_2 USING hash (author)",
 					},
 					{
-						TableName: "foo_2",
-						Name:      "foo_2_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true, ParentIdxName: "some_unique_partitioned_idx",
+						TableName:   "foo_2",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
+						Name:        "foo_2_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true, ParentIdxName: "some_unique_partitioned_idx",
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_author_created_at_idx ON public.foo_2 USING btree (author, created_at DESC)",
 					},
 					{
-						TableName: "foo_2",
-						Name:      "foo_2_local_idx", Columns: []string{"author", "id"}, IsUnique: true,
+						TableName:   "foo_2",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
+						Name:        "foo_2_local_idx", Columns: []string{"author", "id"}, IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_local_idx ON public.foo_2 USING btree (author DESC, id)",
 					},
 					{
-						TableName: "foo_2",
-						Name:      "foo_2_pkey", Columns: []string{"author", "id"}, ParentIdxName: "foo_pkey", IsUnique: true,
-						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foo_2_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
+						TableName:   "foo_2",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
+						Name:        "foo_2_pkey", Columns: []string{"author", "id"}, ParentIdxName: "foo_pkey", IsUnique: true,
+						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_2_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_pkey ON public.foo_2 USING btree (author, id)",
 					},
 					// foo_3 indexes
 					{
-						TableName: "foo_3",
-						Name:      "foo_3_author_idx", Columns: []string{"author"}, ParentIdxName: "some_partitioned_idx",
+						TableName:   "foo_3",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
+						Name:        "foo_3_author_idx", Columns: []string{"author"}, ParentIdxName: "some_partitioned_idx",
 						GetIndexDefStmt: "CREATE INDEX foo_3_author_idx ON public.foo_3 USING hash (author)",
 					},
 					{
-						TableName: "foo_3",
-						Name:      "foo_3_author_created_at_idx", Columns: []string{"author", "created_at"}, ParentIdxName: "some_unique_partitioned_idx", IsUnique: true,
+						TableName:   "foo_3",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
+						Name:        "foo_3_author_created_at_idx", Columns: []string{"author", "created_at"}, ParentIdxName: "some_unique_partitioned_idx", IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_author_created_at_idx ON public.foo_3 USING btree (author, created_at DESC)",
 					},
 					{
-						TableName: "foo_3",
-						Name:      "foo_3_local_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
+						TableName:   "foo_3",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
+						Name:        "foo_3_local_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_local_idx ON public.foo_3 USING btree (author, created_at)",
 					},
 					{
-						TableName: "foo_3",
-						Name:      "foo_3_pkey", Columns: []string{"author", "id"}, ParentIdxName: "foo_pkey", IsUnique: true,
-						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foo_3_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
+						TableName:   "foo_3",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
+						Name:        "foo_3_pkey", Columns: []string{"author", "id"}, ParentIdxName: "foo_pkey", IsUnique: true,
+						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_3_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_pkey ON public.foo_3 USING btree (author, id)",
 					},
 				},
-				ForeignKeyConstraints: []schema.ForeignKeyConstraint{
+				ForeignKeyConstraints: []ForeignKeyConstraint{
 					{
 						EscapedName:               "\"foo_fk_fk\"",
-						OwningTable:               schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_fk\""},
+						OwningTable:               SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_fk\""},
 						OwningTableUnescapedName:  "foo_fk",
-						ForeignTable:              schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						ForeignTable:              SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						ForeignTableUnescapedName: "foo",
 						ConstraintDef:             "FOREIGN KEY (author, id) REFERENCES foo(author, id) ON UPDATE CASCADE ON DELETE CASCADE",
 						IsValid:                   true,
 					},
 					{
 						EscapedName:               "\"foo_fk_1_fk\"",
-						OwningTable:               schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_fk_1\""},
+						OwningTable:               SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_fk_1\""},
 						OwningTableUnescapedName:  "foo_fk_1",
-						ForeignTable:              schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						ForeignTable:              SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
 						ForeignTableUnescapedName: "foo_1",
 						ConstraintDef:             "FOREIGN KEY (author, content) REFERENCES foo_1(author, content) NOT VALID",
 						IsValid:                   false,
 					},
 				},
-				Sequences: []schema.Sequence{
+				Sequences: []Sequence{
 					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_id_seq\""},
-						Owner: &schema.SequenceOwner{
-							TableName:          schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_id_seq\""},
+						Owner: &SequenceOwner{
+							TableName:          SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 							TableUnescapedName: "foo",
 							ColumnName:         "id",
 						},
@@ -602,26 +705,26 @@ var (
 						Cycle:      false,
 					},
 				},
-				Functions: []schema.Function{
+				Functions: []Function{
 					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
+						SchemaQualifiedName: SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
 						FunctionDef:         "CREATE OR REPLACE FUNCTION public.increment_version()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\n\t\t\t\tBEGIN\n\t\t\t\t\tNEW.version = OLD.version + 1;\n\t\t\t\t\tRETURN NEW;\n\t\t\t\tEND;\n\t\t\t$function$\n",
 						Language:            "plpgsql",
 					},
 				},
-				Triggers: []schema.Trigger{
+				Triggers: []Trigger{
 					{
 						EscapedName:              "\"some_trigger\"",
-						OwningTable:              schema.SchemaQualifiedName{EscapedName: "\"foo\"", SchemaName: "public"},
+						OwningTable:              SchemaQualifiedName{EscapedName: "\"foo\"", SchemaName: "public"},
 						OwningTableUnescapedName: "foo",
-						Function:                 schema.SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
+						Function:                 SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
 						GetTriggerDefStmt:        "CREATE TRIGGER some_trigger BEFORE UPDATE ON public.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
 					},
 					{
 						EscapedName:              "\"some_partition_trigger\"",
-						OwningTable:              schema.SchemaQualifiedName{EscapedName: "\"foo_1\"", SchemaName: "public"},
+						OwningTable:              SchemaQualifiedName{EscapedName: "\"foo_1\"", SchemaName: "public"},
 						OwningTableUnescapedName: "foo_1",
-						Function:                 schema.SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
+						Function:                 SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
 						GetTriggerDefStmt:        "CREATE TRIGGER some_partition_trigger BEFORE UPDATE ON public.foo_1 FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
 					},
 				},
@@ -639,36 +742,39 @@ var (
 			    PRIMARY KEY (author, id)
 			) FOR VALUES IN ('some author 1');
 		`},
-			expectedHash: "767d30df139d570",
-			expectedSchema: schema.Schema{
-				Tables: []schema.Table{
+			expectedSchema: Schema{
+				Tables: []Table{
 					{
-						Name: "foo",
-						Columns: []schema.Column{
+						Name:                "foo",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Columns: []Column{
 							{Name: "id", Type: "integer", IsNullable: true, Size: 4},
 							{Name: "author", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
+						ReplicaIdentity:  ReplicaIdentityDefault,
 						PartitionKeyDef:  "LIST (author)",
 					},
 					{
-						ParentTableName: "foo",
-						Name:            "foo_1",
-						Columns: []schema.Column{
+						ParentTableName:     "foo",
+						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Name:                "foo_1",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						Columns: []Column{
 							{Name: "id", Type: "integer", Size: 4},
 							{Name: "author", Type: "text", Size: -1, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
+						ReplicaIdentity:  ReplicaIdentityDefault,
 						ForValues:        "FOR VALUES IN ('some author 1')",
 					},
 				},
-				Indexes: []schema.Index{
+				Indexes: []Index{
 					{
-						TableName: "foo_1",
-						Name:      "foo_1_pkey", Columns: []string{"author", "id"}, IsUnique: true,
-						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true},
+						TableName:   "foo_1",
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						Name:        "foo_1_pkey", Columns: []string{"author", "id"}, IsUnique: true,
+						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_pkey ON public.foo_1 USING btree (author, id)",
 					},
 				},
@@ -691,12 +797,12 @@ var (
 				"serial" SERIAL NOT NULL
 			);
 		`},
-			expectedHash: "b9bb73829e790b8e",
-			expectedSchema: schema.Schema{
-				Tables: []schema.Table{
+			expectedSchema: Schema{
+				Tables: []Table{
 					{
-						Name: "foo",
-						Columns: []schema.Column{
+						Name:                "foo",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Columns: []Column{
 							{Name: "varchar", Type: "character varying(128)", Default: "''::character varying", Size: -1, Collation: defaultCollation},
 							{Name: "text", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
 							{Name: "bool", Type: "boolean", Default: "false", Size: 1},
@@ -707,17 +813,17 @@ var (
 							{Name: "integer", Type: "integer", Default: "0", Size: 4},
 							{Name: "big_integer", Type: "bigint", Default: "0", Size: 8},
 							{Name: "decimal", Type: "numeric(65,10)", Default: "0.0", Size: -1},
-							{Name: "serial", Type: "integer", Collation: schema.SchemaQualifiedName{}, Default: "nextval('foo_serial_seq'::regclass)", IsNullable: false, Size: 4},
+							{Name: "serial", Type: "integer", Collation: SchemaQualifiedName{}, Default: "nextval('foo_serial_seq'::regclass)", IsNullable: false, Size: 4},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
+						ReplicaIdentity:  ReplicaIdentityDefault,
 					},
 				},
-				Sequences: []schema.Sequence{
+				Sequences: []Sequence{
 					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_serial_seq\""},
-						Owner: &schema.SequenceOwner{
-							TableName:          schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_serial_seq\""},
+						Owner: &SequenceOwner{
+							TableName:          SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 							TableUnescapedName: "foo",
 							ColumnName:         "serial",
 						},
@@ -733,199 +839,97 @@ var (
 			},
 		},
 		{
-			name: "Multi-Schema",
+			name: "Filtering - filtering out the base table",
+			opts: []GetSchemaOpt{WithSchemas("public")},
 			ddl: []string{`
-			CREATE TABLE foo (
-				id INTEGER PRIMARY KEY CHECK (id > 0),
-				version INTEGER NOT NULL DEFAULT 0,
-				content TEXT
-			);
-
-			CREATE FUNCTION dup(in int, out f1 int, out f2 text)
-				AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$
-				LANGUAGE SQL;
-
-
-			CREATE FUNCTION increment_version() RETURNS TRIGGER AS $$
-				BEGIN
-					NEW.version = OLD.version + 1;
-					RETURN NEW;
-				END;
-			$$ language 'plpgsql';
-
-			CREATE TRIGGER some_trigger
-				BEFORE UPDATE ON foo
-				FOR EACH ROW
-				WHEN (OLD.* IS DISTINCT FROM NEW.*)
-				EXECUTE PROCEDURE increment_version();
-
-			CREATE SCHEMA test;
-
-			CREATE TABLE test.foo(
-				test_schema_id INTEGER PRIMARY KEY,
-				test_schema_version INTEGER NOT NULL DEFAULT 0,
-				test_schema_content TEXT CHECK (LENGTH(test_schema_content) > 0)
-			);
-
-			CREATE FUNCTION test.dup(in int, out f1 int, out f2 text)
-				AS $$ SELECT $1, ' is int' $$
-				LANGUAGE SQL;
-
-			CREATE FUNCTION test.increment_version() RETURNS TRIGGER AS $$
-				BEGIN
-					NEW.version = OLD.version + 1;
-					RETURN NEW;
-				END;
-			$$ language 'plpgsql';
-
-			CREATE TRIGGER some_trigger
-				BEFORE UPDATE ON test.foo
-				FOR EACH ROW
-				WHEN (OLD.* IS DISTINCT FROM NEW.*)
-				EXECUTE PROCEDURE increment_version();
-
-			CREATE COLLATION test."some collation" (locale = 'en_US');
-
-			CREATE TABLE bar (
-				id INTEGER CHECK (id > 0),
-				author TEXT COLLATE test."some collation",
-				PRIMARY KEY (author, id)
-			) PARTITION BY LIST (author);
-			CREATE INDEX some_partitioned_idx ON bar(author, id);
-			CREATE TABLE bar_1 PARTITION OF bar FOR VALUES IN ('some author 1');
-
-			CREATE TABLE test.bar (
-				test_id SERIAL CHECK (test_id > 0),
-				test_author TEXT,
-				PRIMARY KEY (test_author, test_id)
-			) PARTITION BY LIST (test_author);
-			CREATE INDEX some_partitioned_idx ON test.bar(test_author, test_id);
-			CREATE TABLE test.bar_1 PARTITION OF test.bar FOR VALUES IN ('some author 1');
-
-			-- create a trigger on the original schema using a function from the other schema
-			CREATE TRIGGER some_trigger_using_other_schema_function
-				BEFORE UPDATE ON foo
-				FOR EACH ROW
-				WHEN (OLD.* IS DISTINCT FROM NEW.*)
-				EXECUTE PROCEDURE test.increment_version();
-
-			-- create foreign keys
-			ALTER TABLE foo ADD CONSTRAINT foo_fk FOREIGN KEY (id) REFERENCES test.foo(test_schema_id);
-			ALTER TABLE test.foo ADD CONSTRAINT foo_fk FOREIGN KEY (test_schema_id) REFERENCES foo(id);
-		`},
-			expectedHash: "de77f34d39ecfce2",
-			expectedSchema: schema.Schema{
-				Tables: []schema.Table{
+				CREATE SCHEMA schema_filtered_1;
+				CREATE TABLE schema_filtered_1.foobar(	
+				    id VARCHAR(255) NOT NULL
+				) PARTITION BY LIST (id);
+				CREATE TABLE foobar_1 PARTITION OF schema_filtered_1.foobar FOR VALUES IN ('1');
+		   `},
+			expectedSchema: Schema{
+				Tables: []Table{
 					{
-						Name: "foo",
-						Columns: []schema.Column{
-							{Name: "id", Type: "integer", Size: 4},
-							{Name: "version", Type: "integer", Default: "0", Size: 4},
-							{Name: "content", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
-						},
-						CheckConstraints: []schema.CheckConstraint{
-							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
-						},
-						ReplicaIdentity: schema.ReplicaIdentityDefault,
-					},
-					{
-						Name: "bar",
-						Columns: []schema.Column{
-							{Name: "id", Type: "integer", Default: "", Size: 4},
-							{Name: "author", Type: "text", Default: "", Size: -1, Collation: schema.SchemaQualifiedName{SchemaName: "test", EscapedName: `"some collation"`}},
-						},
-						CheckConstraints: []schema.CheckConstraint{
-							{Name: "bar_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
-						},
-						ReplicaIdentity: schema.ReplicaIdentityDefault,
-						PartitionKeyDef: "LIST (author)",
-					},
-					{
-						ParentTableName: "bar",
-						Name:            "bar_1",
-						Columns: []schema.Column{
-							{Name: "id", Type: "integer", Default: "", Size: 4},
-							{Name: "author", Type: "text", Default: "", Size: -1, Collation: schema.SchemaQualifiedName{SchemaName: "test", EscapedName: `"some collation"`}},
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:                "foobar_1",
+						Columns: []Column{
+							{Name: "id", Type: "character varying(255)", IsNullable: false, Size: -1, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
-						ForValues:        "FOR VALUES IN ('some author 1')",
-					},
-				},
-				Indexes: []schema.Index{
-					// foo indexes
-					{
-						TableName: "foo",
-						Name:      "foo_pkey", Columns: []string{"id"}, IsUnique: true,
-						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (id)", IsLocal: true},
-						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON public.foo USING btree (id)",
-					},
-					// bar indexes
-					{
-						TableName: "bar",
-						Name:      "bar_pkey", Columns: []string{"author", "id"}, IsUnique: true,
-						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"bar_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true},
-						GetIndexDefStmt: "CREATE UNIQUE INDEX bar_pkey ON ONLY public.bar USING btree (author, id)",
-					},
-					{
-						TableName: "bar",
-						Name:      "some_partitioned_idx", Columns: []string{"author", "id"},
-						GetIndexDefStmt: "CREATE INDEX some_partitioned_idx ON ONLY public.bar USING btree (author, id)",
-					},
-					// bar_1 indexes
-					{
-						TableName: "bar_1",
-						Name:      "bar_1_author_id_idx", Columns: []string{"author", "id"}, ParentIdxName: "some_partitioned_idx",
-						GetIndexDefStmt: "CREATE INDEX bar_1_author_id_idx ON public.bar_1 USING btree (author, id)",
-					},
-					{
-						TableName: "bar_1",
-						Name:      "bar_1_pkey", Columns: []string{"author", "id"}, ParentIdxName: "bar_pkey", IsUnique: true,
-						Constraint:      &schema.IndexConstraint{Type: schema.PkIndexConstraintType, EscapedConstraintName: "\"bar_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
-						GetIndexDefStmt: "CREATE UNIQUE INDEX bar_1_pkey ON public.bar_1 USING btree (author, id)",
-					},
-				},
-				ForeignKeyConstraints: []schema.ForeignKeyConstraint{
-					{
-						EscapedName:               "\"foo_fk\"",
-						OwningTable:               schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
-						OwningTableUnescapedName:  "foo",
-						ForeignTable:              schema.SchemaQualifiedName{SchemaName: "test", EscapedName: "\"foo\""},
-						ForeignTableUnescapedName: "foo",
-						ConstraintDef:             "FOREIGN KEY (id) REFERENCES test.foo(test_schema_id)",
-						IsValid:                   true,
-					},
-				},
-				Functions: []schema.Function{
-					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{EscapedName: "\"dup\"(integer, OUT f1 integer, OUT f2 text)", SchemaName: "public"},
-						FunctionDef:         "CREATE OR REPLACE FUNCTION public.dup(integer, OUT f1 integer, OUT f2 text)\n RETURNS record\n LANGUAGE sql\nAS $function$ SELECT $1, CAST($1 AS text) || ' is text' $function$\n",
-						Language:            "sql",
-					},
-					{
-						SchemaQualifiedName: schema.SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
-						FunctionDef:         "CREATE OR REPLACE FUNCTION public.increment_version()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\n\t\t\t\tBEGIN\n\t\t\t\t\tNEW.version = OLD.version + 1;\n\t\t\t\t\tRETURN NEW;\n\t\t\t\tEND;\n\t\t\t$function$\n",
-						Language:            "plpgsql",
-					},
-				},
-				Triggers: []schema.Trigger{
-					{
-						EscapedName:              "\"some_trigger\"",
-						OwningTable:              schema.SchemaQualifiedName{EscapedName: "\"foo\"", SchemaName: "public"},
-						OwningTableUnescapedName: "foo",
-						Function:                 schema.SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
-						GetTriggerDefStmt:        "CREATE TRIGGER some_trigger BEFORE UPDATE ON public.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
+						ReplicaIdentity:  "d",
+						ParentTableName:  "foobar",
+						ParentTable:      &SchemaQualifiedName{SchemaName: "schema_filtered_1", EscapedName: "\"foobar\""},
+						ForValues:        "FOR VALUES IN ('1')",
 					},
 				},
 			},
 		},
 		{
-			name:         "Empty Schema",
-			ddl:          nil,
-			expectedHash: "aebac19ebacc31e8",
-			expectedSchema: schema.Schema{
-				Tables: nil,
+			name: "Filtering - filtering out partition",
+			opts: []GetSchemaOpt{WithSchemas("public")},
+			ddl: []string{`
+				CREATE SCHEMA schema_filtered_1;
+				CREATE TABLE foobar(	
+				    id VARCHAR(255) NOT NULL
+				) PARTITION BY LIST (id);
+				CREATE TABLE schema_filtered_1.foobar_1 PARTITION OF foobar FOR VALUES IN ('1');
+		   `},
+			expectedSchema: Schema{
+				Tables: []Table{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:                "foobar",
+						Columns: []Column{
+							{Name: "id", Type: "character varying(255)", IsNullable: false, Size: -1, Collation: defaultCollation},
+						},
+						ReplicaIdentity: "d",
+						PartitionKeyDef: "LIST (id)",
+					},
+				},
 			},
+		},
+		{
+			name: "Filtering - no filtering fetches everything",
+			ddl: []string{`
+				CREATE SCHEMA schema_1;
+				CREATE TABLE schema_1.foobar(	
+				    id VARCHAR(255) NOT NULL
+				) PARTITION BY LIST (id);
+				CREATE TABLE foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('1');
+		   `},
+			expectedSchema: Schema{
+				Tables: []Table{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foobar\""},
+						Name:                "foobar",
+						Columns: []Column{
+							{Name: "id", Type: "character varying(255)", IsNullable: false, Size: -1, Collation: defaultCollation},
+						},
+						ReplicaIdentity: "d",
+						PartitionKeyDef: "LIST (id)",
+					},
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:                "foobar_1",
+						Columns: []Column{
+							{Name: "id", Type: "character varying(255)", IsNullable: false, Size: -1, Collation: defaultCollation},
+						},
+						CheckConstraints: nil,
+						ReplicaIdentity:  "d",
+						ParentTableName:  "foobar",
+						ParentTable:      &SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foobar\""},
+						ForValues:        "FOR VALUES IN ('1')",
+					},
+				},
+			},
+		},
+		{
+			name: "Empty Schema",
+			ddl:  nil,
+			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
+			expectedHash:   "aebac19ebacc31e8",
+			expectedSchema: Schema{},
 		},
 		{
 			name: "No Indexes or constraints",
@@ -934,16 +938,16 @@ var (
 				value TEXT
 			);
 		`},
-			expectedHash: "5fa049e3f5b044a5",
-			expectedSchema: schema.Schema{
-				Tables: []schema.Table{
+			expectedSchema: Schema{
+				Tables: []Table{
 					{
-						Name: "foo",
-						Columns: []schema.Column{
+						Name:                "foo",
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Columns: []Column{
 							{Name: "value", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
-						ReplicaIdentity:  schema.ReplicaIdentityDefault,
+						ReplicaIdentity:  ReplicaIdentityDefault,
 					},
 				},
 			},
@@ -991,7 +995,7 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 		}()
 	}
 
-	fetchedSchema, err := schema.GetPublicSchema(context.TODO(), dbtx)
+	fetchedSchema, err := GetSchema(context.TODO(), dbtx, testCase.opts...)
 	if testCase.expectedErrIs != nil {
 		require.ErrorIs(t, err, testCase.expectedErrIs)
 		return
@@ -1007,9 +1011,12 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 	require.NoError(t, err)
 	expectedSchemaHash, err := testCase.expectedSchema.Hash()
 	require.NoError(t, err)
-	assert.Equal(t, testCase.expectedHash, fetchedSchemaHash)
 	// same schemas should have the same hashes
 	assert.Equal(t, expectedSchemaHash, fetchedSchemaHash, "hash of expected schema should match fetched hash")
+	if testCase.expectedHash != "" {
+		// Optionally assert that the hash matches the expected hash
+		assert.Equal(t, testCase.expectedHash, fetchedSchemaHash)
+	}
 
 	require.NoError(t, connPool.Close())
 	require.NoError(t, db.DropDB())
@@ -1049,7 +1056,7 @@ func TestIdxDefStmtToCreateIdxConcurrently(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := schema.GetIndexDefStatement(tc.defStmt).ToCreateIndexConcurrently()
+			out, err := GetIndexDefStatement(tc.defStmt).ToCreateIndexConcurrently()
 			if tc.expectErr {
 				require.Error(t, err)
 			} else {
@@ -1089,7 +1096,7 @@ func TestTriggerDefStmtToCreateOrReplace(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := schema.GetTriggerDefStatement(tc.defStmt).ToCreateOrReplace()
+			out, err := GetTriggerDefStatement(tc.defStmt).ToCreateOrReplace()
 			if tc.expectErr {
 				require.Error(t, err)
 			} else {

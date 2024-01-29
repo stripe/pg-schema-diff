@@ -27,6 +27,7 @@ type (
 		ignoreChangesToColOrder bool
 		logger                  log.Logger
 		validatePlan            bool
+		getSchemaOpts           []schema.GetSchemaOpt
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -77,12 +78,13 @@ func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempDbFactory 
 		validatePlan:            true,
 		ignoreChangesToColOrder: true,
 		logger:                  log.SimpleLogger(),
+		getSchemaOpts:           []schema.GetSchemaOpt{schema.WithSchemas("public")},
 	}
 	for _, opt := range opts {
 		opt(planOptions)
 	}
 
-	currentSchema, err := schema.GetPublicSchema(ctx, queryable)
+	currentSchema, err := schema.GetSchema(ctx, queryable, planOptions.getSchemaOpts...)
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting current schema: %w", err)
 	}
@@ -132,7 +134,7 @@ func deriveSchemaFromDDLOnTempDb(ctx context.Context, logger log.Logger, tempDbF
 		}
 	}
 
-	return schema.GetPublicSchema(ctx, tempDb)
+	return schema.GetSchema(ctx, tempDb, schema.WithSchemas("public"))
 }
 
 func generateMigrationStatements(oldSchema, newSchema schema.Schema, planOptions *planOptions) ([]Statement, error) {
@@ -183,7 +185,7 @@ func assertValidPlan(ctx context.Context,
 		return err
 	}
 
-	migratedSchema, err := schema.GetPublicSchema(ctx, tempDb)
+	migratedSchema, err := schema.GetSchema(ctx, tempDb, planOptions.getSchemaOpts...)
 	if err != nil {
 		return fmt.Errorf("fetching schema from migrated database: %w", err)
 	}
