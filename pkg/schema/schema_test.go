@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
+	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
 	"github.com/stripe/pg-schema-diff/pkg/schema"
 )
 
@@ -73,9 +74,10 @@ func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 				FOR EACH ROW
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE increment_version();
+			
+	        CREATE SCHEMA schema_filtered_1;
+			CREATE TABLE schema_filtered_1.bar()
 	`
-
-		expectedHash = "3f8beb1a6c0d00d2"
 	)
 	db, err := suite.pgEngine.CreateDatabase()
 	suite.Require().NoError(err)
@@ -95,6 +97,10 @@ func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 	hash, err := schema.GetPublicSchemaHash(context.Background(), conn)
 	suite.Require().NoError(err)
 
+	schema, err := internalschema.GetSchema(context.Background(), conn, internalschema.WithSchemas("public"))
+	suite.Require().NoError(err)
+	expectedHash, err := schema.Hash()
+	suite.Require().NoError(err)
 	suite.Equal(expectedHash, hash)
 }
 
