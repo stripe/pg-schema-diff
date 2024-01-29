@@ -25,6 +25,7 @@ SELECT
             AND NOT a.attisdropped
     )::TEXT [] AS column_names,
     pg_class.relname::TEXT AS table_name,
+    table_namespace.nspname::TEXT AS table_schema_name,
     pg_constraint.convalidated AS is_valid,
     pg_constraint.connoinherit AS is_not_inheritable,
     pg_catalog.pg_get_expr(
@@ -32,9 +33,12 @@ SELECT
     ) AS constraint_expression
 FROM pg_catalog.pg_constraint
 INNER JOIN pg_catalog.pg_class ON pg_constraint.conrelid = pg_class.oid
+INNER JOIN
+    pg_catalog.pg_namespace AS table_namespace
+    ON pg_class.relnamespace = table_namespace.oid
 WHERE
-    pg_class.relnamespace
-    = (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'public')
+    table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND table_namespace.nspname !~ '^pg_toast'
     AND pg_constraint.contype = 'c'
     AND pg_constraint.conislocal
 `
@@ -44,6 +48,7 @@ type GetCheckConstraintsRow struct {
 	ConstraintName       string
 	ColumnNames          []string
 	TableName            string
+	TableSchemaName      string
 	IsValid              bool
 	IsNotInheritable     bool
 	ConstraintExpression string
@@ -63,6 +68,7 @@ func (q *Queries) GetCheckConstraints(ctx context.Context) ([]GetCheckConstraint
 			&i.ConstraintName,
 			pq.Array(&i.ColumnNames),
 			&i.TableName,
+			&i.TableSchemaName,
 			&i.IsValid,
 			&i.IsNotInheritable,
 			&i.ConstraintExpression,
@@ -244,7 +250,9 @@ FROM pg_catalog.pg_namespace AS extension_namespace
 INNER JOIN
     pg_catalog.pg_extension AS ext
     ON ext.extnamespace = extension_namespace.oid
-WHERE extension_namespace.nspname = 'public'
+WHERE
+    extension_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND extension_namespace.nspname !~ '^pg_toast'
 `
 
 type GetExtensionsRow struct {
@@ -304,7 +312,8 @@ INNER JOIN pg_catalog.pg_namespace AS foreign_table_namespace
     ON
         foreign_table_c.relnamespace = foreign_table_namespace.oid
 WHERE
-    constraint_namespace.nspname = 'public'
+    constraint_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND constraint_namespace.nspname !~ '^pg_toast'
     AND pg_constraint.contype = 'f'
     AND pg_constraint.conislocal
 `
@@ -368,7 +377,8 @@ INNER JOIN
     pg_catalog.pg_language AS proc_lang
     ON proc_lang.oid = pg_proc.prolang
 WHERE
-    proc_namespace.nspname = 'public'
+    proc_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND proc_namespace.nspname !~ '^pg_toast'
     AND pg_proc.prokind = 'f'
     -- Exclude functions belonging to extensions
     AND NOT EXISTS (
@@ -425,6 +435,7 @@ SELECT
     c.oid AS oid,
     c.relname::TEXT AS index_name,
     table_c.relname::TEXT AS table_name,
+    table_namespace.nspname::TEXT AS table_schema_name,
     pg_catalog.pg_get_indexdef(c.oid)::TEXT AS def_stmt,
     COALESCE(con.conname, '')::TEXT AS constraint_name,
     COALESCE(con.contype, '')::TEXT AS constraint_type,
@@ -440,6 +451,8 @@ SELECT
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_index AS i ON (i.indexrelid = c.oid)
 INNER JOIN pg_catalog.pg_class AS table_c ON (table_c.oid = i.indrelid)
+INNER JOIN pg_catalog.pg_namespace AS table_namespace
+    ON table_c.relnamespace = table_namespace.oid
 LEFT JOIN
     pg_catalog.pg_constraint AS con
     ON (con.conindid = c.oid AND con.contype IN ('p', 'u', null))
@@ -453,8 +466,8 @@ LEFT JOIN
     pg_catalog.pg_namespace AS parent_namespace
     ON parent_c.relnamespace = parent_namespace.oid
 WHERE
-    c.relnamespace
-    = (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'public')
+    table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND table_namespace.nspname !~ '^pg_toast'
     AND (c.relkind = 'i' OR c.relkind = 'I')
 `
 
@@ -462,6 +475,7 @@ type GetIndexesRow struct {
 	Oid                   interface{}
 	IndexName             string
 	TableName             string
+	TableSchemaName       string
 	DefStmt               string
 	ConstraintName        string
 	ConstraintType        string
@@ -487,6 +501,7 @@ func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
 			&i.Oid,
 			&i.IndexName,
 			&i.TableName,
+			&i.TableSchemaName,
 			&i.DefStmt,
 			&i.ConstraintName,
 			&i.ConstraintType,
@@ -542,15 +557,18 @@ LEFT JOIN pg_catalog.pg_class AS owner_c ON depend.refobjid = owner_c.oid
 LEFT JOIN
     pg_catalog.pg_namespace AS owner_ns
     ON owner_c.relnamespace = owner_ns.oid
-WHERE seq_ns.nspname = 'public'
-AND NOT EXISTS (
-    SELECT ext_depend.objid
-    FROM pg_catalog.pg_depend AS ext_depend
-    WHERE
-        ext_depend.classid = 'pg_class'::REGCLASS
-        AND ext_depend.objid = pg_seq.seqrelid
-        AND ext_depend.deptype = 'e'
-)
+WHERE
+    seq_ns.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND seq_ns.nspname !~ '^pg_toast'
+    -- It doesn't belong to an extension
+    AND NOT EXISTS (
+        SELECT ext_depend.objid
+        FROM pg_catalog.pg_depend AS ext_depend
+        WHERE
+            ext_depend.classid = 'pg_class'::REGCLASS
+            AND ext_depend.objid = pg_seq.seqrelid
+            AND ext_depend.deptype = 'e'
+    )
 `
 
 type GetSequencesRow struct {
@@ -568,7 +586,6 @@ type GetSequencesRow struct {
 	DataType           string
 }
 
-// It doesn't belong to an extension
 func (q *Queries) GetSequences(ctx context.Context) ([]GetSequencesRow, error) {
 	rows, err := q.db.QueryContext(ctx, getSequences)
 	if err != nil {
@@ -609,6 +626,7 @@ const getTables = `-- name: GetTables :many
 SELECT
     c.oid AS oid,
     c.relname::TEXT AS table_name,
+    table_namespace.nspname::TEXT AS table_schema_name,
     c.relreplident::TEXT AS replica_identity,
     COALESCE(parent_c.relname, '')::TEXT AS parent_table_name,
     COALESCE(parent_namespace.nspname, '')::TEXT AS parent_table_schema_name,
@@ -622,6 +640,9 @@ SELECT
         ELSE ''
     END)::TEXT AS partition_for_values
 FROM pg_catalog.pg_class AS c
+INNER JOIN
+    pg_catalog.pg_namespace AS table_namespace
+    ON c.relnamespace = table_namespace.oid
 LEFT JOIN
     pg_catalog.pg_inherits AS table_inherits
     ON table_inherits.inhrelid = c.oid
@@ -632,14 +653,15 @@ LEFT JOIN
     pg_catalog.pg_namespace AS parent_namespace
     ON parent_c.relnamespace = parent_namespace.oid
 WHERE
-    c.relnamespace
-    = (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'public')
+    table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND table_namespace.nspname !~ '^pg_toast'
     AND (c.relkind = 'r' OR c.relkind = 'p')
 `
 
 type GetTablesRow struct {
 	Oid                   interface{}
 	TableName             string
+	TableSchemaName       string
 	ReplicaIdentity       string
 	ParentTableName       string
 	ParentTableSchemaName string
@@ -659,6 +681,7 @@ func (q *Queries) GetTables(ctx context.Context) ([]GetTablesRow, error) {
 		if err := rows.Scan(
 			&i.Oid,
 			&i.TableName,
+			&i.TableSchemaName,
 			&i.ReplicaIdentity,
 			&i.ParentTableName,
 			&i.ParentTableSchemaName,
@@ -699,8 +722,8 @@ INNER JOIN
     pg_catalog.pg_namespace AS proc_namespace
     ON pg_proc.pronamespace = proc_namespace.oid
 WHERE
-    proc_namespace.nspname = 'public'
-    AND owning_c_namespace.nspname = 'public'
+    owning_c_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND owning_c_namespace.nspname !~ '^pg_toast'
     AND trig.tgparentid = 0
     AND NOT trig.tgisinternal
 `

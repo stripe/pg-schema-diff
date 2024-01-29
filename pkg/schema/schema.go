@@ -12,7 +12,7 @@ import (
 // plan to determine if the plan is still valid
 // We do not expose the Schema struct yet because it is subject to change, and we do not want folks depending on its API
 func GetPublicSchemaHash(ctx context.Context, queryable sqldb.Queryable) (string, error) {
-	schema, err := internalschema.GetPublicSchema(ctx, queryable)
+	schema, err := internalschema.GetSchema(ctx, queryable, internalschema.WithSchemas("public"))
 	if err != nil {
 		return "", fmt.Errorf("getting public schema: %w", err)
 	}

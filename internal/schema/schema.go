@@ -19,6 +19,8 @@ type (
 		// If the name is not present in the old schema objects list, then it is added
 		// If the name is not present in the new schemas objects list, then it is removed
 		// Otherwise, it has persisted across two schemas and is possibly altered
+		//
+		// GetName should be qualified with the schema name.
 		GetName() string
 	}
 
@@ -45,6 +47,7 @@ func (o SchemaQualifiedName) IsEmpty() bool {
 	return len(o.SchemaName) == 0
 }
 
+// Schema is the schema of the database, not just a single Postgres schema.
 type Schema struct {
 	Extensions            []Extension
 	Tables                []Table
@@ -132,6 +135,8 @@ type Extension struct {
 }
 
 type Table struct {
+	SchemaQualifiedName
+	// deprecated: Name is the name of the table. Prefer SchemaQualifiedName.
 	Name             string
 	Columns          []Column
 	CheckConstraints []CheckConstraint
@@ -142,7 +147,10 @@ type Table struct {
 	// If empty, then the table is not partitioned
 	PartitionKeyDef string
 
+	// deprecated: ParentTableName is the name of the parent table if the table is a partition of a table
+	// Prefer ParentTable.
 	ParentTableName string
+	ParentTable     *SchemaQualifiedName
 	ForValues       string
 }
 
@@ -218,11 +226,14 @@ type (
 	}
 
 	Index struct {
-		TableName string
-		Name      string
-		Columns   []string
-		IsInvalid bool
-		IsUnique  bool
+		// Name is the name of the index. We don't store the schema because the schema is just the schema of the table.
+		Name string
+		// deprecated: TableName is the name of the table that the index is on. Prefer OwningTable.
+		TableName   string
+		OwningTable SchemaQualifiedName
+		Columns     []string
+		IsInvalid   bool
+		IsUnique    bool
 
 		Constraint *IndexConstraint
 
@@ -348,8 +359,29 @@ func (t Trigger) GetName() string {
 	return t.OwningTable.GetFQEscapedName() + "_" + t.EscapedName
 }
 
-// GetPublicSchema fetches the "public" schema. It is a non-atomic operation.
-func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
+type (
+	GetSchemaOpt func(*getSchemaOptions)
+)
+
+// WithSchemas filters the schema to only include the given schemas. This unions with any schemas that are already included
+// via WithSchemas.
+func WithSchemas(schemas ...string) GetSchemaOpt {
+	return func(o *getSchemaOptions) {
+		for _, schema := range schemas {
+			o.includeSchemas = append(o.includeSchemas, schema)
+		}
+	}
+}
+
+type getSchemaOptions struct {
+	// includeSchemas is a list of schemas to include in the schema. If empty, then all schemas are included.
+	// We could have built a more complex set of options using the nameFilter system (nested unions and intersections);
+	// however, I felt it could expose some weird behaviors that we don't want to have to worry about just yet,
+	includeSchemas []string
+}
+
+// GetSchema fetches the database schema. It is a non-atomic operation.
+func GetSchema(ctx context.Context, db queries.DBTX, opts ...GetSchemaOpt) (Schema, error) {
 	// To allow backwards compatibility with connections, we will not use concurrency if passed in a db that is not a
 	// *sql.DB. This is because not all implementations are thread safe, e.g., pgx.Connection.
 	//
@@ -362,20 +394,53 @@ func GetPublicSchema(ctx context.Context, db queries.DBTX) (Schema, error) {
 		}
 	}
 
+	options := getSchemaOptions{}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	return (&schemaFetcher{
 		q:                      queries.New(db),
 		goroutineRunnerFactory: goroutineRunnerFactory,
-	}).getPublicSchema(ctx)
+		nameFilter:             buildNameFilter(options),
+	}).getSchema(ctx)
 }
 
-type schemaFetcher struct {
-	q *queries.Queries
-	// goroutineRunnerFactory is a factory function that returns a GoroutineRunner. We need to be able to construct
-	// multiple GoroutineRunners to avoid deadlock created by circular dependencies of submitted go routines.
-	goroutineRunnerFactory func() concurrent.GoroutineRunner
+func buildNameFilter(options getSchemaOptions) nameFilter {
+	if len(options.includeSchemas) == 0 {
+		return func(name SchemaQualifiedName) bool {
+			return true
+		}
+	}
+
+	var filters []nameFilter
+	for _, schema := range options.includeSchemas {
+		filters = append(filters, schemaNameFilter(schema))
+	}
+	return orNameFilter(filters...)
 }
 
-func (s *schemaFetcher) getPublicSchema(ctx context.Context) (Schema, error) {
+type (
+	schemaFetcher struct {
+		q *queries.Queries
+		// goroutineRunnerFactory is a factory function that returns a GoroutineRunner. We need to be able to construct
+		// multiple GoroutineRunners to avoid deadlock created by circular dependencies of submitted go routines.
+		goroutineRunnerFactory func() concurrent.GoroutineRunner
+		// nameFilter is a filter that determienes which schema objects to include in the schema via their
+		// schema name and object name.
+		//
+		// Currently, we don't do any sort of validation to ensure that all dependencies are included, so users might
+		// experience unexpected outcomes if they accidentally filter out a dependency of an object they are trying to
+		// diff. In the future, we might want to add some sort of validation layer to ensure that all dependencies are included
+		// and error out otherwise.
+		//
+		// Examples of dependencies that could be filtered out include the functions used by triggers and the parent
+		// tables of partitions.
+		nameFilter nameFilter
+	}
+)
+
+func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 	goroutineRunner := s.goroutineRunnerFactory()
 
 	extensionsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Extension, error) {
@@ -489,6 +554,15 @@ func (s *schemaFetcher) fetchExtensions(ctx context.Context) ([]Extension, error
 			Version: e.ExtensionVersion,
 		})
 	}
+
+	extensions = filterSliceByName(
+		extensions,
+		func(e Extension) SchemaQualifiedName {
+			return e.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
 	return extensions, nil
 }
 
@@ -498,7 +572,7 @@ func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 		return nil, fmt.Errorf("GetTables(): %w", err)
 	}
 
-	tablesToCheckConsMap, err := s.fetchCheckConsAndBuildTableToCheckConsMap(ctx)
+	checkConsByTable, err := s.fetchCheckConsAndBuildTableToCheckConsMap(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fetchCheckConsAndBuildTableToCheckConsMap: %w", err)
 	}
@@ -508,26 +582,30 @@ func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 	for _, _rawTable := range rawTables {
 		rawTable := _rawTable // Capture loop variables for go routine
 		tableFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() (Table, error) {
-			return s.buildTable(ctx, rawTable, tablesToCheckConsMap)
+			return s.buildTable(ctx, rawTable, checkConsByTable)
 		})
 		if err != nil {
 			return nil, fmt.Errorf("starting table future: %w", err)
 		}
 		tableFutures = append(tableFutures, tableFuture)
 	}
-
-	return concurrent.GetAll(ctx, tableFutures...)
-}
-
-func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesRow, tablesToCheckConsMap map[string][]CheckConstraint) (Table, error) {
-	if len(table.ParentTableName) > 0 && table.ParentTableSchemaName != "public" {
-		return Table{}, fmt.Errorf(
-			"table %s has parent table in schema %s. only parent tables in public schema are supported",
-			table.TableName,
-			table.ParentTableSchemaName,
-		)
+	tables, err := concurrent.GetAll(ctx, tableFutures...)
+	if err != nil {
+		return nil, fmt.Errorf("getting tables: %w", err)
 	}
 
+	tables = filterSliceByName(
+		tables,
+		func(t Table) SchemaQualifiedName {
+			return t.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
+	return tables, nil
+}
+
+func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesRow, checkConsByTable map[string][]CheckConstraint) (Table, error) {
 	rawColumns, err := s.q.GetColumnsForTable(ctx, table.Oid)
 	if err != nil {
 		return Table{}, fmt.Errorf("GetColumnsForTable(%s): %w", table.Oid, err)
@@ -557,15 +635,28 @@ func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesR
 		})
 	}
 
+	var parentTable *SchemaQualifiedName
+	if table.ParentTableName != "" {
+		parentTable = &SchemaQualifiedName{
+			SchemaName:  table.ParentTableSchemaName,
+			EscapedName: EscapeIdentifier(table.ParentTableName),
+		}
+	}
+	schemaQualifiedName := SchemaQualifiedName{
+		SchemaName:  table.TableSchemaName,
+		EscapedName: EscapeIdentifier(table.TableName),
+	}
 	return Table{
-		Name:             table.TableName,
-		Columns:          columns,
-		CheckConstraints: tablesToCheckConsMap[table.TableName],
-		ReplicaIdentity:  ReplicaIdentity(table.ReplicaIdentity),
+		Name:                table.TableName,
+		SchemaQualifiedName: schemaQualifiedName,
+		Columns:             columns,
+		CheckConstraints:    checkConsByTable[schemaQualifiedName.GetFQEscapedName()],
+		ReplicaIdentity:     ReplicaIdentity(table.ReplicaIdentity),
 
 		PartitionKeyDef: table.PartitionKeyDef,
 
 		ParentTableName: table.ParentTableName,
+		ParentTable:     parentTable,
 		ForValues:       table.PartitionForValues,
 	}, nil
 }
@@ -580,7 +671,9 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 
 	type checkConstraintAndTable struct {
 		checkConstraint CheckConstraint
-		tableName       string
+		// deprecated: tableName is the name of the table that the check constraint is on. Prefer table.
+		tableName string
+		table     SchemaQualifiedName
 	}
 
 	goroutineRunner := s.goroutineRunnerFactory()
@@ -595,6 +688,10 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 			return checkConstraintAndTable{
 				checkConstraint: cc,
 				tableName:       rawCC.TableName,
+				table: SchemaQualifiedName{
+					SchemaName:  rawCC.TableSchemaName,
+					EscapedName: EscapeIdentifier(rawCC.TableName),
+				},
 			}, nil
 		})
 		if err != nil {
@@ -609,10 +706,21 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 		return nil, fmt.Errorf("getting check constraints: %w", err)
 	}
 
+	ccs = filterSliceByName(
+		ccs,
+		func(cc checkConstraintAndTable) SchemaQualifiedName {
+			return SchemaQualifiedName{
+				SchemaName:  cc.table.SchemaName,
+				EscapedName: EscapeIdentifier(cc.checkConstraint.Name),
+			}
+		},
+		s.nameFilter,
+	)
+
 	// Build a map of table name to check constraints
 	tablesToCheckConsMap := make(map[string][]CheckConstraint)
 	for _, cc := range ccs {
-		tablesToCheckConsMap[cc.tableName] = append(tablesToCheckConsMap[cc.tableName], cc.checkConstraint)
+		tablesToCheckConsMap[cc.table.GetFQEscapedName()] = append(tablesToCheckConsMap[cc.table.GetFQEscapedName()], cc.checkConstraint)
 	}
 
 	return tablesToCheckConsMap, nil
@@ -655,7 +763,23 @@ func (s *schemaFetcher) fetchIndexes(ctx context.Context) ([]Index, error) {
 		idxFutures = append(idxFutures, f)
 	}
 
-	return concurrent.GetAll(ctx, idxFutures...)
+	idxs, err := concurrent.GetAll(ctx, idxFutures...)
+	if err != nil {
+		return nil, fmt.Errorf("getting indexes: %w", err)
+	}
+
+	idxs = filterSliceByName(
+		idxs,
+		func(idx Index) SchemaQualifiedName {
+			return SchemaQualifiedName{
+				SchemaName:  idx.OwningTable.SchemaName,
+				EscapedName: EscapeIdentifier(idx.Name),
+			}
+		},
+		s.nameFilter,
+	)
+
+	return idxs, nil
 }
 
 func (s *schemaFetcher) buildIndex(ctx context.Context, rawIndex queries.GetIndexesRow) (Index, error) {
@@ -675,7 +799,11 @@ func (s *schemaFetcher) buildIndex(ctx context.Context, rawIndex queries.GetInde
 	}
 
 	return Index{
-		TableName:       rawIndex.TableName,
+		TableName: rawIndex.TableName,
+		OwningTable: SchemaQualifiedName{
+			SchemaName:  rawIndex.TableSchemaName,
+			EscapedName: EscapeIdentifier(rawIndex.TableName),
+		},
 		Name:            rawIndex.IndexName,
 		Columns:         rawColumns,
 		GetIndexDefStmt: GetIndexDefStatement(rawIndex.DefStmt),
@@ -712,6 +840,18 @@ func (s *schemaFetcher) fetchForeignKeyCons(ctx context.Context) ([]ForeignKeyCo
 			IsValid:                   rawFkCon.IsValid,
 		})
 	}
+
+	fkCons = filterSliceByName(
+		fkCons,
+		func(fkCon ForeignKeyConstraint) SchemaQualifiedName {
+			return SchemaQualifiedName{
+				SchemaName:  fkCon.OwningTable.SchemaName,
+				EscapedName: fkCon.EscapedName,
+			}
+		},
+		s.nameFilter,
+	)
+
 	return fkCons, nil
 }
 
@@ -749,6 +889,18 @@ func (s *schemaFetcher) fetchSequences(ctx context.Context) ([]Sequence, error) 
 			Cycle:      rawSeq.IsCycle,
 		})
 	}
+
+	seqs = filterSliceByName(
+		seqs,
+		func(seq Sequence) SchemaQualifiedName {
+			return SchemaQualifiedName{
+				SchemaName:  seq.SchemaName,
+				EscapedName: seq.EscapedName,
+			}
+		},
+		s.nameFilter,
+	)
+
 	return seqs, nil
 }
 
@@ -771,7 +923,20 @@ func (s *schemaFetcher) fetchFunctions(ctx context.Context) ([]Function, error) 
 		functionFutures = append(functionFutures, f)
 	}
 
-	return concurrent.GetAll(ctx, functionFutures...)
+	functions, err := concurrent.GetAll(ctx, functionFutures...)
+	if err != nil {
+		return nil, fmt.Errorf("getting functions: %w", err)
+	}
+
+	functions = filterSliceByName(
+		functions,
+		func(function Function) SchemaQualifiedName {
+			return function.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
+	return functions, nil
 }
 
 func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.GetFunctionsRow) (Function, error) {
@@ -821,6 +986,17 @@ func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {
 			GetTriggerDefStmt:        GetTriggerDefStatement(rawTrigger.TriggerDef),
 		})
 	}
+
+	triggers = filterSliceByName(
+		triggers,
+		func(trigger Trigger) SchemaQualifiedName {
+			return SchemaQualifiedName{
+				SchemaName:  trigger.OwningTable.SchemaName,
+				EscapedName: trigger.EscapedName,
+			}
+		},
+		s.nameFilter,
+	)
 
 	return triggers, nil
 }

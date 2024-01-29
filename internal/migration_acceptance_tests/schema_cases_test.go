@@ -10,6 +10,10 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		name: "No-op",
 		oldSchemaDDL: []string{
 			`
+			-- Create a table in a different schema to validate it is being ignored (no delete operation).
+            CREATE SCHEMA schema_filtered_1;
+			CREATE TABLE schema_filtered_1.foo();
+
 			CREATE EXTENSION amcheck;
 
 			CREATE TABLE fizz(
