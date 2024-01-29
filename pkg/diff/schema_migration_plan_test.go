@@ -43,7 +43,8 @@ var (
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name:                "foobar",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -55,8 +56,9 @@ var (
 				},
 				Indexes: []schema.Index{
 					{
-						TableName: "foobar",
-						Name:      "some_idx", Columns: []string{"foo", "bar"},
+						TableName:   "foobar",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:        "some_idx", Columns: []string{"foo", "bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foobar USING btree (foo, bar)",
 						IsUnique:        true, IsInvalid: true,
 					},
@@ -65,7 +67,8 @@ var (
 			newSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name:                "foobar",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -78,8 +81,9 @@ var (
 				Indexes: []schema.Index{
 
 					{
-						TableName: "foobar",
-						Name:      "some_idx", Columns: []string{"foo", "bar"},
+						TableName:   "foobar",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:        "some_idx", Columns: []string{"foo", "bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foobar USING btree (foo, bar)",
 						IsUnique:        true,
 					},
@@ -110,7 +114,8 @@ var (
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name:                "foobar",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -121,8 +126,10 @@ var (
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
-						ParentTableName: "foobar",
-						Name:            "foobar_1",
+						ParentTableName:     "foobar",
+						ParentTable:         &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:                "foobar_1",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -136,15 +143,17 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						TableName: "foobar",
-						Name:      "some_idx", Columns: []string{"foo, bar"},
+						TableName:   "foobar",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:        "some_idx", Columns: []string{"foo, bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
 						IsInvalid:       true,
 					},
 					// foobar_1 indexes
 					{
-						TableName: "foobar_1",
-						Name:      "foobar_1_some_idx", Columns: []string{"foo", "bar"},
+						TableName:   "foobar_1",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"},
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 						IsInvalid:       true,
 					},
@@ -153,7 +162,8 @@ var (
 			newSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name:                "foobar",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -164,8 +174,10 @@ var (
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
-						ParentTableName: "foobar",
-						Name:            "foobar_1",
+						ParentTableName:     "foobar",
+						ParentTable:         &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:                "foobar_1",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -179,14 +191,16 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						TableName: "foobar",
-						Name:      "some_idx", Columns: []string{"foo, bar"},
+						TableName:   "foobar",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:        "some_idx", Columns: []string{"foo, bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
 					},
 					// foobar_1 indexes
 					{
-						TableName: "foobar_1",
-						Name:      "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
+						TableName:   "foobar_1",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					},
 				},
@@ -225,7 +239,8 @@ var (
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name:                "foobar",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "id", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -238,7 +253,8 @@ var (
 			newSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name:                "foobar",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "something", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -256,7 +272,8 @@ var (
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name:                "foobar",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -267,8 +284,10 @@ var (
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
-						ParentTableName: "foobar",
-						Name:            "foobar_1",
+						ParentTableName:     "foobar",
+						ParentTable:         &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:                "foobar_1",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -282,15 +301,17 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						TableName: "foobar",
+						TableName:   "foobar",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						// This index points to its child, which is wrong, but induces a loop
 						Name: "some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "foobar_1_some_idx",
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
 					},
 					// foobar_1 indexes
 					{
-						TableName: "foobar_1",
-						Name:      "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
+						TableName:   "foobar_1",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					},
 				},
@@ -298,7 +319,8 @@ var (
 			newSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name: "foobar",
+						Name:                "foobar",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -309,8 +331,10 @@ var (
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
-						ParentTableName: "foobar",
-						Name:            "foobar_1",
+						ParentTableName:     "foobar",
+						ParentTable:         &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:                "foobar_1",
+						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
 							{Name: "foo", Type: "character varying(255)", Default: "''::character varying", Collation: defaultCollation},
@@ -324,15 +348,17 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						TableName: "foobar",
+						TableName:   "foobar",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						// This index points to its child, which is wrong, but induces a loop
 						Name: "some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "foobar_1_some_idx",
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
 					},
 					// foobar_1 indexes
 					{
-						TableName: "foobar_1",
-						Name:      "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
+						TableName:   "foobar_1",
+						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					},
 				},
