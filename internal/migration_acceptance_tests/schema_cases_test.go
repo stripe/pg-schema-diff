@@ -10,10 +10,6 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		name: "No-op",
 		oldSchemaDDL: []string{
 			`
-			-- Create a table in a different schema to validate it is being ignored (no delete operation).
-            CREATE SCHEMA schema_filtered_1;
-			CREATE TABLE schema_filtered_1.foo();
-
 			CREATE EXTENSION amcheck;
 
 			CREATE TABLE fizz(
@@ -146,147 +142,9 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		},
 		vanillaExpectations: expectations{
 			empty: true,
-			// Include the table that was filtered out because it is non-public
-			outputState: []string{`
-			-- Create a table in a different schema to validate it is being ignored (no delete operation).
-            CREATE SCHEMA schema_filtered_1;
-			CREATE TABLE schema_filtered_1.foo();
-
-			CREATE EXTENSION amcheck;
-
-			CREATE TABLE fizz(
-			);
-
-			CREATE SEQUENCE foobar_sequence
-			    AS BIGINT
-				INCREMENT BY 2
-				MINVALUE 5 MAXVALUE 100
-				START WITH 10 CACHE 5 CYCLE
-				OWNED BY NONE;
-
-			CREATE FUNCTION add(a integer, b integer) RETURNS integer
-				LANGUAGE SQL
-				IMMUTABLE
-				RETURNS NULL ON NULL INPUT
-				RETURN a + b;
-
-			CREATE FUNCTION increment(i integer) RETURNS integer AS $$
-					BEGIN
-							RETURN i + 1;
-					END;
-			$$ LANGUAGE plpgsql;
-
-			CREATE FUNCTION function_with_dependencies(a integer, b integer) RETURNS integer
-				LANGUAGE SQL
-				IMMUTABLE
-				RETURNS NULL ON NULL INPUT
-				RETURN add(a, b) + increment(a);
-
-			CREATE TABLE foobar(
-			    id INT,
-				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    bar SERIAL NOT NULL,
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    PRIMARY KEY (foo, id),
-				UNIQUE (foo, bar)
-			) PARTITION BY LIST(foo);
-
-			CREATE TABLE foobar_1 PARTITION of foobar(
-			    fizz NOT NULL
-			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
-
-			-- partitioned indexes
-			CREATE INDEX foobar_normal_idx ON foobar(foo DESC, bar);
-			CREATE INDEX foobar_hash_idx ON foobar USING hash (foo);
-			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, fizz);
-			-- local indexes
-			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, fizz);
-
-			CREATE table bar(
-			    id  INT PRIMARY KEY,
-			    foo VARCHAR(255),
-			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
-				FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
-			);
-			ALTER TABLE bar REPLICA IDENTITY FULL;
-			CREATE INDEX bar_normal_idx ON bar(bar);
-			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
-			CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);
-			`},
 		},
 		dataPackingExpectations: expectations{
 			empty: true,
-			// Include the table that was filtered out because it is non-public
-			outputState: []string{`
-			-- Create a table in a different schema to validate it is being ignored (no delete operation).
-            CREATE SCHEMA schema_filtered_1;
-			CREATE TABLE schema_filtered_1.foo();
-
-			CREATE EXTENSION amcheck;
-
-			CREATE TABLE fizz(
-			);
-
-			CREATE SEQUENCE foobar_sequence
-			    AS BIGINT
-				INCREMENT BY 2
-				MINVALUE 5 MAXVALUE 100
-				START WITH 10 CACHE 5 CYCLE
-				OWNED BY NONE;
-
-			CREATE FUNCTION add(a integer, b integer) RETURNS integer
-				LANGUAGE SQL
-				IMMUTABLE
-				RETURNS NULL ON NULL INPUT
-				RETURN a + b;
-
-			CREATE FUNCTION increment(i integer) RETURNS integer AS $$
-					BEGIN
-							RETURN i + 1;
-					END;
-			$$ LANGUAGE plpgsql;
-
-			CREATE FUNCTION function_with_dependencies(a integer, b integer) RETURNS integer
-				LANGUAGE SQL
-				IMMUTABLE
-				RETURNS NULL ON NULL INPUT
-				RETURN add(a, b) + increment(a);
-
-			CREATE TABLE foobar(
-			    id INT,
-				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    bar SERIAL NOT NULL,
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    PRIMARY KEY (foo, id),
-				UNIQUE (foo, bar)
-			) PARTITION BY LIST(foo);
-
-			CREATE TABLE foobar_1 PARTITION of foobar(
-			    fizz NOT NULL
-			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
-
-			-- partitioned indexes
-			CREATE INDEX foobar_normal_idx ON foobar(foo DESC, bar);
-			CREATE INDEX foobar_hash_idx ON foobar USING hash (foo);
-			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, fizz);
-			-- local indexes
-			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, fizz);
-
-			CREATE table bar(
-			    id  INT PRIMARY KEY,
-			    foo VARCHAR(255),
-			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
-				FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
-			);
-			ALTER TABLE bar REPLICA IDENTITY FULL;
-			CREATE INDEX bar_normal_idx ON bar(bar);
-			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
-			CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);
-			`},
 		},
 	},
 	{

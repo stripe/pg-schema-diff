@@ -13,6 +13,7 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/pgdump"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
+	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 
 	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
@@ -55,6 +56,9 @@ type (
 		vanillaExpectations expectations
 		// dataPackingExpectations refers to the expectations of the migration if table packing is used
 		dataPackingExpectations expectations
+
+		// use old generate plan func
+		useOldGeneratePlan bool
 	}
 
 	acceptanceTestSuite struct {
@@ -120,7 +124,19 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 		suite.Require().NoError(tempDbFactory.Close())
 	}(tempDbFactory)
 
-	plan, err := diff.GeneratePlan(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
+	generatePlanFn := diff.GeneratePlan
+	if !tc.useOldGeneratePlan {
+		generatePlanFn = func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error) {
+			return diff.Generate(ctx, connPool, diff.DDLSchemaSource(newSchemaDDL),
+				append(planOpts,
+					diff.WithBetaDoNotCallWithAllowCustomSchemaOpts(),
+					diff.WithSchemas("public"),
+					diff.WithTempDbFactory(tempDbFactory),
+				)...)
+		}
+	}
+
+	plan, err := generatePlanFn(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
 
 	if expects.planErrorIs != nil || len(expects.planErrorContains) > 0 {
 		if expects.planErrorIs != nil {
@@ -164,7 +180,7 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	}
 
 	// Make sure no diff is found if we try to regenerate a plan
-	plan, err = diff.GeneratePlan(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
+	plan, err = generatePlanFn(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
 	suite.Require().NoError(err)
 	suite.Empty(plan.Statements, prettySprintPlan(plan))
 }

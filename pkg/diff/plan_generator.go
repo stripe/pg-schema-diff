@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/kr/pretty"
 	"github.com/stripe/pg-schema-diff/internal/schema"
@@ -21,6 +22,10 @@ const (
 	tempDbMaxConnections = 5
 )
 
+var (
+	errTempDbFactoryRequired = fmt.Errorf("tempDbFactory is required. include the option WithTempDbFactory")
+)
+
 type (
 	planOptions struct {
 		tempDbFactory           tempdb.Factory
@@ -28,7 +33,14 @@ type (
 		ignoreChangesToColOrder bool
 		logger                  log.Logger
 		validatePlan            bool
-		getSchemaOpts           []schema.GetSchemaOpt
+
+		getSchemaOpts []schema.GetSchemaOpt
+		// filteredSchemas is a map of schemas to filter out. We can deprecate this field once we can start allowing
+		// users to not specify the "public" schema. Users must currently specify the "public" schema because we
+		// do not support diffing non-public schemas
+		filteredSchemas map[string]bool
+		// allowCustomSchemaOpts is a temporary flag to allow acceptance tests to use custom schema opts.
+		allowCustomSchemaOpts bool
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -71,7 +83,25 @@ func WithLogger(logger log.Logger) PlanOpt {
 	}
 }
 
-// GeneratePlan generates a migration plan to migrate the database to the target schema.
+func WithSchemas(schemas ...string) PlanOpt {
+	return func(opts *planOptions) {
+		for _, schema := range schemas {
+			opts.filteredSchemas[schema] = true
+		}
+		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithSchemas(schemas...))
+	}
+}
+
+// WithBetaDoNotCallWithAllowCustomSchemaOpts is a temporary flag to allow acceptance tests to use custom schema opts.
+// Do not call this unless you know what you are doing.
+func WithBetaDoNotCallWithAllowCustomSchemaOpts() PlanOpt {
+	return func(opts *planOptions) {
+		opts.allowCustomSchemaOpts = true
+	}
+}
+
+// GeneratePlan generates a migration plan to migrate the database to the target schema. This function only
+// diffs the public schemas.
 //
 // Parameters:
 // queryable: 	The target database to generate the diff for. It is recommended to pass in *sql.DB of the db you
@@ -80,10 +110,13 @@ func WithLogger(logger log.Logger) PlanOpt {
 // migration plan. It is recommended to use tempdb.NewOnInstanceFactory, or you can provide your own.
 // newDDL:  		DDL encoding the new schema
 // opts:  			Additional options to configure the plan generation
-func GeneratePlan(ctx context.Context, fromDB sqldb.Queryable, targetSchema SchemaSource, opts ...PlanOpt) (Plan, error) {
-	return Generate(ctx, fromDB, targetSchema, opts...)
+func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempdbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
+	return Generate(ctx, queryable, DDLSchemaSource(newDDL), append(opts, WithTempDbFactory(tempdbFactory), WithSchemas("public"))...)
 }
 
+// Generate will become the new GeneratePlan function. It is currently _exported_ because we will want
+// to call this function from acceptance tests (separate package). It is not yet ready for public consumption.
+// Please use GeneratePlan instead.
 func Generate(
 	ctx context.Context,
 	fromDB sqldb.Queryable,
@@ -94,17 +127,30 @@ func Generate(
 		validatePlan:            true,
 		ignoreChangesToColOrder: true,
 		logger:                  log.SimpleLogger(),
-		getSchemaOpts:           []schema.GetSchemaOpt{schema.WithSchemas("public")},
+		filteredSchemas:         make(map[string]bool),
 	}
 	for _, opt := range opts {
 		opt(planOptions)
+	}
+
+	// A temporary shim to provide backwards compatibility with the old GeneratePlan function and allow folks
+	if !planOptions.allowCustomSchemaOpts {
+		if diff := cmp.Diff(map[string]bool{
+			"public": true,
+		}, planOptions.filteredSchemas); diff != "" {
+			return Plan{}, fmt.Errorf("only diffing the public schema is currently supported. You must specify WithSchemas(\"public\") if using Generate. diff=\n%s", diff)
+		}
 	}
 
 	currentSchema, err := schema.GetSchema(ctx, fromDB, planOptions.getSchemaOpts...)
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting current schema: %w", err)
 	}
-	newSchema, err := deriveSchemaFromDDLOnTempDb(ctx, planOptions.logger, tempDbFactory, newDDL)
+	newSchema, err := targetSchema.GetSchema(ctx, schemaSourcePlanDeps{
+		tempDBFactory: planOptions.tempDbFactory,
+		logger:        planOptions.logger,
+		getSchemaOpts: planOptions.getSchemaOpts,
+	})
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting new schema: %w", err)
 	}
@@ -125,7 +171,10 @@ func Generate(
 	}
 
 	if planOptions.validatePlan {
-		if err := assertValidPlan(ctx, tempDbFactory, currentSchema, newSchema, plan, planOptions); err != nil {
+		if planOptions.tempDbFactory == nil {
+			return Plan{}, fmt.Errorf("cannot validate plan without a tempDbFactory: %w", errTempDbFactoryRequired)
+		}
+		if err := assertValidPlan(ctx, planOptions.tempDbFactory, currentSchema, newSchema, plan, planOptions); err != nil {
 			return Plan{}, fmt.Errorf("validating migration plan: %w \n%# v", err, pretty.Formatter(plan))
 		}
 	}
