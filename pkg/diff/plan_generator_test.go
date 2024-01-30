@@ -72,7 +72,7 @@ func (suite *simpleMigratorTestSuite) TearDownTest() {
 	suite.db.DropDB()
 }
 
-func (suite *simpleMigratorTestSuite) TestPlanAndApplyMigration() {
+func (suite *simpleMigratorTestSuite) TestGeneratePlan_GenerateAndApply() {
 	initialDDL := `
 	CREATE TABLE foobar(
 	    id CHAR(16) PRIMARY KEY
@@ -107,7 +107,7 @@ func (suite *simpleMigratorTestSuite) TestPlanAndApplyMigration() {
 	suite.NoError(err)
 }
 
-func (suite *simpleMigratorTestSuite) TestCannotPackNewTablesWithoutIgnoringChangesToColumnOrder() {
+func (suite *simpleMigratorTestSuite) TestGeneratePlan_CannotPackNewTablesWithoutIgnoringChangesToColumnOrder() {
 	tempDbFactory := suite.mustBuildTempDbFactory(context.Background())
 	defer tempDbFactory.Close()
 
@@ -120,6 +120,61 @@ func (suite *simpleMigratorTestSuite) TestCannotPackNewTablesWithoutIgnoringChan
 		diff.WithRespectColumnOrder(),
 	)
 	suite.ErrorContains(err, "cannot data pack new tables without also ignoring changes to column order")
+}
+
+func (suite *simpleMigratorTestSuite) TestGeneratePlan_CannotUseAdditionalSchemas() {
+	tempDbFactory := suite.mustBuildTempDbFactory(context.Background())
+	defer tempDbFactory.Close()
+
+	conn, poolCloser := suite.mustGetTestDBConn()
+	defer poolCloser.Close()
+	defer conn.Close()
+
+	_, err := diff.GeneratePlan(context.Background(), conn, tempDbFactory, []string{``},
+		diff.WithDataPackNewTables(),
+		diff.WithRespectColumnOrder(),
+		diff.WithSchemas("public", "other_schema"),
+	)
+	suite.ErrorContains(err, "only diffing")
+}
+
+func (suite *simpleMigratorTestSuite) TestGenerate_CannotUseAdditionalSchemas() {
+	pool := suite.mustGetTestDBPool()
+	defer pool.Close()
+	_, err := diff.Generate(context.Background(), pool, diff.DDLSchemaSource([]string{``}),
+		diff.WithSchemas("public", "other_schema"),
+		diff.WithDoNotValidatePlan(),
+	)
+	suite.ErrorContains(err, "only diffing")
+}
+
+func (suite *simpleMigratorTestSuite) TestGenerate_CannotSpecifyNoSchemas() {
+	pool := suite.mustGetTestDBPool()
+	defer pool.Close()
+	_, err := diff.Generate(context.Background(), pool, diff.DDLSchemaSource([]string{``}),
+		diff.WithDoNotValidatePlan(),
+	)
+	suite.ErrorContains(err, "only diffing")
+}
+
+func (suite *simpleMigratorTestSuite) TestGenerate_CannotBuildMigrationFromDDLWithoutTempDbFactory() {
+	pool := suite.mustGetTestDBPool()
+	defer pool.Close()
+	_, err := diff.Generate(context.Background(), pool, diff.DDLSchemaSource([]string{``}),
+		diff.WithSchemas("public"),
+		diff.WithDoNotValidatePlan(),
+	)
+	suite.ErrorContains(err, "tempDbFactory is required")
+}
+
+func (suite *simpleMigratorTestSuite) TestGenerate_CannotValidateWithoutTempDbFactory() {
+	pool := suite.mustGetTestDBPool()
+	defer pool.Close()
+	_, err := diff.Generate(context.Background(), pool, diff.DDLSchemaSource([]string{``}),
+		diff.WithSchemas("public"),
+		diff.WithDoNotValidatePlan(),
+	)
+	suite.ErrorContains(err, "tempDbFactory is required")
 }
 
 func TestSimpleMigratorTestSuite(t *testing.T) {
