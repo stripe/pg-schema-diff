@@ -69,7 +69,7 @@ func WithRespectColumnOrder() PlanOpt {
 }
 
 // WithDoNotValidatePlan disables plan validation, where the migration plan is tested against a temporary database
-// instance
+// instance.
 func WithDoNotValidatePlan() PlanOpt {
 	return func(opts *planOptions) {
 		opts.validatePlan = false
@@ -100,8 +100,10 @@ func WithBetaDoNotCallWithAllowCustomSchemaOpts() PlanOpt {
 	}
 }
 
-// GeneratePlan generates a migration plan to migrate the database to the target schema. This function only
+// deprecated: GeneratePlan generates a migration plan to migrate the database to the target schema. This function only
 // diffs the public schemas.
+//
+// Use Generate instead with the DDLSchemaSource(newDDL) and WithSchemas("public") and WithTempDbFactory options.
 //
 // Parameters:
 // queryable: 	The target database to generate the diff for. It is recommended to pass in *sql.DB of the db you
@@ -114,9 +116,14 @@ func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempdbFactory 
 	return Generate(ctx, queryable, DDLSchemaSource(newDDL), append(opts, WithTempDbFactory(tempdbFactory), WithSchemas("public"))...)
 }
 
-// Generate will become the new GeneratePlan function. It is currently _exported_ because we will want
-// to call this function from acceptance tests (separate package). It is not yet ready for public consumption.
-// Please use GeneratePlan instead.
+// Generate generates a migration plan to migrate the database to the target schema
+//
+// Parameters:
+// fromDB:			The target database to generate the diff for. It is recommended to pass in *sql.DB of the db you
+// wish to migrate. If using a connection pool, it is RECOMMENDED to set a maximum number of connections.
+// targetSchema:	The (source of the) schema you want to migrate the database to. Use DDLSchemaSource if the new
+// schema is encoded in DDL.
+// opts: 			Additional options to configure the plan generation
 func Generate(
 	ctx context.Context,
 	fromDB sqldb.Queryable,
@@ -133,7 +140,8 @@ func Generate(
 		opt(planOptions)
 	}
 
-	// A temporary shim to provide backwards compatibility with the old GeneratePlan function and allow folks
+	// A temporary shim to force users to provide a public schema filter until we can entirely support diffing non-public
+	// schemas while allow acceptance tests to use custom schema opts.
 	if !planOptions.allowCustomSchemaOpts {
 		if diff := cmp.Diff(map[string]bool{
 			"public": true,

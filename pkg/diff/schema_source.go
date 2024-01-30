@@ -23,6 +23,8 @@ type ddlSchemaSource struct {
 	ddl []string
 }
 
+// DDLSchemaSource returns a SchemaSource that returns a schema based on the provided DDL. You must provide a tempDBFactory
+// via the WithTempDbFactory option.
 func DDLSchemaSource(ddl []string) SchemaSource {
 	return &ddlSchemaSource{ddl: ddl}
 }
