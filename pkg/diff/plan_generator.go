@@ -23,6 +23,7 @@ const (
 
 type (
 	planOptions struct {
+		tempDbFactory           tempdb.Factory
 		dataPackNewTables       bool
 		ignoreChangesToColOrder bool
 		logger                  log.Logger
@@ -32,6 +33,12 @@ type (
 
 	PlanOpt func(opts *planOptions)
 )
+
+func WithTempDbFactory(factory tempdb.Factory) PlanOpt {
+	return func(opts *planOptions) {
+		opts.tempDbFactory = factory
+	}
+}
 
 // WithDataPackNewTables configures the plan generation such that it packs the columns in the new tables to minimize
 // padding. It will help minimize the storage used by the tables
@@ -73,7 +80,16 @@ func WithLogger(logger log.Logger) PlanOpt {
 // migration plan. It is recommended to use tempdb.NewOnInstanceFactory, or you can provide your own.
 // newDDL:  		DDL encoding the new schema
 // opts:  			Additional options to configure the plan generation
-func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempDbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
+func GeneratePlan(ctx context.Context, fromDB sqldb.Queryable, targetSchema SchemaSource, opts ...PlanOpt) (Plan, error) {
+	return Generate(ctx, fromDB, targetSchema, opts...)
+}
+
+func Generate(
+	ctx context.Context,
+	fromDB sqldb.Queryable,
+	targetSchema SchemaSource,
+	opts ...PlanOpt,
+) (Plan, error) {
 	planOptions := &planOptions{
 		validatePlan:            true,
 		ignoreChangesToColOrder: true,
@@ -84,7 +100,7 @@ func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempDbFactory 
 		opt(planOptions)
 	}
 
-	currentSchema, err := schema.GetSchema(ctx, queryable, planOptions.getSchemaOpts...)
+	currentSchema, err := schema.GetSchema(ctx, fromDB, planOptions.getSchemaOpts...)
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting current schema: %w", err)
 	}
@@ -115,26 +131,6 @@ func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempDbFactory 
 	}
 
 	return plan, nil
-}
-
-func deriveSchemaFromDDLOnTempDb(ctx context.Context, logger log.Logger, tempDbFactory tempdb.Factory, ddl []string) (schema.Schema, error) {
-	tempDb, dropTempDb, err := tempDbFactory.Create(ctx)
-	if err != nil {
-		return schema.Schema{}, fmt.Errorf("creating temp database: %w", err)
-	}
-	defer func(drop tempdb.Dropper) {
-		if err := drop(ctx); err != nil {
-			logger.Errorf("an error occurred while dropping the temp database: %s", err)
-		}
-	}(dropTempDb)
-
-	for _, stmt := range ddl {
-		if _, err := tempDb.ExecContext(ctx, stmt); err != nil {
-			return schema.Schema{}, fmt.Errorf("running DDL: %w", err)
-		}
-	}
-
-	return schema.GetSchema(ctx, tempDb, schema.WithSchemas("public"))
 }
 
 func generateMigrationStatements(oldSchema, newSchema schema.Schema, planOptions *planOptions) ([]Statement, error) {
