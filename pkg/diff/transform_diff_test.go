@@ -34,7 +34,6 @@ func TestTransformDiffDataPackNewTables(t *testing.T) {
 				tableDiffs: listDiff[schema.Table, tableDiff]{
 					adds: []schema.Table{
 						{
-							Name:             "foobar",
 							Columns:          nil,
 							CheckConstraints: nil,
 						},
@@ -49,7 +48,6 @@ func TestTransformDiffDataPackNewTables(t *testing.T) {
 				tableDiffs: listDiff[schema.Table, tableDiff]{
 					adds: []schema.Table{
 						{
-							Name:             "foobar",
 							Columns:          nil,
 							CheckConstraints: nil,
 						},
@@ -74,7 +72,6 @@ func TestTransformDiffDataPackNewTables(t *testing.T) {
 					},
 					adds: []schema.Table{
 						{
-							Name: "foobar",
 							Columns: []schema.Column{
 								{Name: "coffee", Type: "some type", Size: 3},
 								{Name: "mocha", Type: "some type", Size: 2},
@@ -83,7 +80,6 @@ func TestTransformDiffDataPackNewTables(t *testing.T) {
 							CheckConstraints: nil,
 						},
 						{
-							Name: "baz",
 							Columns: []schema.Column{
 								{Name: "dog", Type: "some type", Size: 1},
 								{Name: "cat", Type: "some type", Size: 2},
@@ -94,7 +90,6 @@ func TestTransformDiffDataPackNewTables(t *testing.T) {
 					},
 					deletes: []schema.Table{
 						{
-							Name: "fizz",
 							Columns: []schema.Column{
 								{Name: "croissant", Type: "some type", Size: 3},
 								{Name: "bagel", Type: "some type", Size: 2},
@@ -120,7 +115,6 @@ func TestTransformDiffDataPackNewTables(t *testing.T) {
 					},
 					adds: []schema.Table{
 						{
-							Name: "foobar",
 							Columns: []schema.Column{
 								{Name: "latte", Type: "some type", Size: 10},
 								{Name: "coffee", Type: "some type", Size: 3},
@@ -129,7 +123,6 @@ func TestTransformDiffDataPackNewTables(t *testing.T) {
 							CheckConstraints: nil,
 						},
 						{
-							Name: "baz",
 							Columns: []schema.Column{
 								{Name: "rabbit", Type: "some type", Size: 3},
 								{Name: "cat", Type: "some type", Size: 2},
@@ -140,7 +133,6 @@ func TestTransformDiffDataPackNewTables(t *testing.T) {
 					},
 					deletes: []schema.Table{
 						{
-							Name: "fizz",
 							Columns: []schema.Column{
 								{Name: "croissant", Type: "some type", Size: 3},
 								{Name: "bagel", Type: "some type", Size: 2},
@@ -218,7 +210,6 @@ func TestTransformDiffRemoveChangesToColumnOrdering(t *testing.T) {
 					},
 					adds: []schema.Table{
 						{
-							Name: "foobar",
 							Columns: []schema.Column{
 								{Name: "cold brew", Type: "some type", Size: 2},
 								{Name: "coffee", Type: "some type", Size: 3},
@@ -230,7 +221,6 @@ func TestTransformDiffRemoveChangesToColumnOrdering(t *testing.T) {
 					},
 					deletes: []schema.Table{
 						{
-							Name: "fizz",
 							Columns: []schema.Column{
 								{Name: "croissant", Type: "some type", Size: 3},
 								{Name: "bagel", Type: "some type", Size: 2},
@@ -261,7 +251,6 @@ func TestTransformDiffRemoveChangesToColumnOrdering(t *testing.T) {
 					},
 					adds: []schema.Table{
 						{
-							Name: "foobar",
 							Columns: []schema.Column{
 								{Name: "cold brew", Type: "some type", Size: 2},
 								{Name: "coffee", Type: "some type", Size: 3},
@@ -273,7 +262,6 @@ func TestTransformDiffRemoveChangesToColumnOrdering(t *testing.T) {
 					},
 					deletes: []schema.Table{
 						{
-							Name: "fizz",
 							Columns: []schema.Column{
 								{Name: "croissant", Type: "some type", Size: 3},
 								{Name: "bagel", Type: "some type", Size: 2},
@@ -325,12 +313,10 @@ func buildTableDiffWithColDiffs(name string, columnDiffs []columnDiff) tableDiff
 	return tableDiff{
 		oldAndNew: oldAndNew[schema.Table]{
 			old: schema.Table{
-				Name:             name,
 				Columns:          oldColumns,
 				CheckConstraints: nil,
 			},
 			new: schema.Table{
-				Name:             name,
 				Columns:          newColumns,
 				CheckConstraints: nil,
 			},
