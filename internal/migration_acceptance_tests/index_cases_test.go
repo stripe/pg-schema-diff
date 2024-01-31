@@ -374,7 +374,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeIndexDropped,
 		},
 		ddl: []string{
-			"DROP INDEX CONCURRENTLY \"some_idx\"",
+			"DROP INDEX CONCURRENTLY \"public\".\"some_idx\"",
 			"ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"foo\"",
 		},
 	},
@@ -701,11 +701,11 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE INDEX new_idx ON foobar(bar);
 		`},
 		ddl: []string{
-			"ALTER INDEX \"some_idx_with_a_very_long_name\" RENAME TO \"pgschemadiff_tmpidx_some_idx_with_a_very_EBESExQVRheYGRobHB0eHw\"",
+			"ALTER INDEX \"public\".\"some_idx_with_a_very_long_name\" RENAME TO \"pgschemadiff_tmpidx_some_idx_with_a_very_EBESExQVRheYGRobHB0eHw\"",
 			"CREATE INDEX CONCURRENTLY new_idx ON public.foobar USING btree (bar)",
 			"CREATE INDEX CONCURRENTLY some_idx_with_a_very_long_name ON public.foobar USING btree (foo, bar)",
-			"DROP INDEX CONCURRENTLY \"old_idx\"",
-			"DROP INDEX CONCURRENTLY \"pgschemadiff_tmpidx_some_idx_with_a_very_EBESExQVRheYGRobHB0eHw\"",
+			"DROP INDEX CONCURRENTLY \"public\".\"old_idx\"",
+			"DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_some_idx_with_a_very_EBESExQVRheYGRobHB0eHw\"",
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeIndexBuild,

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/stripe/pg-schema-diff/internal/graph"
+	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
 type sqlVertex struct {
@@ -16,11 +17,11 @@ func (s sqlVertex) GetId() string {
 	return fmt.Sprintf("%s_%s", s.DiffType, s.ObjId)
 }
 
-func buildTableVertexId(name string) string {
+func buildTableVertexId(name schema.SchemaQualifiedName) string {
 	return fmt.Sprintf("table_%s", name)
 }
 
-func buildIndexVertexId(name string) string {
+func buildIndexVertexId(name schema.SchemaQualifiedName) string {
 	return fmt.Sprintf("index_%s", name)
 }
 

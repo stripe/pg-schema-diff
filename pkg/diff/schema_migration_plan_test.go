@@ -43,7 +43,6 @@ var (
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name:                "foobar",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -56,7 +55,6 @@ var (
 				},
 				Indexes: []schema.Index{
 					{
-						TableName:   "foobar",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Name:        "some_idx", Columns: []string{"foo", "bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foobar USING btree (foo, bar)",
@@ -67,7 +65,6 @@ var (
 			newSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name:                "foobar",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -81,7 +78,6 @@ var (
 				Indexes: []schema.Index{
 
 					{
-						TableName:   "foobar",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Name:        "some_idx", Columns: []string{"foo", "bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foobar USING btree (foo, bar)",
@@ -91,7 +87,7 @@ var (
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:         "ALTER INDEX \"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
+					DDL:         "ALTER INDEX \"public\".\"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
 					Timeout:     statementTimeoutDefault,
 					LockTimeout: lockTimeoutDefault,
 				},
@@ -102,7 +98,7 @@ var (
 					Hazards:     []MigrationHazard{buildIndexBuildHazard()},
 				},
 				{
-					DDL:         "DROP INDEX CONCURRENTLY \"pgschemadiff_tmpidx_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
+					DDL:         "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
 					Timeout:     statementTimeoutConcurrentIndexDrop,
 					LockTimeout: lockTimeoutDefault,
 					Hazards:     []MigrationHazard{buildIndexDroppedQueryPerfHazard()},
@@ -114,7 +110,6 @@ var (
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name:                "foobar",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -126,9 +121,7 @@ var (
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
-						ParentTableName:     "foobar",
 						ParentTable:         &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
-						Name:                "foobar_1",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -143,7 +136,6 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						TableName:   "foobar",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Name:        "some_idx", Columns: []string{"foo, bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
@@ -151,7 +143,6 @@ var (
 					},
 					// foobar_1 indexes
 					{
-						TableName:   "foobar_1",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"},
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
@@ -162,7 +153,6 @@ var (
 			newSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name:                "foobar",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -174,9 +164,7 @@ var (
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
-						ParentTableName:     "foobar",
 						ParentTable:         &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
-						Name:                "foobar_1",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -191,23 +179,22 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						TableName:   "foobar",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Name:        "some_idx", Columns: []string{"foo, bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
 					},
 					// foobar_1 indexes
 					{
-						TableName:   "foobar_1",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
-						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
+						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"},
+						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_idx\""},
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					},
 				},
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:         "ALTER INDEX \"foobar_1_some_idx\" RENAME TO \"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVRheYGRobHB0eHw\"",
+					DDL:         "ALTER INDEX \"public\".\"foobar_1_some_idx\" RENAME TO \"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVRheYGRobHB0eHw\"",
 					Timeout:     statementTimeoutDefault,
 					LockTimeout: lockTimeoutDefault,
 				},
@@ -220,12 +207,12 @@ var (
 					},
 				},
 				{
-					DDL:         "ALTER INDEX \"some_idx\" ATTACH PARTITION \"foobar_1_some_idx\"",
+					DDL:         "ALTER INDEX \"public\".\"some_idx\" ATTACH PARTITION \"public\".\"foobar_1_some_idx\"",
 					Timeout:     statementTimeoutDefault,
 					LockTimeout: lockTimeoutDefault,
 				},
 				{
-					DDL:         "DROP INDEX CONCURRENTLY \"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVRheYGRobHB0eHw\"",
+					DDL:         "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVRheYGRobHB0eHw\"",
 					Timeout:     statementTimeoutConcurrentIndexDrop,
 					LockTimeout: lockTimeoutDefault,
 					Hazards: []MigrationHazard{
@@ -239,7 +226,6 @@ var (
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name:                "foobar",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -253,7 +239,6 @@ var (
 			newSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name:                "foobar",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -272,7 +257,6 @@ var (
 			oldSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name:                "foobar",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -284,9 +268,7 @@ var (
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
-						ParentTableName:     "foobar",
 						ParentTable:         &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
-						Name:                "foobar_1",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -301,17 +283,17 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						TableName:   "foobar",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						// This index points to its child, which is wrong, but induces a loop
-						Name: "some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "foobar_1_some_idx",
+						Name: "some_idx", Columns: []string{"foo", "bar"},
+						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1_some_idx\""},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
 					},
 					// foobar_1 indexes
 					{
-						TableName:   "foobar_1",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
-						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
+						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"},
+						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_idx\""},
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					},
 				},
@@ -319,7 +301,6 @@ var (
 			newSchema: schema.Schema{
 				Tables: []schema.Table{
 					{
-						Name:                "foobar",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -331,9 +312,7 @@ var (
 						PartitionKeyDef:  "LIST(foo)",
 					},
 					{
-						ParentTableName:     "foobar",
 						ParentTable:         &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
-						Name:                "foobar_1",
 						SchemaQualifiedName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []schema.Column{
 							{Name: "id", Type: "integer"},
@@ -348,17 +327,17 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						TableName:   "foobar",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						// This index points to its child, which is wrong, but induces a loop
-						Name: "some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "foobar_1_some_idx",
+						Name: "some_idx", Columns: []string{"foo", "bar"},
+						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1_some_idx\""},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
 					},
 					// foobar_1 indexes
 					{
-						TableName:   "foobar_1",
 						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
-						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"}, ParentIdxName: "some_idx",
+						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"},
+						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_idx\""},
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					},
 				},

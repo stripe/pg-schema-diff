@@ -303,7 +303,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 		ddl: []string{
 			"ALTER TABLE \"public\".\"Foobar\" ALTER COLUMN \"some_time_col\" SET DATA TYPE timestamp without time zone using to_timestamp(\"some_time_col\" / 1000)",
-			"ANALYZE \"Foobar\" (\"some_time_col\")",
+			"ANALYZE \"public\".\"Foobar\" (\"some_time_col\")",
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
@@ -399,7 +399,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 		ddl: []string{
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE character varying(255) COLLATE \"pg_catalog\".\"POSIX\" using \"foobar\"::character varying(255)",
-			"ANALYZE \"foobar\" (\"foobar\")",
+			"ANALYZE \"public\".\"foobar\" (\"foobar\")",
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
@@ -713,7 +713,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE integer using \"foobar\"::integer",
-			"ANALYZE \"foobar\" (\"foobar\")",
+			"ANALYZE \"public\".\"foobar\" (\"foobar\")",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar_foobar_check\" CHECK((foobar > 0)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar_foobar_check\"",
 			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
