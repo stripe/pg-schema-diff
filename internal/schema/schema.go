@@ -136,8 +136,6 @@ type Extension struct {
 
 type Table struct {
 	SchemaQualifiedName
-	// deprecated: Name is the name of the table. Prefer SchemaQualifiedName.
-	Name             string
 	Columns          []Column
 	CheckConstraints []CheckConstraint
 	ReplicaIdentity  ReplicaIdentity
@@ -147,23 +145,19 @@ type Table struct {
 	// If empty, then the table is not partitioned
 	PartitionKeyDef string
 
-	// deprecated: ParentTableName is the name of the parent table if the table is a partition of a table
-	// Prefer ParentTable.
-	ParentTableName string
-	ParentTable     *SchemaQualifiedName
-	ForValues       string
+	ParentTable *SchemaQualifiedName
+	ForValues   string
 }
 
 func (t Table) IsPartitioned() bool {
 	return len(t.PartitionKeyDef) > 0
 }
 
+// IsPartition returns whether the table is a partition.
+// It represents a mismatch in modeling because the ForValues and ParentTable are stored separately.
+// Instead, they fields be stored under the same struct as a nilable pointer and this function should be deleted
 func (t Table) IsPartition() bool {
-	return len(t.ForValues) > 0
-}
-
-func (t Table) GetName() string {
-	return t.Name
+	return t.ParentTable != nil
 }
 
 type Column struct {
@@ -227,9 +221,7 @@ type (
 
 	Index struct {
 		// Name is the name of the index. We don't store the schema because the schema is just the schema of the table.
-		Name string
-		// deprecated: TableName is the name of the table that the index is on. Prefer OwningTable.
-		TableName   string
+		Name        string
 		OwningTable SchemaQualifiedName
 		Columns     []string
 		IsInvalid   bool
@@ -240,8 +232,7 @@ type (
 		// GetIndexDefStmt is the output of pg_getindexdef
 		GetIndexDefStmt GetIndexDefStatement
 
-		// ParentIdxName is the name of the parent index if the index is a partition of an index
-		ParentIdxName string
+		ParentIdx *SchemaQualifiedName
 	}
 )
 
@@ -250,11 +241,14 @@ const (
 )
 
 func (i Index) GetName() string {
-	return i.Name
+	return i.GetSchemaQualifiedName().GetFQEscapedName()
 }
 
-func (i Index) IsPartitionOfIndex() bool {
-	return len(i.ParentIdxName) > 0
+func (i Index) GetSchemaQualifiedName() SchemaQualifiedName {
+	return SchemaQualifiedName{
+		SchemaName:  i.OwningTable.SchemaName,
+		EscapedName: EscapeIdentifier(i.Name),
+	}
 }
 
 func (i Index) IsPk() bool {
@@ -276,15 +270,11 @@ func (c CheckConstraint) GetName() string {
 }
 
 type ForeignKeyConstraint struct {
-	EscapedName string
-	OwningTable SchemaQualifiedName
-	// TableUnescapedName is a hackaround until we switch over Tables to use fully-qualified, escaped names
-	OwningTableUnescapedName string
-	ForeignTable             SchemaQualifiedName
-	// ForeignTableUnescapedName is hackaround for the same as above
-	ForeignTableUnescapedName string
-	ConstraintDef             string
-	IsValid                   bool
+	EscapedName   string
+	OwningTable   SchemaQualifiedName
+	ForeignTable  SchemaQualifiedName
+	ConstraintDef string
+	IsValid       bool
 }
 
 func (f ForeignKeyConstraint) GetName() string {
@@ -292,13 +282,10 @@ func (f ForeignKeyConstraint) GetName() string {
 }
 
 type (
-	// SequenceOwner represents the owner of a sequence. Once we remove TableUnescapedName, we can replace it with
-	// ColumnIdentifier struct that can also be used in the Column struct
+	// SequenceOwner represents the owner of a sequence.
 	SequenceOwner struct {
-		TableName SchemaQualifiedName
-		// TableUnescapedName is a hackaround until we switch over Tables to use fully-qualified, escaped names
-		TableUnescapedName string
-		ColumnName         string
+		TableName  SchemaQualifiedName
+		ColumnName string
 	}
 
 	Sequence struct {
@@ -345,11 +332,7 @@ func (g GetTriggerDefStatement) ToCreateOrReplace() (string, error) {
 type Trigger struct {
 	EscapedName string
 	OwningTable SchemaQualifiedName
-	// OwningTableUnescapedName lets us be backwards compatible with the TableSQLVertexGenerator, which
-	// currently uses the unescaped name as the vertex id. This will be removed once the TableSQLVertexGenerator
-	// is migrated to use SchemaQualifiedName
-	OwningTableUnescapedName string
-	Function                 SchemaQualifiedName
+	Function    SchemaQualifiedName
 	// GetTriggerDefStmt is the statement required to completely (re)create the trigger, as returned
 	// by pg_get_triggerdef
 	GetTriggerDefStmt GetTriggerDefStatement
@@ -647,7 +630,6 @@ func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesR
 		EscapedName: EscapeIdentifier(table.TableName),
 	}
 	return Table{
-		Name:                table.TableName,
 		SchemaQualifiedName: schemaQualifiedName,
 		Columns:             columns,
 		CheckConstraints:    checkConsByTable[schemaQualifiedName.GetFQEscapedName()],
@@ -655,9 +637,8 @@ func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesR
 
 		PartitionKeyDef: table.PartitionKeyDef,
 
-		ParentTableName: table.ParentTableName,
-		ParentTable:     parentTable,
-		ForValues:       table.PartitionForValues,
+		ParentTable: parentTable,
+		ForValues:   table.PartitionForValues,
 	}, nil
 }
 
@@ -671,9 +652,7 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 
 	type checkConstraintAndTable struct {
 		checkConstraint CheckConstraint
-		// deprecated: tableName is the name of the table that the check constraint is on. Prefer table.
-		tableName string
-		table     SchemaQualifiedName
+		table           SchemaQualifiedName
 	}
 
 	goroutineRunner := s.goroutineRunnerFactory()
@@ -687,7 +666,6 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 			}
 			return checkConstraintAndTable{
 				checkConstraint: cc,
-				tableName:       rawCC.TableName,
 				table: SchemaQualifiedName{
 					SchemaName:  rawCC.TableSchemaName,
 					EscapedName: EscapeIdentifier(rawCC.TableName),
@@ -771,10 +749,7 @@ func (s *schemaFetcher) fetchIndexes(ctx context.Context) ([]Index, error) {
 	idxs = filterSliceByName(
 		idxs,
 		func(idx Index) SchemaQualifiedName {
-			return SchemaQualifiedName{
-				SchemaName:  idx.OwningTable.SchemaName,
-				EscapedName: EscapeIdentifier(idx.Name),
-			}
+			return idx.GetSchemaQualifiedName()
 		},
 		s.nameFilter,
 	)
@@ -798,8 +773,15 @@ func (s *schemaFetcher) buildIndex(ctx context.Context, rawIndex queries.GetInde
 		}
 	}
 
+	var parentIdx *SchemaQualifiedName
+	if rawIndex.ParentIndexName != "" {
+		parentIdx = &SchemaQualifiedName{
+			SchemaName:  rawIndex.ParentIndexSchemaName,
+			EscapedName: EscapeIdentifier(rawIndex.ParentIndexName),
+		}
+	}
+
 	return Index{
-		TableName: rawIndex.TableName,
 		OwningTable: SchemaQualifiedName{
 			SchemaName:  rawIndex.TableSchemaName,
 			EscapedName: EscapeIdentifier(rawIndex.TableName),
@@ -812,7 +794,7 @@ func (s *schemaFetcher) buildIndex(ctx context.Context, rawIndex queries.GetInde
 
 		Constraint: indexConstraint,
 
-		ParentIdxName: rawIndex.ParentIndexName,
+		ParentIdx: parentIdx,
 	}, nil
 }
 
@@ -830,14 +812,12 @@ func (s *schemaFetcher) fetchForeignKeyCons(ctx context.Context) ([]ForeignKeyCo
 				SchemaName:  rawFkCon.OwningTableSchemaName,
 				EscapedName: EscapeIdentifier(rawFkCon.OwningTableName),
 			},
-			OwningTableUnescapedName: rawFkCon.OwningTableName,
 			ForeignTable: SchemaQualifiedName{
 				SchemaName:  rawFkCon.ForeignTableSchemaName,
 				EscapedName: EscapeIdentifier(rawFkCon.ForeignTableName),
 			},
-			ForeignTableUnescapedName: rawFkCon.ForeignTableName,
-			ConstraintDef:             rawFkCon.ConstraintDef,
-			IsValid:                   rawFkCon.IsValid,
+			ConstraintDef: rawFkCon.ConstraintDef,
+			IsValid:       rawFkCon.IsValid,
 		})
 	}
 
@@ -870,8 +850,7 @@ func (s *schemaFetcher) fetchSequences(ctx context.Context) ([]Sequence, error) 
 					SchemaName:  rawSeq.OwnerSchemaName,
 					EscapedName: EscapeIdentifier(rawSeq.OwnerTableName),
 				},
-				TableUnescapedName: rawSeq.OwnerTableName,
-				ColumnName:         rawSeq.OwnerColumnName,
+				ColumnName: rawSeq.OwnerColumnName,
 			}
 		}
 		seqs = append(seqs, Sequence{
@@ -979,11 +958,10 @@ func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {
 	var triggers []Trigger
 	for _, rawTrigger := range rawTriggers {
 		triggers = append(triggers, Trigger{
-			EscapedName:              EscapeIdentifier(rawTrigger.TriggerName),
-			OwningTable:              buildNameFromUnescaped(rawTrigger.OwningTableName, rawTrigger.OwningTableSchemaName),
-			OwningTableUnescapedName: rawTrigger.OwningTableName,
-			Function:                 buildFuncName(rawTrigger.FuncName, rawTrigger.FuncIdentityArguments, rawTrigger.FuncSchemaName),
-			GetTriggerDefStmt:        GetTriggerDefStatement(rawTrigger.TriggerDef),
+			EscapedName:       EscapeIdentifier(rawTrigger.TriggerName),
+			OwningTable:       buildNameFromUnescaped(rawTrigger.OwningTableName, rawTrigger.OwningTableSchemaName),
+			Function:          buildFuncName(rawTrigger.FuncName, rawTrigger.FuncIdentityArguments, rawTrigger.FuncSchemaName),
+			GetTriggerDefStmt: GetTriggerDefStatement(rawTrigger.TriggerDef),
 		})
 	}
 
