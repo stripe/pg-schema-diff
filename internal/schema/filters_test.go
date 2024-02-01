@@ -71,16 +71,16 @@ func TestOrNameFilters(t *testing.T) {
 				{expectedInput: someName1, returnValue: false},
 				{expectedInput: someName1, returnValue: true},
 			},
-			expectedOut: false,
+			expectedOut: true,
 		},
 		{
-			name:  "two filters (true, true)",
+			name:  "two filters (false, false)",
 			input: someName1,
 			filters: []fakeNameFilterMock{
-				{expectedInput: someName1, returnValue: true},
-				{expectedInput: someName1, returnValue: true},
+				{expectedInput: someName1, returnValue: false},
+				{expectedInput: someName1, returnValue: false},
 			},
-			expectedOut: true,
+			expectedOut: false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -88,7 +88,7 @@ func TestOrNameFilters(t *testing.T) {
 			for _, filter := range tc.filters {
 				filters = append(filters, newFakeNameFilter(t, filter).filter)
 			}
-			assert.Equal(t, tc.expectedOut, andNameFilter(filters...)(tc.input))
+			assert.Equal(t, tc.expectedOut, orNameFilter(filters...)(tc.input))
 		})
 	}
 }
@@ -135,16 +135,16 @@ func TestAndNameFilters(t *testing.T) {
 				{expectedInput: someName1, returnValue: false},
 				{expectedInput: someName1, returnValue: true},
 			},
-			expectedOut: true,
+			expectedOut: false,
 		},
 		{
-			name:  "two filters (false, false)",
+			name:  "two filters (true, true)",
 			input: someName1,
 			filters: []fakeNameFilterMock{
-				{expectedInput: someName1, returnValue: false},
-				{expectedInput: someName1, returnValue: false},
+				{expectedInput: someName1, returnValue: true},
+				{expectedInput: someName1, returnValue: true},
 			},
-			expectedOut: false,
+			expectedOut: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -152,7 +152,7 @@ func TestAndNameFilters(t *testing.T) {
 			for _, filter := range tc.filters {
 				filters = append(filters, newFakeNameFilter(t, filter).filter)
 			}
-			assert.Equal(t, tc.expectedOut, orNameFilter(filters...)(tc.input))
+			assert.Equal(t, tc.expectedOut, andNameFilter(filters...)(tc.input))
 		})
 	}
 }
