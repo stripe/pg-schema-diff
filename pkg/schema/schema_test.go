@@ -97,7 +97,7 @@ func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 	hash, err := schema.GetPublicSchemaHash(context.Background(), conn)
 	suite.Require().NoError(err)
 
-	schema, err := internalschema.GetSchema(context.Background(), conn, internalschema.WithSchemas("public"))
+	schema, err := internalschema.GetSchema(context.Background(), conn, internalschema.WithIncludeSchemas("public"))
 	suite.Require().NoError(err)
 	expectedHash, err := schema.Hash()
 	suite.Require().NoError(err)

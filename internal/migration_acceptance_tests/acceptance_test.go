@@ -130,7 +130,6 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 			return diff.Generate(ctx, connPool, diff.DDLSchemaSource(newSchemaDDL),
 				append(planOpts,
 					diff.WithBetaDoNotCallWithAllowCustomSchemaOpts(),
-					diff.WithSchemas("public"),
 					diff.WithTempDbFactory(tempDbFactory),
 				)...)
 		}

@@ -34,21 +34,21 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 		return schema.Schema{}, errTempDbFactoryRequired
 	}
 
-	tempDb, dropTempDb, err := deps.tempDBFactory.Create(ctx)
+	tempDb, err := deps.tempDBFactory.Create(ctx)
 	if err != nil {
 		return schema.Schema{}, fmt.Errorf("creating temp database: %w", err)
 	}
-	defer func(drop tempdb.Dropper) {
-		if err := drop(ctx); err != nil {
+	defer func(closer tempdb.ContextualCloser) {
+		if err := closer.Close(ctx); err != nil {
 			deps.logger.Errorf("an error occurred while dropping the temp database: %s", err)
 		}
-	}(dropTempDb)
+	}(tempDb.ContextualCloser)
 
 	for _, stmt := range s.ddl {
-		if _, err := tempDb.ExecContext(ctx, stmt); err != nil {
+		if _, err := tempDb.ConnPool.ExecContext(ctx, stmt); err != nil {
 			return schema.Schema{}, fmt.Errorf("running DDL: %w", err)
 		}
 	}
 
-	return schema.GetSchema(ctx, tempDb, deps.getSchemaOpts...)
+	return schema.GetSchema(ctx, tempDb.ConnPool, append(deps.getSchemaOpts, tempDb.ExcludeMetadatOptions...)...)
 }
