@@ -155,7 +155,7 @@ func (t Table) IsPartitioned() bool {
 
 // IsPartition returns whether the table is a partition.
 // It represents a mismatch in modeling because the ForValues and ParentTable are stored separately.
-// Instead, they fields be stored under the same struct as a nilable pointer and this function should be deleted
+// Instead, the fields should be stored under the same struct as a nilable pointer, and this function should be deleted.
 func (t Table) IsPartition() bool {
 	return t.ParentTable != nil
 }
@@ -346,13 +346,21 @@ type (
 	GetSchemaOpt func(*getSchemaOptions)
 )
 
-// WithSchemas filters the schema to only include the given schemas. This unions with any schemas that are already included
-// via WithSchemas.
-func WithSchemas(schemas ...string) GetSchemaOpt {
+// WithIncludeSchemas filters the schema to only include the given schemas. This unions with any schemas that are already included
+// via WithIncludeSchemas. If empty, then all schemas are included.
+func WithIncludeSchemas(schemas ...string) GetSchemaOpt {
 	return func(o *getSchemaOptions) {
 		for _, schema := range schemas {
 			o.includeSchemas = append(o.includeSchemas, schema)
 		}
+	}
+}
+
+// WithExcludeSchemas filters the schema to exclude the given schemas. This unions with any schemas that are already excluded
+// via WithExcludeSchemas. If empty, then no schemas are excluded.
+func WithExcludeSchemas(schemas ...string) GetSchemaOpt {
+	return func(o *getSchemaOptions) {
+		o.excludeSchemas = append(o.excludeSchemas, schemas...)
 	}
 }
 
@@ -361,6 +369,8 @@ type getSchemaOptions struct {
 	// We could have built a more complex set of options using the nameFilter system (nested unions and intersections);
 	// however, I felt it could expose some weird behaviors that we don't want to have to worry about just yet,
 	includeSchemas []string
+	// excludeSchemas is the exclude analog of includeSchemas.
+	excludeSchemas []string
 }
 
 // GetSchema fetches the database schema. It is a non-atomic operation.
@@ -382,25 +392,68 @@ func GetSchema(ctx context.Context, db queries.DBTX, opts ...GetSchemaOpt) (Sche
 		opt(&options)
 	}
 
+	nameFilter, err := buildNameFilter(options)
+	if err != nil {
+		return Schema{}, fmt.Errorf("building name filter: %w", err)
+	}
+
 	return (&schemaFetcher{
 		q:                      queries.New(db),
 		goroutineRunnerFactory: goroutineRunnerFactory,
-		nameFilter:             buildNameFilter(options),
+		nameFilter:             nameFilter,
 	}).getSchema(ctx)
 }
 
-func buildNameFilter(options getSchemaOptions) nameFilter {
-	if len(options.includeSchemas) == 0 {
+func buildNameFilter(options getSchemaOptions) (nameFilter, error) {
+	if intersection := intersect(options.includeSchemas, options.excludeSchemas); len(intersection) > 0 {
+		return nil, fmt.Errorf("schemas %v are both included and excluded", intersection)
+	}
+
+	includeSchemasFilter := buildIncludeSchemasFilter(options.includeSchemas)
+	excludeSchemasFilter := buildExcludeSchemasFilter(options.excludeSchemas)
+	return andNameFilter(includeSchemasFilter, excludeSchemasFilter), nil
+}
+
+func intersect(a, b []string) []string {
+	inAByA := make(map[string]bool)
+	for _, s := range a {
+		inAByA[s] = true
+	}
+	intersection := make([]string, 0, len(b))
+	for _, s := range b {
+		if inAByA[s] {
+			intersection = append(intersection, s)
+		}
+	}
+	return intersection
+}
+
+func buildIncludeSchemasFilter(schemas []string) nameFilter {
+	if len(schemas) == 0 {
 		return func(name SchemaQualifiedName) bool {
 			return true
 		}
 	}
 
 	var filters []nameFilter
-	for _, schema := range options.includeSchemas {
+	for _, schema := range schemas {
 		filters = append(filters, schemaNameFilter(schema))
 	}
 	return orNameFilter(filters...)
+}
+
+func buildExcludeSchemasFilter(schemas []string) nameFilter {
+	if len(schemas) == 0 {
+		return func(name SchemaQualifiedName) bool {
+			return true
+		}
+	}
+
+	var filters []nameFilter
+	for _, schema := range schemas {
+		filters = append(filters, notSchemaNameFilter(schema))
+	}
+	return andNameFilter(filters...)
 }
 
 type (
@@ -409,7 +462,7 @@ type (
 		// goroutineRunnerFactory is a factory function that returns a GoroutineRunner. We need to be able to construct
 		// multiple GoroutineRunners to avoid deadlock created by circular dependencies of submitted go routines.
 		goroutineRunnerFactory func() concurrent.GoroutineRunner
-		// nameFilter is a filter that determienes which schema objects to include in the schema via their
+		// nameFilter is a filter that determines which schema objects to include in the schema via their
 		// schema name and object name.
 		//
 		// Currently, we don't do any sort of validation to ensure that all dependencies are included, so users might

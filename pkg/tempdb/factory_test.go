@@ -11,6 +11,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/stretchr/testify/suite"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
+	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
 
 	"github.com/stripe/pg-schema-diff/pkg/log"
 )
@@ -77,6 +78,10 @@ func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *sql.Conn) {
 		{2, "some other message"},
 		{3, "a final message"},
 	}, rows)
+
+	// Drop the table we just created
+	_, err = conn.ExecContext(context.Background(), "DROP TABLE foobar")
+	suite.Require().NoError(err)
 }
 
 func (suite *onInstanceTempDbFactorySuite) TestNew_ConnectsToWrongDatabase() {
@@ -123,13 +128,13 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 		suite.Require().NoError(factory.Close())
 	}(factory)
 
-	db, dropper, err := factory.Create(context.Background())
+	tempDb, err := factory.Create(context.Background())
 	suite.Require().NoError(err)
-	// don't defer dropping. we want to run assertions after it drops. if dropping fails,
+	// Don't defer dropping. we want to run assertions after it drops. if dropping fails,
 	// it shouldn't be a problem because names shouldn't conflict
 	afterTimeOfCreation := time.Now()
 
-	conn1, err := db.Conn(context.Background())
+	conn1, err := tempDb.ConnPool.Conn(context.Background())
 	suite.Require().NoError(err)
 
 	var dbName string
@@ -140,7 +145,7 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	// Make sure SQL can run on the connection
 	suite.mustRunSQL(conn1)
 
-	// check the metadata entry exists
+	// Check the metadata entry exists
 	var createdAt time.Time
 	metadataQuery := fmt.Sprintf(`
 		SELECT * FROM "%s"."%s"
@@ -148,9 +153,9 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	suite.Require().NoError(conn1.QueryRowContext(context.Background(), metadataQuery).Scan(&createdAt))
 	suite.True(createdAt.Before(afterTimeOfCreation))
 
-	// get another connection from the pool and make sure it's also set to the correct db while
+	// Get another connection from the pool and make sure it's also set to the correct db while
 	// the other connection is still open
-	conn2, err := db.Conn(context.Background())
+	conn2, err := tempDb.ConnPool.Conn(context.Background())
 	suite.Require().NoError(err)
 	var dbNameFromConn2 string
 	suite.Require().NoError(conn2.QueryRowContext(context.Background(), "SELECT current_database()").Scan(&dbNameFromConn2))
@@ -159,11 +164,20 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	suite.Require().NoError(conn1.Close())
 	suite.Require().NoError(conn2.Close())
 
-	// drop database
-	suite.Require().NoError(db.Close())
-	suite.Require().NoError(dropper(context.Background()))
+	// Get the schema without the exclude options. It should not be empty because of the metadata schema.
+	schema, err := internalschema.GetSchema(context.Background(), tempDb.ConnPool)
+	suite.Require().NoError(err)
+	suite.NotEmpty(schema)
 
-	// expect an error when attempting to query the database, since it should be dropped.
+	// Get the schema with the exclude options (it should be empty)
+	schema, err = internalschema.GetSchema(context.Background(), tempDb.ConnPool, tempDb.ExcludeMetadatOptions...)
+	suite.Require().NoError(err)
+	suite.Empty(schema)
+
+	// Drop database
+	suite.Require().NoError(tempDb.Close(context.Background()))
+
+	// Expect an error when attempting to query the database, since it should be dropped.
 	// when a db pool is opened, it has no connections.
 	// a query is needed in order to find if the database still exists.
 	conn, err := suite.getConnPoolForDb(dbName)
@@ -181,7 +195,7 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_ConnectsToWrongDatabase() 
 		suite.Require().NoError(factory.Close())
 	}(factory)
 
-	_, _, err = factory.Create(context.Background())
+	_, err = factory.Create(context.Background())
 	suite.ErrorContains(err, "connection pool is on")
 }
 
