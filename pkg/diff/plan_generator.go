@@ -88,7 +88,7 @@ func WithSchemas(schemas ...string) PlanOpt {
 		for _, schema := range schemas {
 			opts.filteredSchemas[schema] = true
 		}
-		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithSchemas(schemas...))
+		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithIncludeSchemas(schemas...))
 	}
 }
 
@@ -146,7 +146,7 @@ func Generate(
 		if diff := cmp.Diff(map[string]bool{
 			"public": true,
 		}, planOptions.filteredSchemas); diff != "" {
-			return Plan{}, fmt.Errorf("only diffing the public schema is currently supported. You must specify WithSchemas(\"public\") if using Generate. diff=\n%s", diff)
+			return Plan{}, fmt.Errorf("only diffing the public schema is currently supported. You must specify WithIncludeSchemas(\"public\") if using Generate. diff=\n%s", diff)
 		}
 	}
 
@@ -221,24 +221,24 @@ func assertValidPlan(ctx context.Context,
 	plan Plan,
 	planOptions *planOptions,
 ) error {
-	tempDb, dropTempDb, err := tempDbFactory.Create(ctx)
+	tempDb, err := tempDbFactory.Create(ctx)
 	if err != nil {
 		return err
 	}
-	defer func(drop tempdb.Dropper) {
-		if err := drop(ctx); err != nil {
+	defer func(closer tempdb.ContextualCloser) {
+		if err := closer.Close(ctx); err != nil {
 			planOptions.logger.Errorf("an error occurred while dropping the temp database: %s", err)
 		}
-	}(dropTempDb)
+	}(tempDb.ContextualCloser)
 	// Set a max connections if a user has not set one. This is to prevent us from exploding the number of connections
 	// on the database.
-	setMaxConnectionsIfNotSet(tempDb, tempDbMaxConnections)
+	setMaxConnectionsIfNotSet(tempDb.ConnPool, tempDbMaxConnections)
 
-	if err := executeMigrationPlanOnFreshDatabase(ctx, tempDb, currentSchema, plan); err != nil {
+	if err := executeMigrationPlanOnFreshDatabase(ctx, tempDb.ConnPool, currentSchema, plan); err != nil {
 		return err
 	}
 
-	migratedSchema, err := schema.GetSchema(ctx, tempDb, planOptions.getSchemaOpts...)
+	migratedSchema, err := schema.GetSchema(ctx, tempDb.ConnPool, append(planOptions.getSchemaOpts, tempDb.ExcludeMetadatOptions...)...)
 	if err != nil {
 		return fmt.Errorf("fetching schema from migrated database: %w", err)
 	}

@@ -16,12 +16,13 @@ import (
 
 type testCase struct {
 	name           string
-	ddl            []string
 	opts           []GetSchemaOpt
+	ddl            []string
 	expectedSchema Schema
 	// expectedHash is the expected hash of the schema. If it is not provided, the test will not validate the hash.
-	expectedHash  string
-	expectedErrIs error
+	expectedHash        string
+	expectedErrIs       error
+	expectedErrContains string
 }
 
 var (
@@ -38,7 +39,7 @@ var (
 		{
 			name: "Simple schema (validate all schema objects and schema name filters)",
 			opts: []GetSchemaOpt{
-				WithSchemas("public", "schema_1", "schema_2"),
+				WithIncludeSchemas("public", "schema_1", "schema_2"),
 			},
 			ddl: []string{`
 			CREATE SCHEMA schema_1;
@@ -796,7 +797,7 @@ var (
 		},
 		{
 			name: "Filtering - filtering out the base table",
-			opts: []GetSchemaOpt{WithSchemas("public")},
+			opts: []GetSchemaOpt{WithIncludeSchemas("public")},
 			ddl: []string{`
 				CREATE SCHEMA schema_filtered_1;
 				CREATE TABLE schema_filtered_1.foobar(	
@@ -821,7 +822,7 @@ var (
 		},
 		{
 			name: "Filtering - filtering out partition",
-			opts: []GetSchemaOpt{WithSchemas("public")},
+			opts: []GetSchemaOpt{WithIncludeSchemas("public")},
 			ddl: []string{`
 				CREATE SCHEMA schema_filtered_1;
 				CREATE TABLE foobar(	
@@ -901,6 +902,69 @@ var (
 				},
 			},
 		},
+		{
+			name: "Filters - exclude schemas",
+			opts: []GetSchemaOpt{
+				WithExcludeSchemas("schema_1"),
+			},
+			ddl: []string{`
+				CREATE TABLE foobar();
+				CREATE SCHEMA schema_1;
+				CREATE TABLE schema_1.foobar();
+				CREATE SCHEMA schema_2;
+				CREATE TABLE schema_2.foobar();
+			`},
+			expectedSchema: Schema{
+				Tables: []Table{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						ReplicaIdentity:     ReplicaIdentityDefault,
+					},
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foobar\""},
+						ReplicaIdentity:     ReplicaIdentityDefault,
+					},
+				},
+			},
+		},
+		{
+			name: "Filters - include and exclude schemas",
+			opts: []GetSchemaOpt{
+				WithIncludeSchemas("schema_1"),
+				// schema_3 is inherently excluded since it is not included
+				WithExcludeSchemas("schema_2"),
+			},
+			ddl: []string{`
+				CREATE TABLE foobar();
+				CREATE SCHEMA schema_1;	
+				CREATE TABLE schema_1.foobar();
+				CREATE SCHEMA schema_2;
+				CREATE TABLE schema_2.foobar();
+			`},
+			expectedSchema: Schema{
+				Tables: []Table{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foobar\""},
+						ReplicaIdentity:     ReplicaIdentityDefault,
+					},
+				},
+			},
+		},
+		{
+			name: "Filter - include and exclude a schema",
+			opts: []GetSchemaOpt{
+				WithIncludeSchemas("schema_1"),
+
+				WithIncludeSchemas("schema_2"),
+				WithExcludeSchemas("schema_2"),
+
+				WithExcludeSchemas("schema_3"),
+
+				WithExcludeSchemas("schema_4"),
+				WithExcludeSchemas("schema_4"),
+			},
+			expectedErrContains: "are both included and excluded",
+		},
 	}
 )
 
@@ -948,7 +1012,12 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 	if testCase.expectedErrIs != nil {
 		require.ErrorIs(t, err, testCase.expectedErrIs)
 		return
-	} else {
+	}
+	if testCase.expectedErrContains != "" {
+		require.ErrorContains(t, err, testCase.expectedErrContains)
+		return
+	}
+	if testCase.expectedErrIs == nil && testCase.expectedErrContains == "" {
 		require.NoError(t, err)
 	}
 

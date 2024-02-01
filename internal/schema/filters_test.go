@@ -71,6 +71,70 @@ func TestOrNameFilters(t *testing.T) {
 				{expectedInput: someName1, returnValue: false},
 				{expectedInput: someName1, returnValue: true},
 			},
+			expectedOut: false,
+		},
+		{
+			name:  "two filters (true, true)",
+			input: someName1,
+			filters: []fakeNameFilterMock{
+				{expectedInput: someName1, returnValue: true},
+				{expectedInput: someName1, returnValue: true},
+			},
+			expectedOut: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var filters []nameFilter
+			for _, filter := range tc.filters {
+				filters = append(filters, newFakeNameFilter(t, filter).filter)
+			}
+			assert.Equal(t, tc.expectedOut, andNameFilter(filters...)(tc.input))
+		})
+	}
+}
+
+func TestAndNameFilters(t *testing.T) {
+	someName1 := SchemaQualifiedName{
+		SchemaName:  "some_schema",
+		EscapedName: "some_name",
+	}
+	for _, tc := range []struct {
+		name        string
+		input       SchemaQualifiedName
+		filters     []fakeNameFilterMock
+		expectedOut bool
+	}{
+		{
+			name:        "empty",
+			input:       someName1,
+			expectedOut: false,
+		},
+		{
+			name:  "one filter (true)",
+			input: someName1,
+			filters: []fakeNameFilterMock{
+				{
+					expectedInput: someName1,
+					returnValue:   true,
+				},
+			},
+			expectedOut: true,
+		},
+		{
+			name:  "one filter (false)",
+			input: someName1,
+			filters: []fakeNameFilterMock{
+				{expectedInput: someName1, returnValue: false},
+			},
+			expectedOut: false,
+		},
+		{
+			name:  "two filters (false, true)",
+			input: someName1,
+			filters: []fakeNameFilterMock{
+				{expectedInput: someName1, returnValue: false},
+				{expectedInput: someName1, returnValue: true},
+			},
 			expectedOut: true,
 		},
 		{
@@ -91,5 +155,4 @@ func TestOrNameFilters(t *testing.T) {
 			assert.Equal(t, tc.expectedOut, orNameFilter(filters...)(tc.input))
 		})
 	}
-
 }

@@ -12,6 +12,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/stripe/pg-schema-diff/internal/pgidentifier"
 	"github.com/stripe/pg-schema-diff/pkg/log"
+	"github.com/stripe/pg-schema-diff/pkg/schema"
 )
 
 const (
@@ -20,20 +21,36 @@ const (
 	DefaultOnInstanceMetadataTable  = "metadata"
 )
 
-// Factory is used to create temp databases These databases do not have to be in-memory. They might be, for example,
-// be created on the target Postgres server
+type ContextualCloser interface {
+	Close(context.Context) error
+}
+
+type fnContextualCloser func(context.Context) error
+
+func (f fnContextualCloser) Close(ctx context.Context) error {
+	return f(ctx)
+}
+
 type (
-	Dropper func(ctx context.Context) error
+	// Database represents a temporary database. It should be closed when it is no longer needed.
+	Database struct {
+		// ConnPool is the connection pool to the temporary database
+		ConnPool *sql.DB
+		// ExcludeMetadataOptions are the options used to exclude any internal metadata from plan generation
+		ExcludeMetadatOptions []schema.GetSchemaOptions
+		// ContextualCloser should be called to clean up the temporary database
+		ContextualCloser
+	}
 
+	// Factory is used to create temp databases These databases do not have to be in-memory. They might be, for example,
+	// be created on the target Postgres server
 	Factory interface {
-		// Create creates a temporary database. Be sure to always call the Dropper to ensure the database and
+		// Create creates a temporary database. Be sure to always call the ContextualCloser to ensure the database and
 		// connections are cleaned up
-		Create(ctx context.Context) (db *sql.DB, dropper Dropper, err error)
-
+		Create(ctx context.Context) (*Database, error)
 		io.Closer
 	}
 )
-
 type (
 	onInstanceFactoryOptions struct {
 		dbPrefix       string
@@ -138,14 +155,14 @@ func (o *onInstanceFactory) Close() error {
 	return o.rootDb.Close()
 }
 
-func (o *onInstanceFactory) Create(ctx context.Context) (sql *sql.DB, dropper Dropper, retErr error) {
+func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, retErr error) {
 	dbUUID, err := uuid.NewUUID()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	tempDbName := o.options.dbPrefix + strings.ReplaceAll(dbUUID.String(), "-", "_")
 	if _, err = o.rootDb.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s;", tempDbName)); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer func() {
 		// Only drop the temp database if an error occurred during creation
@@ -158,7 +175,7 @@ func (o *onInstanceFactory) Create(ctx context.Context) (sql *sql.DB, dropper Dr
 
 	tempDbConn, err := o.createConnForDb(ctx, tempDbName)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer func() {
 		// Only close the connection pool if an error occurred during creation.
@@ -168,7 +185,7 @@ func (o *onInstanceFactory) Create(ctx context.Context) (sql *sql.DB, dropper Dr
 		}
 	}()
 	if err := assertConnPoolIsOnExpectedDatabase(ctx, tempDbConn, tempDbName); err != nil {
-		return nil, nil, fmt.Errorf("assertConnPoolIsOnExpectedDatabase: %w", err)
+		return nil, fmt.Errorf("assertConnPoolIsOnExpectedDatabase: %w", err)
 	}
 
 	// There's no easy way to keep track of when a database was created, so
@@ -185,12 +202,18 @@ func (o *onInstanceFactory) Create(ctx context.Context) (sql *sql.DB, dropper Dr
 		INSERT INTO %s DEFAULT VALUES;
 	`, sanitizedSchemaName, sanitizedTableName, sanitizedTableName)
 	if _, err := tempDbConn.ExecContext(ctx, createMetadataStmts); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return tempDbConn, func(ctx context.Context) error {
-		_ = tempDbConn.Close()
-		return o.dropTempDatabase(ctx, tempDbName)
+	return &Database{
+		ConnPool: tempDbConn,
+		ExcludeMetadatOptions: []schema.GetSchemaOptions{
+			schema.WithExcludeSchemas(o.options.metadataSchema),
+		},
+		ContextualCloser: fnContextualCloser(func(ctx context.Context) error {
+			_ = tempDbConn.Close()
+			return o.dropTempDatabase(ctx, tempDbName)
+		}),
 	}, nil
 
 }
