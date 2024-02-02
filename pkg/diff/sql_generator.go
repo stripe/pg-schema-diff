@@ -83,6 +83,10 @@ func (o oldAndNew[S]) GetOld() S {
 }
 
 type (
+	namedSchemaDiff struct {
+		oldAndNew[schema.NamedSchema]
+	}
+
 	columnDiff struct {
 		oldAndNew[schema.Column]
 		oldOrdering int
@@ -126,6 +130,7 @@ type (
 
 type schemaDiff struct {
 	oldAndNew[schema.Schema]
+	namedSchemaDiffs          listDiff[schema.NamedSchema, namedSchemaDiff]
 	extensionDiffs            listDiff[schema.Extension, extensionDiff]
 	tableDiffs                listDiff[schema.Table, tableDiff]
 	indexDiffs                listDiff[schema.Index, indexDiff]
@@ -170,6 +175,21 @@ func (sd schemaDiff) resolveToSQL() ([]Statement, error) {
 // on other schema objects
 
 func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
+	schemaDiffs, err := diffLists(
+		old.NamedSchemas,
+		new.NamedSchemas,
+		func(old, new schema.NamedSchema, _, _ int) (namedSchemaDiff, bool, error) {
+			return namedSchemaDiff{
+				oldAndNew[schema.NamedSchema]{
+					old: old,
+					new: new,
+				},
+			}, false, nil
+		})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing schemas: %w", err)
+	}
+
 	extensionDiffs, err := diffLists(
 		old.Extensions,
 		new.Extensions,
@@ -294,6 +314,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 			old: old,
 			new: new,
 		},
+		namedSchemaDiffs:          schemaDiffs,
 		extensionDiffs:            extensionDiffs,
 		tableDiffs:                tableDiffs,
 		indexDiffs:                indexesDiff,
@@ -476,6 +497,11 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		indexesInNewSchemaByTableName[idx.OwningTable.GetName()] = append(indexesInNewSchemaByTableName[idx.OwningTable.GetName()], idx)
 	}
 
+	namedSchemaStatements, err := diff.namedSchemaDiffs.resolveToSQLGroupedByEffect(&namedSchemaSQLGenerator{})
+	if err != nil {
+		return nil, fmt.Errorf("resolving named schema sql statements: %w", err)
+	}
+
 	tableGraphs, err := diff.tableDiffs.resolveToSQLGraph(&tableSQLVertexGenerator{
 		deletedTablesByName:     deletedTablesByName,
 		tablesInNewSchemaByName: tablesInNewSchemaByName,
@@ -582,13 +608,16 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("getting ordered statements from tableGraph: %w", err)
 	}
 
-	// We enable extensions first and disable them last since their dependencies may span across
+	// We migrate schemas and extensions first and disable them last since their dependencies may span across
 	// all other entities in the database.
 	var statements []Statement
+	statements = append(statements, namedSchemaStatements.Adds...)
+	statements = append(statements, namedSchemaStatements.Alters...)
 	statements = append(statements, extensionStatements.Adds...)
 	statements = append(statements, extensionStatements.Alters...)
 	statements = append(statements, graphStatements...)
 	statements = append(statements, extensionStatements.Deletes...)
+	statements = append(statements, namedSchemaStatements.Deletes...)
 	return statements, nil
 }
 

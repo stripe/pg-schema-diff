@@ -137,16 +137,28 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Add FK (both tables new)",
+		name: "Add FK (tables new and referenced table is in a different schema)",
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
-			    PRIMARY KEY (id)
+			    id INT PRIMARY KEY
+			);
+
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+          		id TEXT PRIMARY KEY
 			);
 
 			CREATE TABLE "foobar fk"(
-			    fk_id INT,
+			    fk_id TEXT,
+			    FOREIGN KEY (fk_id) REFERENCES schema_1.foobar(id)
+					ON DELETE SET NULL
+			        ON UPDATE SET NULL
+			        NOT DEFERRABLE
+			);
+
+			CREATE TABLE schema_1."foobar fk"(
+			    fk_id TEXT,
 			    FOREIGN KEY (fk_id) REFERENCES foobar(id)
 					ON DELETE SET NULL
 			        ON UPDATE SET NULL
