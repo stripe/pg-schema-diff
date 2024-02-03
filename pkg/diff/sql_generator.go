@@ -175,6 +175,10 @@ func (sd schemaDiff) resolveToSQL() ([]Statement, error) {
 // on other schema objects
 
 func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
+	// Normalize the schemas, so we get a consistent ordering for statements.
+	old = old.Normalize()
+	new = new.Normalize()
+
 	schemaDiffs, err := diffLists(
 		old.NamedSchemas,
 		new.NamedSchemas,
@@ -2234,6 +2238,8 @@ func (f *functionSQLVertexGenerator) Delete(function schema.Function) ([]Stateme
 }
 
 func (f *functionSQLVertexGenerator) Alter(diff functionDiff) ([]Statement, error) {
+	// We are assuming the function has been normalized, i.e., we don't have to worry DependsOnFunctions ordering
+	// causing a false positive diff detected.
 	if cmp.Equal(diff.old, diff.new) {
 		return nil, nil
 	}

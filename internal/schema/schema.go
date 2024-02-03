@@ -234,6 +234,7 @@ type (
 
 	Index struct {
 		// Name is the name of the index. We don't store the schema because the schema is just the schema of the table.
+		// Referencing the name is an anti-pattern because it is not qualified. Use should use GetSchemaQualifiedName instead.
 		Name        string
 		OwningTable SchemaQualifiedName
 		Columns     []string

@@ -135,7 +135,6 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	}
 
 	plan, err := generatePlanFn(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
-
 	if expects.planErrorIs != nil || len(expects.planErrorContains) > 0 {
 		if expects.planErrorIs != nil {
 			suite.ErrorIs(err, expects.planErrorIs)
@@ -147,6 +146,7 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	}
 	suite.Require().NoError(err)
 
+	suite.assertValidPlan(plan)
 	if expects.empty {
 		// It shouldn't be necessary, but we'll run all checks below this point just in case rather than exiting early
 		suite.Empty(plan.Statements)
@@ -181,6 +181,13 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	plan, err = generatePlanFn(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
 	suite.Require().NoError(err)
 	suite.Empty(plan.Statements, prettySprintPlan(plan))
+}
+
+func (suite *acceptanceTestSuite) assertValidPlan(plan diff.Plan) {
+	for _, stmt := range plan.Statements {
+		suite.Greater(stmt.Timeout.Nanoseconds(), int64(0), "timeout should be greater than 0. stmt=%+v", stmt)
+		suite.Greater(stmt.LockTimeout.Nanoseconds(), int64(0), "lock timeout should be greater than 0. stmt=%+v", stmt)
+	}
 }
 
 func (suite *acceptanceTestSuite) directlyRunDDLAndGetDump(ddl []string) string {
