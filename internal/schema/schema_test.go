@@ -156,7 +156,7 @@ var (
 				-- Reference a function in a filtered out schema. The trigger should still be included.
 				EXECUTE PROCEDURE public.increment_version();
 		`},
-			expectedHash: "401e4a55471a1551",
+			expectedHash: "8c6423fc35510e07",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -411,7 +411,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "b26524c6e9f781ca",
+			expectedHash: "267c688b29df7711",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -903,7 +903,7 @@ var (
 			name: "Empty Schema (aside from public schema)",
 			ddl:  nil,
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash: "e6730c58b7710b2a",
+			expectedHash: "7dba1f61f72422fd",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
