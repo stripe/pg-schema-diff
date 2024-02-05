@@ -137,15 +137,15 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Add FK (both tables new)",
+		name: "Add FK (tables new)",
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
-			    PRIMARY KEY (id)
+			    id INT PRIMARY KEY
 			);
 
-			CREATE TABLE "foobar fk"(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."foobar fk"(
 			    fk_id INT,
 			    FOREIGN KEY (fk_id) REFERENCES foobar(id)
 					ON DELETE SET NULL
@@ -255,32 +255,74 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Drop FK (partitioned table)",
+		name: "Add and drop FK (conflicting schemas)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-			    id INT,
-			    foo VARCHAR(255),
-			    PRIMARY KEY (foo, id)
-			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('2');
-			CREATE TABLE "foobar fk"(
-			    fk_foo VARCHAR(255),
-			    fk_id INT,
-			    FOREIGN KEY (fk_foo, fk_id) REFERENCES foobar(foo, id)
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+          		id TEXT PRIMARY KEY
+			);
+			
+			CREATE TABLE schema_1."foobar fk"(
+			    fk_id TEXT,
+			    FOREIGN KEY (fk_id) REFERENCES schema_1.foobar(id)
+					ON DELETE SET NULL
+			        ON UPDATE SET NULL
+			        NOT DEFERRABLE
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+          		id TEXT PRIMARY KEY
+			);
+
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2."foobar fk"(
+			    fk_id TEXT,
+			    FOREIGN KEY (fk_id) REFERENCES schema_1.foobar(id)
+					ON DELETE SET NULL
+			        ON UPDATE SET NULL
+			        NOT DEFERRABLE
+			);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "Drop FK (partitioned table)",
+		oldSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 			    foo VARCHAR(255),
 			    PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('2');
+			CREATE TABLE foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('1');
+			CREATE TABLE foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('2');
+			CREATE TABLE "foobar fk"(
+			    fk_foo VARCHAR(255),
+			    fk_id INT,
+			    FOREIGN KEY (fk_foo, fk_id) REFERENCES schema_1.foobar(foo, id)
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+			    id INT,
+			    foo VARCHAR(255),
+			    PRIMARY KEY (foo, id)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('1');
+			CREATE TABLE foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('2');
 			CREATE TABLE "foobar fk"(
 			    fk_foo VARCHAR(255),
 			    fk_id INT
@@ -576,6 +618,81 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+		},
+	},
+	{
+		name: "Switch FK owning table (analog tables in different schemas stay same)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+			    PRIMARY KEY (id)
+			);
+
+			CREATE TABLE "foobar fk"(
+			    fk_id INT
+			);
+			ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
+				FOREIGN KEY (fk_id) REFERENCES foobar(id);
+
+			CREATE TABLE "foobar fk partitioned"(
+			    foo varchar(255),
+			    fk_id INT
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF "foobar fk partitioned"  FOR VALUES IN ('1');
+			CREATE TABLE foobar_2 PARTITION OF "foobar fk partitioned"  FOR VALUES IN ('2');
+
+			CREATE SCHEMA schema_1;	
+			CREATE TABLE schema_1.foobar(
+			    id TEXT,
+			    PRIMARY KEY (id)
+			);
+			CREATE TABLE schema_1."foobar fk"(
+			    fk_id TEXT
+			);
+			ALTER TABLE schema_1."foobar fk" ADD CONSTRAINT some_fk
+				FOREIGN KEY (fk_id) REFERENCES schema_1.foobar(id);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+			    PRIMARY KEY (id)
+			);
+
+			CREATE TABLE "foobar fk"(
+			    fk_id INT
+			);
+
+			CREATE TABLE "foobar fk partitioned"(
+			    foo varchar(255),
+			    fk_id INT
+			) PARTITION BY LIST (foo);
+			CREATE TABLE foobar_1 PARTITION OF "foobar fk partitioned" FOR VALUES IN ('1');
+			CREATE TABLE foobar_2 PARTITION OF "foobar fk partitioned" FOR VALUES IN ('2');
+			ALTER TABLE "foobar fk partitioned" ADD CONSTRAINT some_fk
+				FOREIGN KEY (fk_id) REFERENCES foobar(id);
+
+			CREATE SCHEMA schema_1;	
+			-- Update schema_1.foobar_Fk to ensure there are some deps that reference it
+			CREATE TABLE schema_1.foobar(
+			    id TEXT,
+			    val TEXT,
+			    PRIMARY KEY (id, val)
+			);
+			CREATE TABLE schema_1."foobar fk"(
+			    fk_id TEXT,
+			    fk_val TEXT
+			);
+			ALTER TABLE schema_1."foobar fk" ADD CONSTRAINT some_fk
+				FOREIGN KEY (fk_id, fk_val) REFERENCES schema_1.foobar(id, val);
+`},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeIndexBuild,
+			diff.MigrationHazardTypeIndexDropped,
 		},
 	},
 	{

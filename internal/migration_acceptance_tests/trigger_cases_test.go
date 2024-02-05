@@ -90,7 +90,8 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 		name: "Create trigger with quoted name",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE "some foo" (
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."some foo" (
 				id INTEGER PRIMARY KEY,
 				author TEXT,
 				content TEXT NOT NULL DEFAULT '',
@@ -100,14 +101,16 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE "some foo" (
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."some foo" (
 				id INTEGER PRIMARY KEY,
 				author TEXT,
 				content TEXT NOT NULL DEFAULT '',
 				version INT NOT NULL DEFAULT 0
 			);
 
-			CREATE FUNCTION "increment version"() RETURNS TRIGGER AS $$
+			CREATE SCHEMA schema_2;
+			CREATE FUNCTION schema_2."increment version"() RETURNS TRIGGER AS $$
 				BEGIN
 					NEW.version = OLD.version + 1;
 					RETURN NEW;
@@ -115,10 +118,10 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 			$$ language 'plpgsql';
 
 			CREATE TRIGGER "some trigger"
-				BEFORE UPDATE ON "some foo"
+				BEFORE UPDATE ON schema_1."some foo"
 				FOR EACH ROW
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
-				EXECUTE PROCEDURE "increment version"();
+				EXECUTE PROCEDURE schema_2."increment version"();
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
@@ -191,7 +194,7 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 				content TEXT NOT NULL DEFAULT '',
 				version INT NOT NULL DEFAULT 0
 			);
-
+			
 			CREATE FUNCTION "increment version"() RETURNS TRIGGER AS $$
 				BEGIN
 					NEW.version = OLD.version + 1;
@@ -275,14 +278,16 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 		name: "Drop trigger with quoted names",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE "some foo" (
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."some foo" (
 				id INTEGER PRIMARY KEY,
 				author TEXT,
 				content TEXT NOT NULL DEFAULT '',
 				version INT NOT NULL DEFAULT 0
 			);
 
-			CREATE FUNCTION "increment version"() RETURNS TRIGGER AS $$
+			CREATE SCHEMA schema_2;
+			CREATE FUNCTION schema_2."increment version"() RETURNS TRIGGER AS $$
 				BEGIN
 					NEW.version = OLD.version + 1;
 					RETURN NEW;
@@ -290,22 +295,24 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 			$$ language 'plpgsql';
 
 			CREATE TRIGGER "some trigger"
-				BEFORE UPDATE ON "some foo"
+				BEFORE UPDATE ON schema_1."some foo"
 				FOR EACH ROW
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
-				EXECUTE PROCEDURE "increment version"();
+				EXECUTE PROCEDURE schema_2."increment version"();
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE "some foo" (
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."some foo" (
 				id INTEGER PRIMARY KEY,
 				author TEXT,
 				content TEXT NOT NULL DEFAULT '',
 				version INT NOT NULL DEFAULT 0
 			);
 
-			CREATE FUNCTION "increment version"() RETURNS TRIGGER AS $$
+			CREATE SCHEMA schema_2;
+			CREATE FUNCTION schema_2."increment version"() RETURNS TRIGGER AS $$
 				BEGIN
 					NEW.version = OLD.version + 1;
 					RETURN NEW;
@@ -418,6 +425,91 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
+	},
+	{
+		name: "Add and drop trigger - conflicting schemas",
+		oldSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."some foo" (
+				id INTEGER PRIMARY KEY,
+				author TEXT,
+				content TEXT NOT NULL DEFAULT '',
+				version INT NOT NULL DEFAULT 0
+			);
+
+			CREATE SCHEMA schema_2;
+			CREATE FUNCTION schema_2."increment version"() RETURNS TRIGGER AS $$
+				BEGIN
+					NEW.version = OLD.version + 1;
+					RETURN NEW;
+				END;
+			$$ language 'plpgsql';
+
+			CREATE TRIGGER "some trigger"
+				BEFORE UPDATE ON schema_1."some foo"
+				FOR EACH ROW
+				WHEN (OLD.* IS DISTINCT FROM NEW.*)
+				EXECUTE PROCEDURE schema_2."increment version"();
+
+			CREATE SCHEMA schema_3;
+			CREATE TABLE schema_3."some foo" (
+				id INTEGER PRIMARY KEY,
+				author TEXT,
+				content TEXT NOT NULL DEFAULT '',
+				version INT NOT NULL DEFAULT 0
+			);
+
+			CREATE SCHEMA schema_4;
+			CREATE FUNCTION schema_4."increment version"() RETURNS TRIGGER AS $$
+				BEGIN
+					NEW.version = OLD.version + 1;
+					RETURN NEW;
+				END;
+			$$ language 'plpgsql';
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."some foo" (
+				id INTEGER PRIMARY KEY,
+				author TEXT,
+				content TEXT NOT NULL DEFAULT '',
+				version INT NOT NULL DEFAULT 0
+			);
+
+			CREATE SCHEMA schema_2;
+			CREATE FUNCTION schema_2."increment version"() RETURNS TRIGGER AS $$
+				BEGIN
+					NEW.version = OLD.version + 1;
+					RETURN NEW;
+				END;
+			$$ language 'plpgsql';
+
+			CREATE SCHEMA schema_3;
+			CREATE TABLE schema_3."some foo" (
+				id INTEGER PRIMARY KEY,
+				author TEXT,
+				content TEXT NOT NULL DEFAULT '',
+				version INT NOT NULL DEFAULT 0
+			);
+
+			CREATE SCHEMA schema_4;
+			CREATE FUNCTION schema_4."increment version"() RETURNS TRIGGER AS $$
+				BEGIN
+					NEW.version = OLD.version + 1;
+					RETURN NEW;
+				END;
+			$$ language 'plpgsql';
+
+			CREATE TRIGGER "some trigger"
+				BEFORE UPDATE ON schema_3."some foo"
+				FOR EACH ROW
+				WHEN (OLD.* IS DISTINCT FROM NEW.*)
+				EXECUTE PROCEDURE schema_4."increment version"();
+			`,
+		},
 	},
 	{
 		name: "Alter trigger when clause",

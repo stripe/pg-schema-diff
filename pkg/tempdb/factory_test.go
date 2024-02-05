@@ -172,7 +172,11 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	// Get the schema with the exclude options (it should be empty)
 	schema, err = internalschema.GetSchema(context.Background(), tempDb.ConnPool, tempDb.ExcludeMetadatOptions...)
 	suite.Require().NoError(err)
-	suite.Empty(schema)
+	suite.Equal(internalschema.Schema{
+		NamedSchemas: []internalschema.NamedSchema{{
+			Name: "public",
+		}},
+	}, schema)
 
 	// Drop database
 	suite.Require().NoError(tempDb.Close(context.Background()))

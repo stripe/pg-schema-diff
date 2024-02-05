@@ -42,7 +42,8 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add a normal index",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
@@ -50,11 +51,12 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
-			CREATE INDEX some_idx ON foobar(id DESC, foo);
+			CREATE INDEX some_idx ON schema_1.foobar(id DESC, foo);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -134,14 +136,16 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add a primary key",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT PRIMARY KEY
 			);
 			`,
@@ -332,16 +336,18 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		name: "Delete a normal index",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT PRIMARY KEY,
 				foo VARCHAR(255) NOT NULL
 			);
-			CREATE INDEX some_inx ON foobar(id, foo);
+			CREATE INDEX some_inx ON schema_1.foobar(id, foo);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
@@ -467,6 +473,45 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add and delete a normal index (conflicting schemas)",
+		oldSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+			    id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL
+			);
+			CREATE INDEX some_idx ON schema_1.foobar(id, foo);
+			
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar(
+			    id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL
+			);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+			    id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL
+			);
+			
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar(
+			    id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL
+			);
+			CREATE INDEX some_idx ON schema_2.foobar(id, foo);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
 		name: "Change an index (with a really long name) columns",
 		oldSchemaDDL: []string{
 			`
@@ -486,6 +531,50 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			    bar BIGINT NOT NULL
 			);
 			CREATE UNIQUE INDEX some_idx_with_a_really_long_name_that_is_nearly_61_chars ON foobar(foo)
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
+		name: "Change indexes (conflicting schemas)",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT PRIMARY KEY,
+				foo TEXT NOT NULL,
+			    bar BIGINT NOT NULL
+			);
+			CREATE UNIQUE INDEX some_idx ON foobar(foo, bar);
+
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+			    id INT PRIMARY KEY,
+				foo BIGINT NOT NULL,
+			    bar TEXt NOT NULL
+			);
+			CREATE UNIQUE INDEX some_idx ON schema_1.foobar(foo, bar)
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo TEXT NOT NULL,
+			    bar BIGINT NOT NULL
+			);
+			CREATE UNIQUE INDEX some_idx ON foobar(foo);
+
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+			    id INT PRIMARY KEY,
+				foo BIGINT NOT NULL,
+			    bar TEXt NOT NULL
+			);
+			CREATE UNIQUE INDEX some_idx ON schema_1.foobar(foo);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{

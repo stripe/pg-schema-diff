@@ -7,12 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/kr/pretty"
 	"github.com/stripe/pg-schema-diff/internal/schema"
 
-	"github.com/stripe/pg-schema-diff/internal/queries"
 	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
@@ -33,14 +31,7 @@ type (
 		ignoreChangesToColOrder bool
 		logger                  log.Logger
 		validatePlan            bool
-
-		getSchemaOpts []schema.GetSchemaOpt
-		// filteredSchemas is a map of schemas to filter out. We can deprecate this field once we can start allowing
-		// users to not specify the "public" schema. Users must currently specify the "public" schema because we
-		// do not support diffing non-public schemas
-		filteredSchemas map[string]bool
-		// allowCustomSchemaOpts is a temporary flag to allow acceptance tests to use custom schema opts.
-		allowCustomSchemaOpts bool
+		getSchemaOpts           []schema.GetSchemaOpt
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -85,18 +76,7 @@ func WithLogger(logger log.Logger) PlanOpt {
 
 func WithSchemas(schemas ...string) PlanOpt {
 	return func(opts *planOptions) {
-		for _, schema := range schemas {
-			opts.filteredSchemas[schema] = true
-		}
 		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithIncludeSchemas(schemas...))
-	}
-}
-
-// WithBetaDoNotCallWithAllowCustomSchemaOpts is a temporary flag to allow acceptance tests to use custom schema opts.
-// Do not call this unless you know what you are doing.
-func WithBetaDoNotCallWithAllowCustomSchemaOpts() PlanOpt {
-	return func(opts *planOptions) {
-		opts.allowCustomSchemaOpts = true
 	}
 }
 
@@ -134,20 +114,9 @@ func Generate(
 		validatePlan:            true,
 		ignoreChangesToColOrder: true,
 		logger:                  log.SimpleLogger(),
-		filteredSchemas:         make(map[string]bool),
 	}
 	for _, opt := range opts {
 		opt(planOptions)
-	}
-
-	// A temporary shim to force users to provide a public schema filter until we can entirely support diffing non-public
-	// schemas while allow acceptance tests to use custom schema opts.
-	if !planOptions.allowCustomSchemaOpts {
-		if diff := cmp.Diff(map[string]bool{
-			"public": true,
-		}, planOptions.filteredSchemas); diff != "" {
-			return Plan{}, fmt.Errorf("only diffing the public schema is currently supported. You must specify WithIncludeSchemas(\"public\") if using Generate. diff=\n%s", diff)
-		}
 	}
 
 	currentSchema, err := schema.GetSchema(ctx, fromDB, planOptions.getSchemaOpts...)
@@ -234,11 +203,15 @@ func assertValidPlan(ctx context.Context,
 	// on the database.
 	setMaxConnectionsIfNotSet(tempDb.ConnPool, tempDbMaxConnections)
 
-	if err := executeMigrationPlanOnFreshDatabase(ctx, tempDb.ConnPool, currentSchema, plan); err != nil {
-		return err
+	if err := setSchemaForEmptyDatabase(ctx, tempDb, currentSchema, planOptions); err != nil {
+		return fmt.Errorf("inserting schema in temporary database: %w", err)
 	}
 
-	migratedSchema, err := schema.GetSchema(ctx, tempDb.ConnPool, append(planOptions.getSchemaOpts, tempDb.ExcludeMetadatOptions...)...)
+	if err := executeStatementsIgnoreTimeouts(ctx, tempDb.ConnPool, plan.Statements); err != nil {
+		return fmt.Errorf("running migration plan: %w", err)
+	}
+
+	migratedSchema, err := schemaFromTempDb(ctx, tempDb, planOptions)
 	if err != nil {
 		return fmt.Errorf("fetching schema from migrated database: %w", err)
 	}
@@ -252,50 +225,37 @@ func setMaxConnectionsIfNotSet(db *sql.DB, defaultMax int) {
 	}
 }
 
-func executeMigrationPlanOnFreshDatabase(ctx context.Context, emptyDb *sql.DB, currentSchema schema.Schema, plan Plan) error {
-	conn, err := emptyDb.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("opening database connection: %w", err)
-	}
-	defer conn.Close()
-
-	if err := setSchemaForEmptyDatabase(ctx, conn, currentSchema); err != nil {
-		return fmt.Errorf("inserting schema in temporary database: %w", err)
-	}
-
-	if err := executeStatementsIgnoreTimeouts(ctx, conn, plan.Statements); err != nil {
-		return fmt.Errorf("running migration plan: %w", err)
-	}
-
-	return nil
-}
-
-func setSchemaForEmptyDatabase(ctx context.Context, conn *sql.Conn, dbSchema schema.Schema) error {
+func setSchemaForEmptyDatabase(ctx context.Context, emptyDb *tempdb.Database, targetSchema schema.Schema, options *planOptions) error {
 	// We can't create invalid indexes. We'll mark them valid in the schema, which should be functionally
 	// equivalent for the sake of DDL and other statements.
 	//
 	// Make a new array, so we don't mutate the underlying array of the original schema. Ideally, we have a clone function
 	// in the future
 	var validIndexes []schema.Index
-	for _, idx := range dbSchema.Indexes {
+	for _, idx := range targetSchema.Indexes {
 		idx.IsInvalid = false
 		validIndexes = append(validIndexes, idx)
 	}
-	dbSchema.Indexes = validIndexes
+	targetSchema.Indexes = validIndexes
 
-	statements, err := generateMigrationStatements(schema.Schema{
-		Tables:    nil,
-		Indexes:   nil,
-		Functions: nil,
-		Triggers:  nil,
-	}, dbSchema, &planOptions{})
+	// An empty database doesn't necessarily have an empty schema, so we should fetch it.
+	startingSchema, err := schemaFromTempDb(ctx, emptyDb, options)
+	if err != nil {
+		return fmt.Errorf("getting schema from empty database: %w", err)
+	}
+
+	statements, err := generateMigrationStatements(startingSchema, targetSchema, &planOptions{})
 	if err != nil {
 		return fmt.Errorf("building schema diff: %w", err)
 	}
-	if err := executeStatementsIgnoreTimeouts(ctx, conn, statements); err != nil {
+	if err := executeStatementsIgnoreTimeouts(ctx, emptyDb.ConnPool, statements); err != nil {
 		return fmt.Errorf("executing statements: %w\n%# v", err, pretty.Formatter(statements))
 	}
 	return nil
+}
+
+func schemaFromTempDb(ctx context.Context, db *tempdb.Database, plan *planOptions) (schema.Schema, error) {
+	return schema.GetSchema(ctx, db.ConnPool, append(plan.getSchemaOpts, db.ExcludeMetadatOptions...)...)
 }
 
 func assertMigratedSchemaMatchesTarget(migratedSchema, targetSchema schema.Schema, planOptions *planOptions) error {
@@ -317,7 +277,13 @@ func assertMigratedSchemaMatchesTarget(migratedSchema, targetSchema schema.Schem
 
 // executeStatementsIgnoreTimeouts executes the statements using the sql connection but ignores any provided timeouts.
 // This function is currently used to validate migration plans.
-func executeStatementsIgnoreTimeouts(ctx context.Context, conn queries.DBTX, statements []Statement) error {
+func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, statements []Statement) error {
+	conn, err := connPool.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("getting connection from pool: %w", err)
+	}
+	defer conn.Close()
+
 	// Set a session-level statement_timeout to bound the execution of the migration plan.
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", (10*time.Second).Milliseconds())); err != nil {
 		return fmt.Errorf("setting statement timeout: %w", err)

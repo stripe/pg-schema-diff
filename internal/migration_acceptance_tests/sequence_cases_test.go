@@ -46,7 +46,8 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		name: "Add sequence via serial",
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    "some id" SERIAL
 			)
 			`,
@@ -56,7 +57,8 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		name: "Drop sequence",
 		oldSchemaDDL: []string{
 			`
-			CREATE SEQUENCE "foobar sequence"
+			CREATE SCHEMA schema_1;
+			CREATE SEQUENCE schema_1."foobar sequence"
 					AS BIGINT
 					INCREMENT BY 2
 					MINVALUE 5 MAXVALUE 100
@@ -195,6 +197,35 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "And and Drop sequences (conflicing schemas)",
+		oldSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE SEQUENCE schema_1."foobar sequence"
+					AS BIGINT
+					INCREMENT BY 2
+					MINVALUE 5 MAXVALUE 100
+					START WITH 10 CACHE 5 CYCLE
+					OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_2;
+			CREATE SEQUENCE schema_2."foobar sequence"
+					AS BIGINT
+					INCREMENT BY 2
+					MINVALUE 5 MAXVALUE 100
+					START WITH 10 CACHE 5 CYCLE
+					OWNED BY NONE;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeHasUntrackableDependencies,
 		},
 	},
 	{
@@ -375,7 +406,8 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		name: "Alter cycle",
 		oldSchemaDDL: []string{
 			`
-			CREATE SEQUENCE "foobar sequence"
+			CREATE SCHEMA schema_1;
+			CREATE SEQUENCE schema_1."foobar sequence"
 						AS INT
 						INCREMENT BY 2
 						MINVALUE 5 MAXVALUE 100
@@ -385,7 +417,8 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE SEQUENCE "foobar sequence"
+			CREATE SCHEMA schema_1;
+			CREATE SEQUENCE schema_1."foobar sequence"
 						AS INT
 						INCREMENT BY 2
 						MINVALUE 5 MAXVALUE 100

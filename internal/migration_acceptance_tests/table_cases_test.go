@@ -76,14 +76,15 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
 
-			CREATE TABLE foobar_fk(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar_fk(
 			    bar TIMESTAMP,
 			    foo VARCHAR(255)
 			);
-			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON schema_1.foobar_fk(foo, bar);
 			-- create a circular dependency of foreign keys (this is allowed)
-			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
-			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			ALTER TABLE schema_1.foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar_fk(foo, bar);
 			`,
 		},
 		dataPackingExpectations: expectations{
@@ -99,14 +100,15 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
 
-			CREATE TABLE foobar_fk(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar_fk(
 			    bar TIMESTAMP,
 			    foo VARCHAR(255)
 			);
-			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON schema_1.foobar_fk(foo, bar);
 			-- create a circular dependency of foreign keys (this is allowed)
-			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
-			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			ALTER TABLE schema_1.foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar_fk(foo, bar);
 			`,
 			},
 		},
@@ -174,15 +176,16 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			);
 			CREATE INDEX normal_idx ON foobar(fizz);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
-
-			CREATE TABLE foobar_fk(
+			
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar_fk(
 			    bar TIMESTAMP,
 			    foo VARCHAR(255)
 			);
-			CREATE UNIQUE INDEX foobar_fk_unique_idx ON foobar_fk(foo, bar);
+			CREATE UNIQUE INDEX foobar_fk_unique_idx ON schema_1.foobar_fk(foo, bar);
 			-- create a circular dependency of foreign keys (this is allowed)
-			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
-			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			ALTER TABLE schema_1.foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
+			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar_fk(foo, bar);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -210,21 +213,45 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter replica identity",
+		name: "Add and drop a table (conflicting schemas)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."Foobar"(
 			    id INT PRIMARY KEY
 			);
-			ALTER TABLE "Foobar" REPLICA IDENTITY FULL;
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2."Foobar"(
 			    id INT PRIMARY KEY
 			);
-			ALTER TABLE "Foobar" REPLICA IDENTITY DEFAULT ;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "Alter replica identity",
+		oldSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."Foobar"(
+			    id INT PRIMARY KEY
+			);
+			ALTER TABLE schema_1."Foobar" REPLICA IDENTITY FULL;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."Foobar"(
+			    id INT PRIMARY KEY
+			);
+			ALTER TABLE schema_1."Foobar" REPLICA IDENTITY DEFAULT;
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{

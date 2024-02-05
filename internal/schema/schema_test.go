@@ -156,8 +156,13 @@ var (
 				-- Reference a function in a filtered out schema. The trigger should still be included.
 				EXECUTE PROCEDURE public.increment_version();
 		`},
-			expectedHash: "ef8b8ce522ac3cfa",
+			expectedHash: "8c6423fc35510e07",
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+					{Name: "schema_1"},
+					{Name: "schema_2"},
+				},
 				Extensions: []Extension{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{
@@ -406,8 +411,11 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "663f14a08af894b1",
+			expectedHash: "267c688b29df7711",
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
@@ -706,6 +714,9 @@ var (
 			) FOR VALUES IN ('some author 1');
 		`},
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
@@ -757,6 +768,9 @@ var (
 			);
 		`},
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
@@ -806,6 +820,9 @@ var (
 				CREATE TABLE foobar_1 PARTITION OF schema_filtered_1.foobar FOR VALUES IN ('1');
 		   `},
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
@@ -831,6 +848,9 @@ var (
 				CREATE TABLE schema_filtered_1.foobar_1 PARTITION OF foobar FOR VALUES IN ('1');
 		   `},
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
@@ -853,6 +873,10 @@ var (
 				CREATE TABLE foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('1');
 		   `},
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+					{Name: "schema_1"},
+				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foobar\""},
@@ -876,11 +900,15 @@ var (
 			},
 		},
 		{
-			name: "Empty Schema",
+			name: "Empty Schema (aside from public schema)",
 			ddl:  nil,
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash:   "aebac19ebacc31e8",
-			expectedSchema: Schema{},
+			expectedHash: "7dba1f61f72422fd",
+			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+				},
+			},
 		},
 		{
 			name: "No Indexes or constraints",
@@ -890,6 +918,9 @@ var (
 			);
 		`},
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
@@ -915,6 +946,10 @@ var (
 				CREATE TABLE schema_2.foobar();
 			`},
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+					{Name: "schema_2"},
+				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
@@ -942,6 +977,9 @@ var (
 				CREATE TABLE schema_2.foobar();
 			`},
 			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "schema_1"},
+				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foobar\""},
@@ -951,7 +989,7 @@ var (
 			},
 		},
 		{
-			name: "Filter - include and exclude a schema",
+			name: "Filter - include and exclude the same schema",
 			opts: []GetSchemaOpt{
 				WithIncludeSchemas("schema_1"),
 

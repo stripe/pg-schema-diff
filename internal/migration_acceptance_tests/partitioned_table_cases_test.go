@@ -102,7 +102,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: nil,
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."Foobar"(
 			    id INT,
 				foo VARCHAR(255),
 				bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
@@ -111,52 +112,54 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    PRIMARY KEY (foo, id),
 			    UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
-			ALTER TABLE "Foobar" REPLICA IDENTITY FULL;
+			ALTER TABLE schema_1."Foobar" REPLICA IDENTITY FULL;
 
 			-- partitions
-			CREATE TABLE "FOOBAR_1" PARTITION OF "Foobar"(
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2."FOOBAR_1" PARTITION OF schema_1."Foobar"(
 			    foo NOT NULL,
 			    bar NOT NULL
 			) FOR VALUES IN ('foo_1');
-			ALTER TABLE "FOOBAR_1" REPLICA IDENTITY NOTHING ;
-			CREATE TABLE foobar_2 PARTITION OF "Foobar" FOR VALUES IN ('foo_2');
-			ALTER TABLE foobar_2 REPLICA IDENTITY FULL;
-			CREATE TABLE foobar_3 PARTITION OF "Foobar" FOR VALUES IN ('foo_3');
+			ALTER TABLE schema_2."FOOBAR_1" REPLICA IDENTITY NOTHING ;
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_2');
+			ALTER TABLE schema_2.foobar_2 REPLICA IDENTITY FULL;
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_3');
 			-- partitioned indexes
-			CREATE UNIQUE INDEX foobar_unique_idx ON "Foobar"(foo, fizz);
+			CREATE UNIQUE INDEX foobar_unique_idx ON schema_1."Foobar"(foo, fizz);
 			-- local indexes
-			CREATE INDEX foobar_1_local_idx ON "FOOBAR_1"(foo);
-			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON foobar_2(foo);
+			CREATE INDEX foobar_1_local_idx ON schema_2."FOOBAR_1"(foo);
+			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
 			`,
 		},
 		dataPackingExpectations: expectations{
-			outputState: []string{
-				`
-				CREATE TABLE "Foobar"(
-					id INT,
-					fizz SERIAL,
-					foo VARCHAR(255),
-					bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
-					CHECK ( fizz > 0 ),
-					PRIMARY KEY (foo, id),
-					UNIQUE (foo, bar)
-				) PARTITION BY LIST (foo);
-				ALTER TABLE "Foobar" REPLICA IDENTITY FULL;
+			outputState: []string{`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."Foobar"(
+			    id INT,
+				fizz SERIAL,
+				foo VARCHAR(255),
+				bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
+				CHECK ( fizz > 0 ),
+			    PRIMARY KEY (foo, id),
+			    UNIQUE (foo, bar)
+			) PARTITION BY LIST (foo);
+			ALTER TABLE schema_1."Foobar" REPLICA IDENTITY FULL;
 
-				-- partitions
-				CREATE TABLE "FOOBAR_1" PARTITION OF "Foobar"(
-					foo NOT NULL,
-					bar NOT NULL
-				) FOR VALUES IN ('foo_1');
-				ALTER TABLE "FOOBAR_1" REPLICA IDENTITY NOTHING ;
-				CREATE TABLE foobar_2 PARTITION OF "Foobar" FOR VALUES IN ('foo_2');
-				ALTER TABLE foobar_2 REPLICA IDENTITY FULL;
-				CREATE TABLE foobar_3 PARTITION OF "Foobar" FOR VALUES IN ('foo_3');
-				-- partitioned indexes
-				CREATE UNIQUE INDEX foobar_unique_idx ON "Foobar"(foo, fizz);
-				-- local indexes
-				CREATE INDEX foobar_1_local_idx ON "FOOBAR_1"(foo);
-				CREATE UNIQUE INDEX foobar_2_local_unique_idx ON foobar_2(foo);
+			-- partitions
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2."FOOBAR_1" PARTITION OF schema_1."Foobar"(
+			    foo NOT NULL,
+			    bar NOT NULL
+			) FOR VALUES IN ('foo_1');
+			ALTER TABLE schema_2."FOOBAR_1" REPLICA IDENTITY NOTHING ;
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_2');
+			ALTER TABLE schema_2.foobar_2 REPLICA IDENTITY FULL;
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_3');
+			-- partitioned indexes
+			CREATE UNIQUE INDEX foobar_unique_idx ON schema_1."Foobar"(foo, fizz);
+			-- local indexes
+			CREATE INDEX foobar_1_local_idx ON schema_2."FOOBAR_1"(foo);
+			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
 				`,
 			},
 		},
@@ -217,7 +220,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		name: "Drop table",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1."Foobar"(
 			    id INT,
 				foo VARCHAR(255),
 				bar TEXT,
@@ -227,18 +231,19 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 
-			CREATE TABLE "FOOBAR_1" PARTITION OF "Foobar"(
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2."FOOBAR_1" PARTITION OF schema_1."Foobar"(
 			    foo NOT NULL,
 			    bar NOT NULL
 			) FOR VALUES IN ('foo_1');
 			-- partitions
-			CREATE TABLE foobar_2 PARTITION OF "Foobar" FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF "Foobar" FOR VALUES IN ('foo_3');
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_2');
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_3');
 			-- partitioned indexes
-			CREATE UNIQUE INDEX foobar_unique_idx ON "Foobar"(foo, bar);
+			CREATE UNIQUE INDEX foobar_unique_idx ON schema_1."Foobar"(foo, bar);
 			-- local indexes
-			CREATE INDEX foobar_1_local_idx ON "FOOBAR_1"(foo);
-			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON foobar_2(foo);
+			CREATE INDEX foobar_1_local_idx ON schema_2."FOOBAR_1"(foo);
+			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
 
 			CREATE TABLE foobar_fk(
 			    foo VARCHAR(255),
@@ -253,17 +258,44 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 
 			-- foreign keys
 			-- create a circular dependency of foreign keys (this is allowed)
-			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES "Foobar"(foo, bar);
-			ALTER TABLE "Foobar" ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES schema_1."Foobar"(foo, bar);
+			ALTER TABLE schema_1."Foobar" ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			-- local local foreign keys
-			ALTER TABLE foobar_fk_1 ADD CONSTRAINT foobar_fk_1_fk FOREIGN KEY (foo) REFERENCES foobar_2(foo);
-			ALTER TABLE "FOOBAR_1" ADD CONSTRAINT foobar_1_fk FOREIGN KEY (foo) REFERENCES foobar_fk_1(foo);
+			ALTER TABLE foobar_fk_1 ADD CONSTRAINT foobar_fk_1_fk FOREIGN KEY (foo) REFERENCES schema_2.foobar_2(foo);
+			ALTER TABLE schema_2."FOOBAR_1" ADD CONSTRAINT foobar_1_fk FOREIGN KEY (foo) REFERENCES foobar_fk_1(foo);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeDeletesData,
 		},
 		newSchemaDDL: nil,
+	},
+	{
+		name: "Add and drop partitioned table (conflicting schemas)",
+		oldSchemaDDL: []string{
+			`
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			`,
+		},
+		newSchemaDDL: []string{`
+			CREATE SCHEMA schema_3;
+			CREATE TABLE schema_3.foobar(
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+
+			CREATE SCHEMA schema_4;
+			CREATE TABLE schema_4.foobar_1 PARTITION OF schema_3.foobar FOR VALUES IN ('foo_1');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
 	},
 	{
 		name: "Alter replica identity of parent and children",
@@ -303,7 +335,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter table: New primary key, new unique constraint, droped unique constraint, change column types, delete partitioned index, new partitioned index, delete local index, add local index, validate check constraint, validate FK, delete FK",
+		name: "Alter table: New primary key, new unique constraint, dropped unique constraint, change column types, delete partitioned index, new partitioned index, delete local index, add local index, validate check constraint, validate FK, delete FK",
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
@@ -523,7 +555,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		name: "Unpartitioned to partitioned and child tables already exist",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar( 
 			    id INT,
 				version INT,
 				fizz SERIAL,
@@ -532,10 +565,11 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				UNIQUE (foo, fizz)
 			);
 
-			CREATE INDEX some_idx on foobar(id);
-			CREATE UNIQUE INDEX foobar_unique_idx on foobar(foo, bar);
+			CREATE INDEX some_idx on schema_1.foobar(id);
+			CREATE UNIQUE INDEX foobar_unique_idx on schema_1.foobar(foo, bar);
 
-			CREATE TABLE foobar_1(
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1(
 			    id INT,
 				version INT,
 				fizz SERIAL,
@@ -544,7 +578,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				UNIQUE (foo, fizz)
 			);
 
-			CREATE INDEX foobar_1_id_idx on foobar(id);
+			CREATE INDEX foobar_1_id_idx on schema_1.foobar(id);
 
 
 			CREATE FUNCTION increment_version() RETURNS TRIGGER AS $$
@@ -555,13 +589,13 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			$$ language 'plpgsql';
 
 			CREATE TRIGGER some_update_trigger
-				BEFORE UPDATE ON foobar
+				BEFORE UPDATE ON schema_1.foobar
 				FOR EACH ROW
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE increment_version();
 
 			CREATE TRIGGER some_update_trigger
-				BEFORE UPDATE ON foobar_1
+				BEFORE UPDATE ON schema_2.foobar_1
 				FOR EACH ROW
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE increment_version();
@@ -579,15 +613,16 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 
 			-- foreign keys
 			-- create a circular dependency of foreign keys (this is allowed)
-			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
-			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
-			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_foo_bar_fkey FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
-			ALTER TABLE foobar ADD CONSTRAINT foobar_foo_bar_fkey FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar( foo, bar);
+			ALTER TABLE schema_1.foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_foo_bar_fkey FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar( foo, bar);
+			ALTER TABLE schema_1.foobar ADD CONSTRAINT foobar_foo_bar_fkey FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar( 
 			    id INT,
 				version INT,
 				fizz SERIAL,
@@ -596,10 +631,11 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				UNIQUE (foo, fizz)
 			) PARTITION BY LIST (foo);
 
-			CREATE INDEX some_idx on foobar(id);
-			CREATE UNIQUE INDEX foobar_unique_idx on foobar(foo, bar);
-
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE INDEX some_idx on schema_1.foobar( id);
+			CREATE UNIQUE INDEX foobar_unique_idx on schema_1.foobar( foo, bar);
+			
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
 
 
 			CREATE FUNCTION increment_version() RETURNS TRIGGER AS $$
@@ -610,7 +646,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			$$ language 'plpgsql';
 
 			CREATE TRIGGER some_update_trigger
-				BEFORE UPDATE ON foobar
+				BEFORE UPDATE ON schema_1.foobar
 				FOR EACH ROW
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				EXECUTE PROCEDURE increment_version();
@@ -625,8 +661,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 
 			-- foreign keys
 			-- create a circular dependency of foreign keys (this is allowed)
-			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
-			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar( foo, bar);
+			ALTER TABLE schema_1.foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -839,7 +875,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		name: "Adding a partition",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				version INT,
 				fizz SERIAL,
@@ -851,7 +888,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			) PARTITION BY LIST (foo);
 
 			-- partitioned indexes
-			CREATE UNIQUE INDEX some_partitioned_idx ON foobar(foo, bar);
+			CREATE UNIQUE INDEX some_partitioned_idx ON schema_1.foobar(foo, bar);
 
 			CREATE TABLE foobar_fk(
 				id INT,
@@ -863,13 +900,14 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 
 			-- foreign keys
 			-- create a circular dependency of foreign keys (this is allowed)
-			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
-			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar(foo, bar);
+			ALTER TABLE schema_1.foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				version INT,
 				fizz SERIAL,
@@ -880,10 +918,11 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				UNIQUE (foo, fizz)
 			) PARTITION BY LIST (foo);
 
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
 
 			-- partitioned indexes
-			CREATE UNIQUE INDEX some_partitioned_idx ON foobar(foo, bar);
+			CREATE UNIQUE INDEX some_partitioned_idx ON schema_1.foobar(foo, bar);
 
 			CREATE TABLE foobar_fk(
 				id INT,
@@ -896,11 +935,11 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 
 			-- foreign keys
 			-- create a circular dependency of foreign keys (this is allowed)
-			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
-			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
+			ALTER TABLE foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar(foo, bar);
+			ALTER TABLE schema_1.foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			-- local local foreign keys
-			ALTER TABLE foobar_fk_1 ADD CONSTRAINT foobar_fk_1_fk FOREIGN KEY (foo, id) REFERENCES foobar_1(foo, id);
-			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_fk FOREIGN KEY (foo, id) REFERENCES foobar_fk_1(foo, id);
+			ALTER TABLE foobar_fk_1 ADD CONSTRAINT foobar_fk_1_fk FOREIGN KEY (foo, id) REFERENCES schema_2.foobar_1(foo, id);
+			ALTER TABLE schema_2.foobar_1 ADD CONSTRAINT foobar_1_fk FOREIGN KEY (foo, id) REFERENCES foobar_fk_1(foo, id);
 			`,
 		},
 	},
@@ -1156,14 +1195,16 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		name: "Can handle scenario where partition is not attached",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar( 
 			    id INT,
 				fizz INT,
 				foo VARCHAR(255),
 				bar TEXT
 			) PARTITION BY LIST (foo);
 
-			CREATE TABLE foobar_1 (
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1(
 			    id INT,
 				fizz INT,
 				foo VARCHAR(255),
@@ -1171,32 +1212,34 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			);
 
 			-- partitioned indexes
-			CREATE INDEX some_partitioned_idx ON foobar(foo, bar);
+			CREATE INDEX some_partitioned_idx ON schema_1.foobar( foo, bar);
 			-- local indexes
-			CREATE INDEX some_local_idx ON foobar_1(foo, bar);
+			CREATE INDEX some_local_idx ON schema_2.foobar_1(foo, bar);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar( 
 			    id INT,
 				fizz INT,
 				foo VARCHAR(255),
 				bar TEXT
 			) PARTITION BY LIST (foo);
 
-			CREATE TABLE foobar_1 (
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1(
 			    id INT,
 				fizz INT,
 				foo VARCHAR(255),
 				bar TEXT
 			);
-			ALTER TABLE foobar ATTACH PARTITION foobar_1 FOR VALUES IN ('foo_1');
+			ALTER TABLE schema_1.foobar ATTACH PARTITION schema_2.foobar_1 FOR VALUES IN ('foo_1');
 
 			-- partitioned indexes
-			CREATE INDEX some_partitioned_idx ON foobar(foo, bar);
+			CREATE INDEX some_partitioned_idx ON schema_1.foobar( foo, bar);
 			-- local indexes
-			CREATE INDEX some_local_idx ON foobar_1(foo, bar);
+			CREATE INDEX some_local_idx ON schema_2.foobar_1(foo, bar);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{

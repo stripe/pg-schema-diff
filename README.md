@@ -136,7 +136,8 @@ if err != nil {
 }
 defer tempDbFactory.Close()
 // Generate the migration plan
-plan, err := diff.GeneratePlan(ctx, connPool, tempDbFactory, ddl,
+plan, err := diff.Generate(ctx, connPool, diff.DDLSchemaSource(ddl),
+	diff.WithTempDbFactory(tempDbFactory),
 	diff.WithDataPackNewTables(),
 )
 if err != nil {
@@ -174,7 +175,6 @@ Postgres v13 and below are not supported. Use at your own risk.
 Note, the library only currently supports diffing the *public* schema. Support for diffing other schemas is on the roadmap
 
 *Unsupported*:
-- (On roadmap) Diffing schemas other than "public"
 - (On roadmap) Adding and remove partitions from an existing partitioned table
 - (On roadmap) Check constraints localized to specific partitions
 - Partitioned partitions (partitioned tables are supported but not partitioned partitions)

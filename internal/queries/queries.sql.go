@@ -526,6 +526,37 @@ func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
 	return items, nil
 }
 
+const getSchemas = `-- name: GetSchemas :many
+SELECT nspname::TEXT AS schema_name
+FROM pg_catalog.pg_namespace
+WHERE
+    nspname NOT IN ('pg_catalog', 'information_schema')
+    AND nspname !~ '^pg_toast'
+`
+
+func (q *Queries) GetSchemas(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getSchemas)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var schema_name string
+		if err := rows.Scan(&schema_name); err != nil {
+			return nil, err
+		}
+		items = append(items, schema_name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSequences = `-- name: GetSequences :many
 SELECT
     seq_c.relname::TEXT AS sequence_name,
