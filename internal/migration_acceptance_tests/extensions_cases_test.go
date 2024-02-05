@@ -7,13 +7,15 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 		name: "no-op",
 		oldSchemaDDL: []string{
 			`
-			CREATE EXTENSION pg_trgm;
+			CREATE SCHEMA schema_1;
+			CREATE EXTENSION pg_trgm WITH SCHEMA schema_1;
 			CREATE EXTENSION amcheck;
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE EXTENSION pg_trgm;
+			CREATE SCHEMA schema_1;
+			CREATE EXTENSION pg_trgm WITH SCHEMA schema_1;
 			CREATE EXTENSION amcheck;
 			`,
 		},
@@ -25,11 +27,11 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name:         "create multiple extensions",
-		oldSchemaDDL: []string{},
+		name: "create multiple extensions",
 		newSchemaDDL: []string{
 			`
-			CREATE EXTENSION pg_trgm;
+			CREATE SCHEMA schema_1;
+			CREATE EXTENSION pg_trgm WITH SCHEMA schema_1;
 			CREATE EXTENSION amcheck;
 			`,
 		},
@@ -38,8 +40,9 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 		name: "drop one extension",
 		oldSchemaDDL: []string{
 			`
+			CREATE SCHEMA schema_1;
 			CREATE EXTENSION pg_trgm;
-			CREATE EXTENSION amcheck;
+			CREATE EXTENSION amcheck WITH SCHEMA schema_1;
 			`,
 		},
 		newSchemaDDL: []string{
@@ -53,14 +56,16 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 		name: "upgrade an extension implicitly and explicitly",
 		oldSchemaDDL: []string{
 			`
+			CREATE SCHEMA schema_1;
 			CREATE EXTENSION pg_trgm WITH VERSION '1.5';
-			CREATE EXTENSION amcheck WITH VERSION '1.3';
+			CREATE EXTENSION amcheck WITH SCHEMA schema_1 VERSION '1.3'; 
 			`,
 		},
 		newSchemaDDL: []string{
 			`
+			CREATE SCHEMA schema_1;
 			CREATE EXTENSION pg_trgm WITH VERSION '1.6';
-			CREATE EXTENSION AMCHECK;
+			CREATE EXTENSION AMCHECK WITH SCHEMA schema_1;
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeExtensionVersionUpgrade},

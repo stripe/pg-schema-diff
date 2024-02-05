@@ -1,3 +1,10 @@
+-- name: GetSchemas :many
+SELECT nspname::TEXT AS schema_name
+FROM pg_catalog.pg_namespace
+WHERE
+    nspname NOT IN ('pg_catalog', 'information_schema')
+    AND nspname !~ '^pg_toast';
+
 -- name: GetTables :many
 SELECT
     c.oid AS oid,

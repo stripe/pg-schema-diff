@@ -52,26 +52,30 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add a normal partitioned index",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			CREATE schema schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			CREATE schema schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
 
-			CREATE INDEX some_idx ON foobar(id DESC, foo);
+			CREATE INDEX some_idx ON schema_1.foobar(id DESC, foo);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -200,25 +204,29 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add a unique constraint",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255),
-				UNIQUE (foo, id)
+				UNIQUE(foo, id)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -229,24 +237,34 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add a partitioned index that is used by a local primary key",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE UNIQUE INDEX some_idx ON ONLY foobar(foo, id);
-			CREATE UNIQUE INDEX foobar_1_pkey ON foobar_1(foo, id);
-			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_pkey PRIMARY KEY USING INDEX foobar_1_pkey;
-			ALTER INDEX some_idx ATTACH PARTITION foobar_1_pkey;
+			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			CREATE UNIQUE INDEX some_idx ON ONLY schema_1.foobar(foo, id);
+			CREATE UNIQUE INDEX foobar_1_pkey ON schema_1.foobar_1(foo, id);
+			ALTER TABLE schema_1.foobar_1 ADD CONSTRAINT foobar_1_pkey PRIMARY KEY USING INDEX foobar_1_pkey;
+			ALTER INDEX schema_1.some_idx ATTACH PARTITION schema_1.foobar_1_pkey;
+
+			-- Create a table in a different schema to ensure that dependencies are correctly set
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_2.foobar FOR VALUES IN ('foo_1');
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -303,6 +321,25 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			) PARTITION BY LIST (foo);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			-- Create a table in a different schema to ensure that dependencies are correctly set
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+
+			-- Create a flattened version of the table in a different schema
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar(
+			    id INT,
+				foo VARCHAR(255)
+			); 
+			CREATE TABLE schema_2.foobar_1(
+			    id INT,
+				foo VARCHAR(255)
+			); 
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -330,6 +367,25 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			) PARTITION BY LIST (foo);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_unique UNIQUE (foo, id);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+
+			-- Create a table in a different schema to ensure that dependencies are correctly set
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+
+			-- Create a flattened version of the table in a different schema
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar(
+			    id INT,
+				foo VARCHAR(255)
+			); 
+			CREATE TABLE schema_2.foobar_1(
+			    id INT,
+				foo VARCHAR(255)
+			); 
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -358,6 +414,25 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE UNIQUE INDEX foobar_unique ON foobar(foo, id);
+
+			-- Create a table in a different schema to ensure that dependencies are correctly set
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+			    id INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+
+			-- Create a flattened version of the table in a different schema
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar(
+			    id INT,
+				foo VARCHAR(255)
+			); 
+			CREATE TABLE schema_2.foobar_1(
+			    id INT,
+				foo VARCHAR(255)
+			); 
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -368,25 +443,29 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		name: "Delete a normal partitioned index",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
-			CREATE INDEX some_idx ON foobar(foo, id);
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
+			CREATE INDEX some_idx ON schema_1.foobar(foo, id);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -428,25 +507,29 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		name: "Delete a primary key",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255),
-			    PRIMARY KEY (foo, id)
+				PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
 			    id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
-			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
-			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
-			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			CREATE SCHEMA schema_2;
+			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -497,6 +580,15 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 
 			CREATE INDEX some_idx ON foobar(foo, id);
 			CREATE INDEX foobar_1_some_local_idx ON foobar_1(foo, bar, id);
+			
+			-- Create a table in a different schema to ensure that dependencies are correctly set
+			CREATE schema schema_1;
+			CREATE TABLE schema_1.foobar(
+				id INT,
+				bar INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
 		`},
 		newSchemaDDL: []string{`
 			CREATE TABLE foobar(
@@ -515,6 +607,8 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			"DROP INDEX CONCURRENTLY \"public\".\"foobar_1_some_local_idx\"",
 			"DROP INDEX \"public\".\"some_idx\"",
 			"ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"id\"",
+			"DROP TABLE \"schema_1\".\"foobar\"",
+			"DROP SCHEMA \"schema_1\"",
 		},
 	},
 	{
@@ -576,6 +670,75 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			"DROP INDEX CONCURRENTLY \"public\".\"foobar_1_some_local_idx\"",
 			"DROP INDEX CONCURRENTLY \"public\".\"old_idx\"",
 			"DROP INDEX \"public\".\"pgschemadiff_tmpidx_some_idx_MDEyMzQ1Rje4OTo7PD0$Pw\"",
+		},
+	},
+	{
+		name: "Alter index columns (index replacement and prioritized builds) (conflicting schemas)",
+		oldSchemaDDL: []string{`
+			CREATE TABLE foobar(
+				id INT,
+				bar INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+
+			CREATE INDEX some_idx ON foobar(foo, id);
+			CREATE INDEX old_idx ON foobar_1(foo, bar);
+
+			CREATE INDEX foobar_1_some_local_idx ON foobar_1(foo, bar, id);
+
+			-- Create a mirror schema that is also doing a similar operation
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+				id INT,
+				bar VARCHAR(255),
+				foo INT
+			) PARTITION BY LIST (foo);
+			
+			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN (1);
+			CREATE TABLE schema_1.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN (2);
+
+			CREATE INDEX some_idx ON schema_1.foobar(foo, bar);
+			CREATE INDEX old_idx ON schema_1.foobar_1(foo, id);
+
+			CREATE INDEX foobar_1_some_local_idx ON schema_1.foobar_1(foo, id, bar);
+		`},
+		newSchemaDDL: []string{`
+			CREATE TABLE foobar(
+				id INT,
+				bar INT,
+				foo VARCHAR(255)
+			) PARTITION BY LIST (foo);
+			
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+
+			ALTER TABLE foobar ADD CONSTRAINT some_idx PRIMARY KEY (foo, id);
+			CREATE INDEX new_idx ON foobar_1(foo, bar);
+
+			CREATE INDEX new_foobar_1_some_local_idx ON foobar_1(foo, bar, id);
+
+			CREATE SCHEMA schema_1;
+			CREATE TABLE schema_1.foobar(
+				id INT,
+				bar VARCHAR(255),
+				foo INT
+			) PARTITION BY LIST (foo);
+			
+			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN (1);
+			CREATE TABLE schema_1.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN (2);
+
+			ALTER TABLE schema_1.foobar ADD CONSTRAINT some_idx PRIMARY KEY (foo, bar);
+			CREATE INDEX new_idx ON schema_1.foobar_1(foo, id);
+
+			CREATE INDEX new_foobar_1_some_local_idx ON schema_1.foobar_1(foo, id, bar);
+		`},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
 		},
 	},
 	{

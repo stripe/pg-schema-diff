@@ -49,6 +49,7 @@ func (o SchemaQualifiedName) IsEmpty() bool {
 
 // Schema is the schema of the database, not just a single Postgres schema.
 type Schema struct {
+	NamedSchemas          []NamedSchema
 	Extensions            []Extension
 	Tables                []Table
 	Indexes               []Index
@@ -61,6 +62,8 @@ type Schema struct {
 // Normalize normalizes the schema (alphabetically sorts tables and columns in tables)
 // Useful for hashing and testing
 func (s Schema) Normalize() Schema {
+	s.NamedSchemas = sortSchemaObjectsByName(s.NamedSchemas)
+
 	var normTables []Table
 	for _, table := range sortSchemaObjectsByName(s.Tables) {
 		// Don't normalize columns order. their order is derived from the postgres catalogs
@@ -132,6 +135,16 @@ const (
 type Extension struct {
 	SchemaQualifiedName
 	Version string
+}
+
+// NamedSchema represents a schema in the database. We call it NamedSchema to distinguish it from the Postgres Database
+// schema
+type NamedSchema struct {
+	Name string
+}
+
+func (n NamedSchema) GetName() string {
+	return n.Name
 }
 
 type Table struct {
@@ -221,6 +234,7 @@ type (
 
 	Index struct {
 		// Name is the name of the index. We don't store the schema because the schema is just the schema of the table.
+		// Referencing the name is an anti-pattern because it is not qualified. Use should use GetSchemaQualifiedName instead.
 		Name        string
 		OwningTable SchemaQualifiedName
 		Columns     []string
@@ -479,6 +493,13 @@ type (
 func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 	goroutineRunner := s.goroutineRunnerFactory()
 
+	namedSchemasFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]NamedSchema, error) {
+		return s.fetchNamedSchemas(ctx)
+	})
+	if err != nil {
+		return Schema{}, fmt.Errorf("starting named schemas future: %w", err)
+	}
+
 	extensionsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Extension, error) {
 		return s.fetchExtensions(ctx)
 	})
@@ -528,6 +549,11 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("starting triggers future: %w", err)
 	}
 
+	schemas, err := namedSchemasFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting named schemas: %w", err)
+	}
+
 	extensions, err := extensionsFuture.Get(ctx)
 	if err != nil {
 		return Schema{}, fmt.Errorf("getting extensions: %w", err)
@@ -564,6 +590,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 	}
 
 	return Schema{
+		NamedSchemas:          schemas,
 		Extensions:            extensions,
 		Tables:                tables,
 		Indexes:               indexes,
@@ -572,6 +599,33 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		Functions:             functions,
 		Triggers:              triggers,
 	}, nil
+}
+
+func (s *schemaFetcher) fetchNamedSchemas(ctx context.Context) ([]NamedSchema, error) {
+	schemaNames, err := s.q.GetSchemas(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetSchemas(): %w", err)
+	}
+
+	var schemas []NamedSchema
+	for _, schemaName := range schemaNames {
+		schemas = append(schemas, NamedSchema{
+			Name: schemaName,
+		})
+	}
+
+	schemas = filterSliceByName(
+		schemas,
+		func(s NamedSchema) SchemaQualifiedName {
+			return SchemaQualifiedName{
+				SchemaName:  s.Name,
+				EscapedName: EscapeIdentifier(s.Name),
+			}
+		},
+		s.nameFilter,
+	)
+
+	return schemas, nil
 }
 
 func (s *schemaFetcher) fetchExtensions(ctx context.Context) ([]Extension, error) {
