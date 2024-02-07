@@ -8,7 +8,7 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 )
 
-type GetSchemaOptions = internalschema.GetSchemaOpt
+type GetSchemaOpt = internalschema.GetSchemaOpt
 
 var (
 	WithIncludeSchemas = internalschema.WithIncludeSchemas

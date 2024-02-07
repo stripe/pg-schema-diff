@@ -39,6 +39,8 @@ type (
 		empty bool
 	}
 
+	planFactory func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error)
+
 	acceptanceTestCase struct {
 		name         string
 		oldSchemaDDL []string
@@ -54,11 +56,13 @@ type (
 
 		// vanillaExpectations refers to the expectations of the migration if no additional opts are used
 		vanillaExpectations expectations
-		// dataPackingExpectations refers to the expectations of the migration if table packing is used
+		// dataPackingExpectations refers to the expectations of the migration if table packing is used. We should
+		// aim to deprecate this and just split out a separate set of individual tests for data packing.
 		dataPackingExpectations expectations
 
-		// use old generate plan func
-		useOldGeneratePlan bool
+		// planFactory is used to generate the actual plan. This is useful for testing different plan generation paths
+		// outside of the normal path. If not specified, a plan will be generated using a default.
+		planFactory planFactory
 	}
 
 	acceptanceTestSuite struct {
@@ -124,8 +128,8 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 		suite.Require().NoError(tempDbFactory.Close())
 	}(tempDbFactory)
 
-	generatePlanFn := diff.GeneratePlan
-	if !tc.useOldGeneratePlan {
+	generatePlanFn := tc.planFactory
+	if generatePlanFn == nil {
 		generatePlanFn = func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error) {
 			return diff.Generate(ctx, connPool, diff.DDLSchemaSource(newSchemaDDL),
 				append(planOpts,

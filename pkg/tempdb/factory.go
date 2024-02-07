@@ -37,7 +37,7 @@ type (
 		// ConnPool is the connection pool to the temporary database
 		ConnPool *sql.DB
 		// ExcludeMetadataOptions are the options used to exclude any internal metadata from plan generation
-		ExcludeMetadatOptions []schema.GetSchemaOptions
+		ExcludeMetadatOptions []schema.GetSchemaOpt
 		// ContextualCloser should be called to clean up the temporary database
 		ContextualCloser
 	}
@@ -207,7 +207,7 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, retErr err
 
 	return &Database{
 		ConnPool: tempDbConn,
-		ExcludeMetadatOptions: []schema.GetSchemaOptions{
+		ExcludeMetadatOptions: []schema.GetSchemaOpt{
 			schema.WithExcludeSchemas(o.options.metadataSchema),
 		},
 		ContextualCloser: fnContextualCloser(func(ctx context.Context) error {
