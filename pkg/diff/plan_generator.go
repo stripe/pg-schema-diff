@@ -10,6 +10,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/kr/pretty"
 	"github.com/stripe/pg-schema-diff/internal/schema"
+	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 
 	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/sqldb"
@@ -77,6 +78,18 @@ func WithLogger(logger log.Logger) PlanOpt {
 func WithSchemas(schemas ...string) PlanOpt {
 	return func(opts *planOptions) {
 		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithIncludeSchemas(schemas...))
+	}
+}
+
+func WithExcludeSchemas(schemas ...string) PlanOpt {
+	return func(opts *planOptions) {
+		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithExcludeSchemas(schemas...))
+	}
+}
+
+func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
+	return func(opts *planOptions) {
+		opts.getSchemaOpts = append(opts.getSchemaOpts, getSchemaOpts...)
 	}
 }
 
