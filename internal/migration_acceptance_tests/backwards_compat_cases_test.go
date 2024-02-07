@@ -173,7 +173,7 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 		},
 
 		// Ensure that we're maintaining backwards compatibility with the old generate plan func
-		useOldGeneratePlan: true,
+		planFactory: diff.GeneratePlan,
 	},
 }
 
