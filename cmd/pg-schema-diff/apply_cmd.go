@@ -28,12 +28,12 @@ func buildApplyCmd() *cobra.Command {
 			" (example: --allowed-hazards DELETES_DATA,INDEX_BUILD)")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		logger := log.SimpleLogger()
-		connConfig, err := connFlags.parseConnConfig(logger)
+		connConfig, err := parseConnConfig(*connFlags, logger)
 		if err != nil {
 			return err
 		}
 
-		planConfig, err := planFlags.parsePlanConfig()
+		planConfig, err := parsePlanConfig(*planFlags)
 		if err != nil {
 			return err
 		}
