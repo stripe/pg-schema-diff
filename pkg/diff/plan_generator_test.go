@@ -175,7 +175,7 @@ func (suite *planGeneratorTestSuite) TestGenerate_CannotBuildMigrationFromDDLWit
 	pool := suite.mustGetTestDBPool()
 	defer pool.Close()
 	_, err := Generate(context.Background(), pool, DDLSchemaSource([]string{``}),
-		WithSchemas("public"),
+		WithIncludeSchemas("public"),
 		WithDoNotValidatePlan(),
 	)
 	suite.ErrorContains(err, "tempDbFactory is required")
@@ -185,7 +185,7 @@ func (suite *planGeneratorTestSuite) TestGenerate_CannotValidateWithoutTempDbFac
 	pool := suite.mustGetTestDBPool()
 	defer pool.Close()
 	_, err := Generate(context.Background(), pool, DDLSchemaSource([]string{``}),
-		WithSchemas("public"),
+		WithIncludeSchemas("public"),
 		WithDoNotValidatePlan(),
 	)
 	suite.ErrorContains(err, "tempDbFactory is required")

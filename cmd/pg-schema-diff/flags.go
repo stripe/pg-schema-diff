@@ -7,28 +7,23 @@ import (
 )
 
 type connFlags struct {
-	dsn *string
+	dsn string
 }
 
-func createConnFlags(cmd *cobra.Command) connFlags {
-	dsn := cmd.Flags().String("dsn", "", "Connection string for the database (DB password can be specified through PGPASSWORD environment variable)")
+func createConnFlags(cmd *cobra.Command) *connFlags {
+	flags := &connFlags{}
+
+	cmd.Flags().StringVar(&flags.dsn, "dsn", "", "Connection string for the database (DB password can be specified through PGPASSWORD environment variable)")
 	// Don't mark dsn as a required flag.
 	// Allow users to use the "PGHOST" etc environment variables like `psql`.
-	return connFlags{
-		dsn: dsn,
-	}
+
+	return flags
 }
 
-func (c connFlags) parseConnConfig(logger log.Logger) (*pgx.ConnConfig, error) {
-	if c.dsn == nil || *c.dsn == "" {
+func parseConnConfig(c connFlags, logger log.Logger) (*pgx.ConnConfig, error) {
+	if c.dsn == "" {
 		logger.Warnf("DSN flag not set. Using libpq environment variables and default values.")
 	}
 
-	return pgx.ParseConfig(*c.dsn)
-}
-
-func mustMarkFlagAsRequired(cmd *cobra.Command, flagName string) {
-	if err := cmd.MarkFlagRequired(flagName); err != nil {
-		panic(err)
-	}
+	return pgx.ParseConfig(c.dsn)
 }

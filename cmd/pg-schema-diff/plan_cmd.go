@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,6 +17,10 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
+)
+
+const (
+	defaultMaxConnections = 5
 )
 
 var (
@@ -47,12 +52,12 @@ func buildPlanCmd() *cobra.Command {
 	planFlags := createPlanFlags(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		logger := log.SimpleLogger()
-		connConfig, err := connFlags.parseConnConfig(logger)
+		connConfig, err := parseConnConfig(*connFlags, logger)
 		if err != nil {
 			return err
 		}
 
-		planConfig, err := planFlags.parsePlanConfig()
+		planConfig, err := parsePlanConfig(*planFlags)
 		if err != nil {
 			return err
 		}
@@ -75,11 +80,24 @@ func buildPlanCmd() *cobra.Command {
 }
 
 type (
+	schemaFlags struct {
+		includeSchemas []string
+		excludeSchemas []string
+	}
+
+	schemaSourceFlags struct {
+		schemaDir         string
+		targetDatabaseDSN string
+	}
+
 	planFlags struct {
-		schemaDir                 *string
-		statementTimeoutModifiers *[]string
-		lockTimeoutModifiers      *[]string
-		insertStatements          *[]string
+		dbSchemaSourceFlags schemaSourceFlags
+
+		schemaFlags schemaFlags
+
+		statementTimeoutModifiers []string
+		lockTimeoutModifiers      []string
+		insertStatements          []string
 	}
 
 	timeoutModifiers struct {
@@ -93,43 +111,65 @@ type (
 		timeout time.Duration
 	}
 
+	schemaSourceFactory func() (diff.SchemaSource, io.Closer, error)
+
 	planConfig struct {
-		schemaDir                 string
+		schemaSourceFactory schemaSourceFactory
+		opts                []diff.PlanOpt
+
 		statementTimeoutModifiers []timeoutModifiers
 		lockTimeoutModifiers      []timeoutModifiers
 		insertStatements          []insertStatement
 	}
 )
 
-func createPlanFlags(cmd *cobra.Command) planFlags {
-	schemaDir := cmd.Flags().String("schema-dir", "", "Directory containing schema files")
-	mustMarkFlagAsRequired(cmd, "schema-dir")
+func createPlanFlags(cmd *cobra.Command) *planFlags {
+	flags := &planFlags{}
 
-	statementTimeoutModifiers := timeoutModifierFlag(cmd, "statement", "t")
-	lockTimeoutModifiers := timeoutModifierFlag(cmd, "lock", "l")
-	insertStatements := cmd.Flags().StringArrayP("insert-statement", "s", nil,
+	schemaSourceFlagsVar(cmd, &flags.dbSchemaSourceFlags)
+
+	schemaFlagsVar(cmd, &flags.schemaFlags)
+
+	timeoutModifierFlagVar(cmd, &flags.statementTimeoutModifiers, "statement", "t")
+	timeoutModifierFlagVar(cmd, &flags.lockTimeoutModifiers, "lock", "l")
+	cmd.Flags().StringArrayVarP(&flags.insertStatements, "insert-statement", "s", nil,
 		"<index>_<timeout>:<statement> values. Will insert the statement at the index in the "+
 			"generated plan with the specified timeout. This follows normal insert semantics. Example: -s '0 5s:SELECT 1''")
 
-	return planFlags{
-		schemaDir:                 schemaDir,
-		statementTimeoutModifiers: statementTimeoutModifiers,
-		lockTimeoutModifiers:      lockTimeoutModifiers,
-		insertStatements:          insertStatements,
-	}
+	return flags
 }
 
-func timeoutModifierFlag(cmd *cobra.Command, timeoutType string, shorthand string) *[]string {
+func schemaSourceFlagsVar(cmd *cobra.Command, p *schemaSourceFlags) {
+	cmd.Flags().StringVar(&p.schemaDir, "schema-dir", "", "Directory of .SQL files to use as the schema source. Use to generate a diff between the target database and the schema in this directory.")
+	if err := cmd.MarkFlagDirname("schema-dir"); err != nil {
+		panic(err)
+	}
+	cmd.Flags().StringVar(&p.targetDatabaseDSN, "schema-source-dsn", "", "DSN for the database to use as the schema source. Use to generate a diff between the target database and the schema in this database.")
+
+	cmd.MarkFlagsMutuallyExclusive("schema-dir", "schema-source-dsn")
+}
+
+func schemaFlagsVar(cmd *cobra.Command, p *schemaFlags) {
+	cmd.Flags().StringArrayVar(&p.includeSchemas, "include-schema", nil, "Include the specified schema in the plan")
+	cmd.Flags().StringArrayVar(&p.excludeSchemas, "exclude-schema", nil, "Exclude the specified schema in the plan")
+}
+
+func timeoutModifierFlagVar(cmd *cobra.Command, p *[]string, timeoutType string, shorthand string) {
 	flagName := fmt.Sprintf("%s-timeout-modifier", timeoutType)
 	desc := fmt.Sprintf("regex=timeout key-value pairs, where if a statement matches the regex, the statement "+
 		"will be modified to have the %s timeout. If multiple regexes match, the latest regex will take priority. "+
 		"Example: -t 'CREATE TABLE=5m' -t 'CONCURRENTLY=10s'", timeoutType)
-	return cmd.Flags().StringArrayP(flagName, shorthand, nil, desc)
+	cmd.Flags().StringArrayVarP(p, flagName, shorthand, nil, desc)
 }
 
-func (p planFlags) parsePlanConfig() (planConfig, error) {
+func parsePlanConfig(p planFlags) (planConfig, error) {
+	schemaSourceFactory, err := parseSchemaSource(p.dbSchemaSourceFlags)
+	if err != nil {
+		return planConfig{}, err
+	}
+
 	var statementTimeoutModifiers []timeoutModifiers
-	for _, s := range *p.statementTimeoutModifiers {
+	for _, s := range p.statementTimeoutModifiers {
 		stm, err := parseTimeoutModifier(s)
 		if err != nil {
 			return planConfig{}, fmt.Errorf("parsing statement timeout modifier from %q: %w", s, err)
@@ -138,7 +178,7 @@ func (p planFlags) parsePlanConfig() (planConfig, error) {
 	}
 
 	var lockTimeoutModifiers []timeoutModifiers
-	for _, s := range *p.lockTimeoutModifiers {
+	for _, s := range p.lockTimeoutModifiers {
 		ltm, err := parseTimeoutModifier(s)
 		if err != nil {
 			return planConfig{}, fmt.Errorf("parsing statement timeout modifier from %q: %w", s, err)
@@ -147,7 +187,7 @@ func (p planFlags) parsePlanConfig() (planConfig, error) {
 	}
 
 	var insertStatements []insertStatement
-	for _, i := range *p.insertStatements {
+	for _, i := range p.insertStatements {
 		is, err := parseInsertStatementStr(i)
 		if err != nil {
 			return planConfig{}, fmt.Errorf("parsing insert statement from %q: %w", i, err)
@@ -156,11 +196,47 @@ func (p planFlags) parsePlanConfig() (planConfig, error) {
 	}
 
 	return planConfig{
-		schemaDir:                 *p.schemaDir,
+		schemaSourceFactory:       schemaSourceFactory,
+		opts:                      parseSchemaConfig(p.schemaFlags),
 		statementTimeoutModifiers: statementTimeoutModifiers,
 		lockTimeoutModifiers:      lockTimeoutModifiers,
 		insertStatements:          insertStatements,
 	}, nil
+}
+
+func parseSchemaSource(p schemaSourceFlags) (schemaSourceFactory, error) {
+	if p.schemaDir != "" {
+		ddl, err := getDDLFromPath(p.schemaDir)
+		if err != nil {
+			return nil, err
+		}
+		return func() (diff.SchemaSource, io.Closer, error) {
+			return diff.DDLSchemaSource(ddl), nil, nil
+		}, nil
+	}
+
+	if p.targetDatabaseDSN != "" {
+		connConfig, err := pgx.ParseConfig(p.targetDatabaseDSN)
+		if err != nil {
+			return nil, fmt.Errorf("parsing DSN %q: %w", p.targetDatabaseDSN, err)
+		}
+		return func() (diff.SchemaSource, io.Closer, error) {
+			connPool, err := openDbWithPgxConfig(connConfig)
+			if err != nil {
+				return nil, nil, fmt.Errorf("opening db with pgx config: %w", err)
+			}
+			return diff.DBSchemaSource(connPool), connPool, nil
+		}, nil
+	}
+
+	return nil, fmt.Errorf("either --schema-dir or --schema-source-dsn must be set")
+}
+
+func parseSchemaConfig(p schemaFlags) []diff.PlanOpt {
+	return []diff.PlanOpt{
+		diff.WithIncludeSchemas(p.includeSchemas...),
+		diff.WithExcludeSchemas(p.excludeSchemas...),
+	}
 }
 
 func parseTimeoutModifier(val string) (timeoutModifiers, error) {
@@ -216,11 +292,6 @@ func parseInsertStatementStr(val string) (insertStatement, error) {
 }
 
 func generatePlan(ctx context.Context, logger log.Logger, connConfig *pgx.ConnConfig, planConfig planConfig) (diff.Plan, error) {
-	ddl, err := getDDLFromPath(planConfig.schemaDir)
-	if err != nil {
-		return diff.Plan{}, nil
-	}
-
 	tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*sql.DB, error) {
 		copiedConfig := connConfig.Copy()
 		copiedConfig.Database = dbName
@@ -241,11 +312,22 @@ func generatePlan(ctx context.Context, logger log.Logger, connConfig *pgx.ConnCo
 		return diff.Plan{}, err
 	}
 	defer connPool.Close()
+	connPool.SetMaxOpenConns(defaultMaxConnections)
 
-	connPool.SetMaxOpenConns(5)
+	schemaSource, schemaSourceCloser, err := planConfig.schemaSourceFactory()
+	if err != nil {
+		return diff.Plan{}, fmt.Errorf("creating schema source: %w", err)
+	}
+	if schemaSourceCloser != nil {
+		defer schemaSourceCloser.Close()
+	}
 
-	plan, err := diff.GeneratePlan(ctx, connPool, tempDbFactory, ddl,
-		diff.WithDataPackNewTables(),
+	plan, err := diff.Generate(ctx, connPool, schemaSource,
+		append(
+			planConfig.opts,
+			diff.WithTempDbFactory(tempDbFactory),
+			diff.WithDataPackNewTables(),
+		)...,
 	)
 	if err != nil {
 		return diff.Plan{}, fmt.Errorf("generating plan: %w", err)
