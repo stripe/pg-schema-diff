@@ -75,7 +75,7 @@ func WithLogger(logger log.Logger) PlanOpt {
 	}
 }
 
-func WithSchemas(schemas ...string) PlanOpt {
+func WithIncludeSchemas(schemas ...string) PlanOpt {
 	return func(opts *planOptions) {
 		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithIncludeSchemas(schemas...))
 	}
@@ -96,7 +96,7 @@ func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
 // deprecated: GeneratePlan generates a migration plan to migrate the database to the target schema. This function only
 // diffs the public schemas.
 //
-// Use Generate instead with the DDLSchemaSource(newDDL) and WithSchemas("public") and WithTempDbFactory options.
+// Use Generate instead with the DDLSchemaSource(newDDL) and WithIncludeSchemas("public") and WithTempDbFactory options.
 //
 // Parameters:
 // queryable: 	The target database to generate the diff for. It is recommended to pass in *sql.DB of the db you
@@ -106,7 +106,7 @@ func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
 // newDDL:  		DDL encoding the new schema
 // opts:  			Additional options to configure the plan generation
 func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempdbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
-	return Generate(ctx, queryable, DDLSchemaSource(newDDL), append(opts, WithTempDbFactory(tempdbFactory), WithSchemas("public"))...)
+	return Generate(ctx, queryable, DDLSchemaSource(newDDL), append(opts, WithTempDbFactory(tempdbFactory), WithIncludeSchemas("public"))...)
 }
 
 // Generate generates a migration plan to migrate the database to the target schema
