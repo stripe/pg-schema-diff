@@ -1,6 +1,7 @@
 package main
 
 import (
+	"regexp"
 	"testing"
 	"time"
 
@@ -8,54 +9,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseStatementTimeoutModifierStr(t *testing.T) {
+func TestParseTimeoutModifierStr(t *testing.T) {
 	for _, tc := range []struct {
 		opt string `explicit:"always"`
 
-		expectedRegexStr    string
-		expectedTimeout     time.Duration
+		expected            timeoutModifier
 		expectedErrContains string
 	}{
 		{
-			opt:              "normal duration=5m",
-			expectedRegexStr: "normal duration",
-			expectedTimeout:  5 * time.Minute,
+			opt: `pattern="normal \"pattern\"" duration=5m`,
+			expected: timeoutModifier{
+				regex:   regexp.MustCompile(`normal "pattern"`),
+				timeout: 5 * time.Minute,
+			},
 		},
 		{
-			opt:              "some regex with a duration ending in a period=5.h",
-			expectedRegexStr: "some regex with a duration ending in a period",
-			expectedTimeout:  5 * time.Hour,
+			opt: `pattern=unquoted-no-space-pattern duration=5m`,
+			expected: timeoutModifier{
+				regex:   regexp.MustCompile("unquoted-no-space-pattern"),
+				timeout: 5 * time.Minute,
+			},
 		},
 		{
-			opt:              " starts with spaces than has a *=5.5m",
-			expectedRegexStr: " starts with spaces than has a *",
-			expectedTimeout:  time.Minute*5 + 30*time.Second,
+			opt:                 "duration=15m",
+			expectedErrContains: "could not find key",
 		},
 		{
-			opt:              "has a valid opt in the regex something=5.5m in the regex =15s",
-			expectedRegexStr: "has a valid opt in the regex something=5.5m in the regex ",
-			expectedTimeout:  15 * time.Second,
+			opt:                 `pattern="some pattern"`,
+			expectedErrContains: "could not find key",
 		},
 		{
-			opt:              "has multiple valid opts opt=15m5s in the regex something=5.5m in the regex and has compound duration=15m1ms2us10ns",
-			expectedRegexStr: "has multiple valid opts opt=15m5s in the regex something=5.5m in the regex and has compound duration",
-			expectedTimeout:  15*time.Minute + 1*time.Millisecond + 2*time.Microsecond + 10*time.Nanosecond,
+			opt:                 `pattern="normal" duration=5m some-unknown-key=5m`,
+			expectedErrContains: "unknown keys",
 		},
 		{
-			opt:                 "=5m",
-			expectedErrContains: "could not parse regex and duration from arg",
-		},
-		{
-			opt:                 "15m",
-			expectedErrContains: "could not parse regex and duration from arg",
-		},
-		{
-			opt:                 "someregex;15m",
-			expectedErrContains: "could not parse regex and duration from arg",
-		},
-		{
-			opt:                 "someregex=invalid duration5s",
+			opt:                 `pattern="some-pattern" duration=invalid-duration`,
 			expectedErrContains: "duration could not be parsed",
+		},
+		{
+			opt:                 `pattern="some-invalid-pattern-[" duration=5m`,
+			expectedErrContains: "pattern regex could not be compiled",
 		},
 	} {
 		t.Run(tc.opt, func(t *testing.T) {
@@ -65,8 +58,7 @@ func TestParseStatementTimeoutModifierStr(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.expectedRegexStr, modifier.regex.String())
-			assert.Equal(t, tc.expectedTimeout, modifier.timeout)
+			assert.Equal(t, tc.expected, modifier)
 		})
 	}
 }
@@ -78,32 +70,41 @@ func TestParseInsertStatementStr(t *testing.T) {
 		expectedErrContains string
 	}{
 		{
-			opt: "1 0h5.1m:SELECT * FROM :TABLE:0_5m:something",
+			opt: `index=1 statement="SELECT * FROM \"foobar\"" timeout=5m6s lock_timeout=1m11s`,
 			expectedInsertStmt: insertStatement{
-				index:   1,
-				ddl:     "SELECT * FROM :TABLE:0_5m:something",
-				timeout: 5*time.Minute + 6*time.Second,
+				index:       1,
+				ddl:         `SELECT * FROM "foobar"`,
+				timeout:     5*time.Minute + 6*time.Second,
+				lockTimeout: 1*time.Minute + 11*time.Second,
 			},
 		},
 		{
-			opt: "0 100ms:SELECT 1; SELECT * FROM something;",
-			expectedInsertStmt: insertStatement{
-				index:   0,
-				ddl:     "SELECT 1; SELECT * FROM something",
-				timeout: 100 * time.Millisecond,
-			},
+			opt:                 "statement=no-index timeout=5m6s lock_timeout=1m11s",
+			expectedErrContains: "could not find key",
 		},
 		{
-			opt:                 " 5s:No index",
-			expectedErrContains: "could not parse",
+			opt:                 "index=0 timeout=5m6s lock_timeout=1m11s",
+			expectedErrContains: "could not find key",
 		},
 		{
-			opt:                 "0 5g:Invalid duration",
-			expectedErrContains: "duration could not be parsed",
+			opt:                 "index=0 statement=no-timeout lock_timeout=1m11s",
+			expectedErrContains: "could not find key",
 		},
 		{
-			opt:                 "0 5s:",
-			expectedErrContains: "could not parse",
+			opt:                 "index=0 statement=no-lock-timeout-timeout timeout=5m6s",
+			expectedErrContains: "could not find key",
+		},
+		{
+			opt:                 "index=not-an-int statement=some-statement timeout=5m6s lock_timeout=1m11s",
+			expectedErrContains: "index could not be parsed",
+		},
+		{
+			opt:                 "index=0 statement=some-statement timeout=invalid-duration lock_timeout=1m11s",
+			expectedErrContains: "statement timeout duration could not be parsed",
+		},
+		{
+			opt:                 "index=0 statement=some-statement timeout=5m6s lock_timeout=invalid-duration",
+			expectedErrContains: "lock timeout duration could not be parsed",
 		},
 	} {
 		t.Run(tc.opt, func(t *testing.T) {
