@@ -21,24 +21,14 @@ import (
 
 const (
 	defaultMaxConnections = 5
-)
 
-var (
-	// Match arguments in the format "regex=duration" where duration is any duration valid in time.ParseDuration
-	// We'll let time.ParseDuration handle the complexity of parsing invalid duration, so the regex we're extracting is
-	// all characters greedily up to the rightmost "="
-	statementTimeoutModifierRegex = regexp.MustCompile(`^(?P<regex>.+)=(?P<duration>.+)$`)
-	regexSTMRegexIndex            = statementTimeoutModifierRegex.SubexpIndex("regex")
-	durationSTMRegexIndex         = statementTimeoutModifierRegex.SubexpIndex("duration")
+	patternTimeoutModifierKey = "pattern"
+	timeoutTimeoutModifierKey = "timeout"
 
-	// Match arguments in the format "index duration:statement" where duration is any duration valid in
-	// time.ParseDuration. In order to prevent matching on ":" in the duration, limit the character to just letters
-	// and numbers. To keep the regex simple, we won't bother matching on a more specific pattern for durations.
-	// time.ParseDuration can handle the complexity of parsing invalid durations
-	insertStatementRegex              = regexp.MustCompile(`^(?P<index>\d+) (?P<duration>[a-zA-Z0-9\.]+):(?P<ddl>.+?);?$`)
-	indexInsertStatementRegexIndex    = insertStatementRegex.SubexpIndex("index")
-	durationInsertStatementRegexIndex = insertStatementRegex.SubexpIndex("duration")
-	ddlInsertStatementRegexIndex      = insertStatementRegex.SubexpIndex("ddl")
+	indexInsertStatementKey            = "index"
+	statementInsertStatementKey        = "statement"
+	statementTimeoutInsertStatementKey = "timeout"
+	lockTimeoutInsertStatementKey      = "lock_timeout"
 )
 
 func buildPlanCmd() *cobra.Command {
@@ -100,15 +90,16 @@ type (
 		insertStatements          []string
 	}
 
-	timeoutModifiers struct {
+	timeoutModifier struct {
 		regex   *regexp.Regexp
 		timeout time.Duration
 	}
 
 	insertStatement struct {
-		ddl     string
-		index   int
-		timeout time.Duration
+		ddl         string
+		index       int
+		timeout     time.Duration
+		lockTimeout time.Duration
 	}
 
 	schemaSourceFactory func() (diff.SchemaSource, io.Closer, error)
@@ -117,8 +108,8 @@ type (
 		schemaSourceFactory schemaSourceFactory
 		opts                []diff.PlanOpt
 
-		statementTimeoutModifiers []timeoutModifiers
-		lockTimeoutModifiers      []timeoutModifiers
+		statementTimeoutModifiers []timeoutModifier
+		lockTimeoutModifiers      []timeoutModifier
 		insertStatements          []insertStatement
 	}
 )
@@ -132,9 +123,16 @@ func createPlanFlags(cmd *cobra.Command) *planFlags {
 
 	timeoutModifierFlagVar(cmd, &flags.statementTimeoutModifiers, "statement", "t")
 	timeoutModifierFlagVar(cmd, &flags.lockTimeoutModifiers, "lock", "l")
-	cmd.Flags().StringArrayVarP(&flags.insertStatements, "insert-statement", "s", nil,
-		"<index>_<timeout>:<statement> values. Will insert the statement at the index in the "+
-			"generated plan with the specified timeout. This follows normal insert semantics. Example: -s '0 5s:SELECT 1''")
+	cmd.Flags().StringArrayVarP(
+		&flags.insertStatements,
+		"insert-statement", "s", nil,
+		fmt.Sprintf(
+			"'%s=<index> %s=\"<statement>\" %s=<duration> %s=<duration>' values. Will insert the statement at the index in the "+
+				"generated plan. This follows normal insert semantics. Example: -s '%s=1 %s=\"SELECT pg_sleep(5)\" %s=5s %s=1s'",
+			indexInsertStatementKey, statementInsertStatementKey, statementTimeoutInsertStatementKey, lockTimeoutInsertStatementKey,
+			indexInsertStatementKey, statementInsertStatementKey, statementTimeoutInsertStatementKey, lockTimeoutInsertStatementKey,
+		),
+	)
 
 	return flags
 }
@@ -156,10 +154,14 @@ func schemaFlagsVar(cmd *cobra.Command, p *schemaFlags) {
 
 func timeoutModifierFlagVar(cmd *cobra.Command, p *[]string, timeoutType string, shorthand string) {
 	flagName := fmt.Sprintf("%s-timeout-modifier", timeoutType)
-	desc := fmt.Sprintf("regex=timeout key-value pairs, where if a statement matches the regex, the statement "+
-		"will be modified to have the %s timeout. If multiple regexes match, the latest regex will take priority. "+
-		"Example: -t 'CREATE TABLE=5m' -t 'CONCURRENTLY=10s'", timeoutType)
-	cmd.Flags().StringArrayVarP(p, flagName, shorthand, nil, desc)
+	description := fmt.Sprintf("list of '%s=\"<regex>\" %s=<duration>', where if a statement matches "+
+		"the regex, the statement will have the target %s timeout. If multiple regexes match, the latest regex will "+
+		"take priority. Example: -t '%s=\"CREATE TABLE\" %s=5m'",
+		patternTimeoutModifierKey, timeoutTimeoutModifierKey,
+		timeoutType,
+		patternTimeoutModifierKey, timeoutTimeoutModifierKey,
+	)
+	cmd.Flags().StringArrayVarP(p, flagName, shorthand, nil, description)
 }
 
 func parsePlanConfig(p planFlags) (planConfig, error) {
@@ -168,7 +170,7 @@ func parsePlanConfig(p planFlags) (planConfig, error) {
 		return planConfig{}, err
 	}
 
-	var statementTimeoutModifiers []timeoutModifiers
+	var statementTimeoutModifiers []timeoutModifier
 	for _, s := range p.statementTimeoutModifiers {
 		stm, err := parseTimeoutModifier(s)
 		if err != nil {
@@ -177,7 +179,7 @@ func parsePlanConfig(p planFlags) (planConfig, error) {
 		statementTimeoutModifiers = append(statementTimeoutModifiers, stm)
 	}
 
-	var lockTimeoutModifiers []timeoutModifiers
+	var lockTimeoutModifiers []timeoutModifier
 	for _, s := range p.lockTimeoutModifiers {
 		ltm, err := parseTimeoutModifier(s)
 		if err != nil {
@@ -239,55 +241,94 @@ func parseSchemaConfig(p schemaFlags) []diff.PlanOpt {
 	}
 }
 
-func parseTimeoutModifier(val string) (timeoutModifiers, error) {
-	submatches := statementTimeoutModifierRegex.FindStringSubmatch(val)
-	if len(submatches) <= regexSTMRegexIndex || len(submatches) <= durationSTMRegexIndex {
-		return timeoutModifiers{}, fmt.Errorf("could not parse regex and duration from arg. expected to be in the format of " +
-			"'Some.*Regex=<duration>'. Example durations include: 2s, 5m, 10.5h")
-	}
-	regexStr := submatches[regexSTMRegexIndex]
-	durationStr := submatches[durationSTMRegexIndex]
-
-	regex, err := regexp.Compile(regexStr)
+// parseTimeoutModifier attempts to parse an option representing a statement timeout modifier in the
+// form of regex=duration where duration could be a decimal number and ends with a unit
+func parseTimeoutModifier(val string) (timeoutModifier, error) {
+	fm, err := LogFmtToMap(val)
 	if err != nil {
-		return timeoutModifiers{}, fmt.Errorf("regex could not be compiled from %q: %w", regexStr, err)
+		return timeoutModifier{}, fmt.Errorf("could not parse %q into logfmt: %w", val, err)
 	}
 
-	duration, err := time.ParseDuration(durationStr)
+	regexStr, err := mustGetAndDeleteKey(fm, patternTimeoutModifierKey)
 	if err != nil {
-		return timeoutModifiers{}, fmt.Errorf("duration could not be parsed from %q: %w", durationStr, err)
+		return timeoutModifier{}, err
 	}
 
-	return timeoutModifiers{
-		regex:   regex,
+	timeoutStr, err := mustGetAndDeleteKey(fm, timeoutTimeoutModifierKey)
+	if err != nil {
+		return timeoutModifier{}, err
+	}
+
+	if len(fm) > 0 {
+		return timeoutModifier{}, fmt.Errorf("unknown keys %s", keys(fm))
+	}
+
+	duration, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		return timeoutModifier{}, fmt.Errorf("duration could not be parsed from %q: %w", timeoutStr, err)
+	}
+
+	re, err := regexp.Compile(regexStr)
+	if err != nil {
+		return timeoutModifier{}, fmt.Errorf("pattern regex could not be compiled from %q: %w", regexStr, err)
+	}
+
+	return timeoutModifier{
+		regex:   re,
 		timeout: duration,
 	}, nil
 }
 
 func parseInsertStatementStr(val string) (insertStatement, error) {
-	submatches := insertStatementRegex.FindStringSubmatch(val)
-	if len(submatches) <= indexInsertStatementRegexIndex ||
-		len(submatches) <= durationInsertStatementRegexIndex ||
-		len(submatches) <= ddlInsertStatementRegexIndex {
-		return insertStatement{}, fmt.Errorf("could not parse index, duration, and statement from arg. expected to be in the " +
-			"format of '<index> <duration>:<statement>'. Example durations include: 2s, 5m, 10.5h")
-	}
-	indexStr := submatches[indexInsertStatementRegexIndex]
-	index, err := strconv.Atoi(indexStr)
+	fm, err := LogFmtToMap(val)
 	if err != nil {
-		return insertStatement{}, fmt.Errorf("could not parse index (an int) from \"%q\"", indexStr)
+		return insertStatement{}, fmt.Errorf("could not parse into logfmt: %w", err)
 	}
 
-	durationStr := submatches[durationInsertStatementRegexIndex]
-	duration, err := time.ParseDuration(durationStr)
+	indexStr, err := mustGetAndDeleteKey(fm, indexInsertStatementKey)
 	if err != nil {
-		return insertStatement{}, fmt.Errorf("duration could not be parsed from \"%q\": %w", durationStr, err)
+		return insertStatement{}, err
+	}
+
+	statementStr, err := mustGetAndDeleteKey(fm, statementInsertStatementKey)
+	if err != nil {
+		return insertStatement{}, err
+	}
+
+	statementTimeoutStr, err := mustGetAndDeleteKey(fm, statementTimeoutInsertStatementKey)
+	if err != nil {
+		return insertStatement{}, err
+	}
+
+	lockTimeoutStr, err := mustGetAndDeleteKey(fm, lockTimeoutInsertStatementKey)
+	if err != nil {
+		return insertStatement{}, err
+	}
+
+	if len(fm) > 0 {
+		return insertStatement{}, fmt.Errorf("unknown keys %s", keys(fm))
+	}
+
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		return insertStatement{}, fmt.Errorf("index could not be parsed from %q: %w", indexStr, err)
+	}
+
+	statementTimeout, err := time.ParseDuration(statementTimeoutStr)
+	if err != nil {
+		return insertStatement{}, fmt.Errorf("statement timeout duration could not be parsed from %q: %w", statementTimeoutStr, err)
+	}
+
+	lockTimeout, err := time.ParseDuration(lockTimeoutStr)
+	if err != nil {
+		return insertStatement{}, fmt.Errorf("lock timeout duration could not be parsed from %q: %w", lockTimeoutStr, err)
 	}
 
 	return insertStatement{
-		index:   index,
-		ddl:     submatches[ddlInsertStatementRegexIndex],
-		timeout: duration,
+		index:       index,
+		ddl:         statementStr,
+		timeout:     statementTimeout,
+		lockTimeout: lockTimeout,
 	}, nil
 }
 
@@ -357,16 +398,16 @@ func applyPlanModifiers(
 	for _, is := range config.insertStatements {
 		var err error
 		plan, err = plan.InsertStatement(is.index, diff.Statement{
-			DDL:     is.ddl,
-			Timeout: is.timeout,
+			DDL:         is.ddl,
+			Timeout:     is.timeout,
+			LockTimeout: is.lockTimeout,
 			Hazards: []diff.MigrationHazard{{
 				Type:    diff.MigrationHazardTypeIsUserGenerated,
 				Message: "This statement is user-generated",
 			}},
 		})
 		if err != nil {
-			return diff.Plan{}, fmt.Errorf("inserting statement %q with timeout %s at index %d: %w",
-				is.ddl, is.timeout, is.index, err)
+			return diff.Plan{}, fmt.Errorf("inserting %+v: %w", is, err)
 		}
 	}
 	return plan, nil
