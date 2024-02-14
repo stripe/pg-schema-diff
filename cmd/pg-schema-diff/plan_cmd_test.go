@@ -17,21 +17,21 @@ func TestParseTimeoutModifierStr(t *testing.T) {
 		expectedErrContains string
 	}{
 		{
-			opt: `pattern="normal \"pattern\"" duration=5m`,
+			opt: `pattern="normal \"pattern\"" timeout=5m`,
 			expected: timeoutModifier{
 				regex:   regexp.MustCompile(`normal "pattern"`),
 				timeout: 5 * time.Minute,
 			},
 		},
 		{
-			opt: `pattern=unquoted-no-space-pattern duration=5m`,
+			opt: `pattern=unquoted-no-space-pattern timeout=5m`,
 			expected: timeoutModifier{
 				regex:   regexp.MustCompile("unquoted-no-space-pattern"),
 				timeout: 5 * time.Minute,
 			},
 		},
 		{
-			opt:                 "duration=15m",
+			opt:                 "timeout=15m",
 			expectedErrContains: "could not find key",
 		},
 		{
@@ -39,15 +39,15 @@ func TestParseTimeoutModifierStr(t *testing.T) {
 			expectedErrContains: "could not find key",
 		},
 		{
-			opt:                 `pattern="normal" duration=5m some-unknown-key=5m`,
+			opt:                 `pattern="normal" timeout=5m some-unknown-key=5m`,
 			expectedErrContains: "unknown keys",
 		},
 		{
-			opt:                 `pattern="some-pattern" duration=invalid-duration`,
+			opt:                 `pattern="some-pattern" timeout=invalid-duration`,
 			expectedErrContains: "duration could not be parsed",
 		},
 		{
-			opt:                 `pattern="some-invalid-pattern-[" duration=5m`,
+			opt:                 `pattern="some-invalid-pattern-[" timeout=5m`,
 			expectedErrContains: "pattern regex could not be compiled",
 		},
 	} {

@@ -22,8 +22,8 @@ import (
 const (
 	defaultMaxConnections = 5
 
-	patternTimeoutModifierKey  = "pattern"
-	durationTimeoutModifierKey = "duration"
+	patternTimeoutModifierKey = "pattern"
+	timeoutTimeoutModifierKey = "timeout"
 
 	indexInsertStatementKey            = "index"
 	statementInsertStatementKey        = "statement"
@@ -157,9 +157,9 @@ func timeoutModifierFlagVar(cmd *cobra.Command, p *[]string, timeoutType string,
 	description := fmt.Sprintf("list of '%s=\"<regex>\" %s=<duration>', where if a statement matches "+
 		"the regex, the statement will have the target %s timeout. If multiple regexes match, the latest regex will "+
 		"take priority. Example: -t '%s=\"CREATE TABLE\" %s=5m'",
-		patternTimeoutModifierKey, durationTimeoutModifierKey,
+		patternTimeoutModifierKey, timeoutTimeoutModifierKey,
 		timeoutType,
-		patternTimeoutModifierKey, durationTimeoutModifierKey,
+		patternTimeoutModifierKey, timeoutTimeoutModifierKey,
 	)
 	cmd.Flags().StringArrayVarP(p, flagName, shorthand, nil, description)
 }
@@ -254,7 +254,7 @@ func parseTimeoutModifier(val string) (timeoutModifier, error) {
 		return timeoutModifier{}, err
 	}
 
-	durationStr, err := mustGetAndDeleteKey(fm, durationTimeoutModifierKey)
+	timeoutStr, err := mustGetAndDeleteKey(fm, timeoutTimeoutModifierKey)
 	if err != nil {
 		return timeoutModifier{}, err
 	}
@@ -263,9 +263,9 @@ func parseTimeoutModifier(val string) (timeoutModifier, error) {
 		return timeoutModifier{}, fmt.Errorf("unknown keys %s", keys(fm))
 	}
 
-	duration, err := time.ParseDuration(durationStr)
+	duration, err := time.ParseDuration(timeoutStr)
 	if err != nil {
-		return timeoutModifier{}, fmt.Errorf("duration could not be parsed from %q: %w", durationStr, err)
+		return timeoutModifier{}, fmt.Errorf("duration could not be parsed from %q: %w", timeoutStr, err)
 	}
 
 	re, err := regexp.Compile(regexStr)
