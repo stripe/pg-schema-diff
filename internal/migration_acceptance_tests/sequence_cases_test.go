@@ -298,6 +298,52 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Alter from no min value and change type",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						NO MINVALUE MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+	},
+	{
+		name: "Alter to no min value and change type",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						NO MINVALUE MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+	},
+	{
 		name: "Alter max value",
 		oldSchemaDDL: []string{
 			`
@@ -315,6 +361,52 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						AS INT
 						INCREMENT BY 2
 						MINVALUE 5 MAXVALUE 101
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+	},
+	{
+		name: "Alter from no max value and change type",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						MINVALUE 5 NO MAXVALUE
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+	},
+	{
+		name: "Alter to no max value and change type",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 NO MAXVALUE
 						START WITH 10 CACHE 5 CYCLE
 						OWNED BY NONE;
 			`,
