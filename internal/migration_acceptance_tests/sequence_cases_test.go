@@ -599,7 +599,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter ownership (from table to table) and sequence properties (new type does not match old table)",
+		name: "Alter ownership (from table to table) and sequence properties (new type is not compatible with old table)",
 		oldSchemaDDL: []string{
 			`
 			CREATE SEQUENCE "foobar sequence"
@@ -633,7 +633,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Alter ownership (from table to table) and sequence properties (old type does not match new table)",
+		name: "Alter ownership (from table to table) and sequence properties (old type is not compatible with new table)",
 		oldSchemaDDL: []string{
 			`
 			CREATE SEQUENCE "foobar sequence"
