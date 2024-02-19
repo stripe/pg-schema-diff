@@ -1970,28 +1970,9 @@ type sequenceSQLVertexGenerator struct {
 }
 
 func (s *sequenceSQLVertexGenerator) Add(seq schema.Sequence) ([]Statement, error) {
-	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("CREATE SEQUENCE %s\n", seq.GetFQEscapedName()))
-	sb.WriteString(fmt.Sprintf("\tAS %s\n", seq.Type))
-	sb.WriteString(fmt.Sprintf("\tINCREMENT BY %d\n", seq.Increment))
-	sb.WriteString(fmt.Sprintf("\tMINVALUE %d MAXVALUE %d\n", seq.MinValue, seq.MaxValue))
-	cycleModifier := ""
-	if !seq.Cycle {
-		cycleModifier = "NO "
-	}
-	sb.WriteString(fmt.Sprintf("\tSTART WITH %d CACHE %d %sCYCLE\n", seq.StartValue, seq.CacheSize, cycleModifier))
-
-	var hazards []MigrationHazard
-	if seq.Owner == nil {
-		hazards = append(hazards, migrationHazardSequenceCannotTrackDependencies)
-	}
-
-	return []Statement{{
-		DDL:         sb.String(),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     hazards,
-	}}, nil
+	return []Statement{
+		s.buildAddAlterSequenceStatement(seq, false),
+	}, nil
 }
 
 func (s *sequenceSQLVertexGenerator) Delete(seq schema.Sequence) ([]Statement, error) {
@@ -2013,15 +1994,65 @@ func (s *sequenceSQLVertexGenerator) Delete(seq schema.Sequence) ([]Statement, e
 }
 
 func (s *sequenceSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, error) {
+	var stmts []Statement
 	// Ownership changes handled by the sequenceOwnershipSQLVertexGenerator
 	diff.old.Owner = diff.new.Owner
+
+	// Explicitly list all the diffs supported by the alter statement, rather than just using !cmp.Equal, so we don't
+	// risk introducing a bug if we add new fields to schema.Sequence
+	if diff.old.Type != diff.new.Type ||
+		diff.old.Increment != diff.new.Increment ||
+		diff.old.MinValue != diff.new.MinValue ||
+		diff.old.MaxValue != diff.new.MaxValue ||
+		diff.old.StartValue != diff.new.StartValue ||
+		diff.old.CacheSize != diff.new.CacheSize ||
+		diff.old.Cycle != diff.new.Cycle {
+		stmts = append(stmts, s.buildAddAlterSequenceStatement(diff.new, true))
+
+		// Diffs handled by alter statement
+		diff.old.Type = diff.new.Type
+		diff.old.Increment = diff.new.Increment
+		diff.old.MinValue = diff.new.MinValue
+		diff.old.MaxValue = diff.new.MaxValue
+		diff.old.StartValue = diff.new.StartValue
+		diff.old.CacheSize = diff.new.CacheSize
+		diff.old.Cycle = diff.new.Cycle
+	}
+
 	if !cmp.Equal(diff.old, diff.new) {
-		// Technically, we could support altering expression, but I don't see the use case for it. it would require more test
-		// cases than force re-adding it, and I'm not convinced it unlocks any functionality
 		return nil, fmt.Errorf("altering sequence to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
 	}
 
-	return nil, nil
+	return stmts, nil
+}
+
+func (s *sequenceSQLVertexGenerator) buildAddAlterSequenceStatement(seq schema.Sequence, isAlter bool) Statement {
+	sb := strings.Builder{}
+	action := "CREATE"
+	if isAlter {
+		action = "ALTER"
+	}
+	sb.WriteString(fmt.Sprintf("%s SEQUENCE %s\n", action, seq.GetFQEscapedName()))
+	sb.WriteString(fmt.Sprintf("\tAS %s\n", seq.Type))
+	sb.WriteString(fmt.Sprintf("\tINCREMENT BY %d\n", seq.Increment))
+	sb.WriteString(fmt.Sprintf("\tMINVALUE %d MAXVALUE %d\n", seq.MinValue, seq.MaxValue))
+	cycleModifier := ""
+	if !seq.Cycle {
+		cycleModifier = "NO "
+	}
+	sb.WriteString(fmt.Sprintf("\tSTART WITH %d CACHE %d %sCYCLE\n", seq.StartValue, seq.CacheSize, cycleModifier))
+
+	var hazards []MigrationHazard
+	if !isAlter && seq.Owner == nil {
+		hazards = append(hazards, migrationHazardSequenceCannotTrackDependencies)
+	}
+
+	return Statement{
+		DDL:         sb.String(),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards:     hazards,
+	}
 }
 
 func (s *sequenceSQLVertexGenerator) GetSQLVertexId(seq schema.Sequence) string {

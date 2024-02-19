@@ -250,12 +250,6 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						OWNED BY NONE;
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
 	},
 	{
 		name: "Alter increment",
@@ -278,12 +272,6 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						START WITH 10 CACHE 5 CYCLE
 						OWNED BY NONE;
 			`,
-		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
 	{
@@ -308,11 +296,51 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						OWNED BY NONE;
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
+	},
+	{
+		name: "Alter from no min value and change type",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						NO MINVALUE MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
 		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+	},
+	{
+		name: "Alter to no min value and change type",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						NO MINVALUE MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
 		},
 	},
 	{
@@ -337,11 +365,51 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						OWNED BY NONE;
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
+	},
+	{
+		name: "Alter from no max value and change type",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						MINVALUE 5 NO MAXVALUE
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
 		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+	},
+	{
+		name: "Alter to no max value and change type",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 NO MAXVALUE
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			`,
 		},
 	},
 	{
@@ -366,12 +434,6 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						OWNED BY NONE;
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
 	},
 	{
 		name: "Alter cache",
@@ -394,12 +456,6 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						START WITH 10 CACHE 6 CYCLE
 						OWNED BY NONE;
 			`,
-		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
 	{
@@ -425,12 +481,6 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						START WITH 10 CACHE 5 NO CYCLE
 						OWNED BY NONE;
 			`,
-		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
 	{
@@ -638,6 +688,74 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "Alter ownership (from table to table) and sequence properties (new type is not compatible with old table)",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			CREATE TABLE "some foobar"(
+				"some id" INT
+			);
+			ALTER SEQUENCE "foobar sequence" OWNED BY "some foobar"."some id";
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 3
+						MINVALUE 6 MAXVALUE 101
+						START WITH 11 CACHE 6 NO CYCLE
+						OWNED BY NONE;
+			CREATE TABLE "some foobar"(
+				"some id" INT
+			);
+			CREATE TABLE "some other foobar"(
+				"some id" BIGINT
+			);
+			ALTER SEQUENCE "foobar sequence" OWNED BY "some other foobar"."some id";
+			`,
+		},
+	},
+	{
+		name: "Alter ownership (from table to table) and sequence properties (old type is not compatible with new table)",
+		oldSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS BIGINT
+						INCREMENT BY 2
+						MINVALUE 5 MAXVALUE 100
+						START WITH 10 CACHE 5 CYCLE
+						OWNED BY NONE;
+			CREATE TABLE "some foobar"(
+				"some id" BIGINT
+			);
+			ALTER SEQUENCE "foobar sequence" OWNED BY "some foobar"."some id";
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE SEQUENCE "foobar sequence"
+						AS INT
+						INCREMENT BY 3
+						MINVALUE 6 MAXVALUE 101
+						START WITH 11 CACHE 6 NO CYCLE
+						OWNED BY NONE;
+			CREATE TABLE "some foobar"(
+				"some id" BIGINT
+			);
+			CREATE TABLE "some other foobar"(
+				"some id" INT
+			);
+			ALTER SEQUENCE "foobar sequence" OWNED BY "some other foobar"."some id";
+			`,
 		},
 	},
 }
