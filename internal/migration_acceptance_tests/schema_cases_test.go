@@ -16,6 +16,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE TABLE fizz(
 			);
 
+			CREATE TYPE schema_1.color AS ENUM ('red', 'green', 'blue');
+
 			CREATE SEQUENCE schema_1.foobar_sequence
 			    AS BIGINT
 				INCREMENT BY 2
@@ -46,6 +48,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
 			    bar SERIAL NOT NULL,
 			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				color schema_1.color DEFAULT 'green',
 			    PRIMARY KEY (foo, id),
 				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
@@ -83,6 +86,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE TABLE fizz(
 			);
 
+			CREATE TYPE schema_1.color AS ENUM ('red', 'green', 'blue');
+
 			CREATE SEQUENCE schema_1.foobar_sequence
 			    AS BIGINT
 				INCREMENT BY 2
@@ -113,6 +118,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
 			    bar SERIAL NOT NULL,
 			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				color schema_1.color DEFAULT 'green',
 			    PRIMARY KEY (foo, id),
 				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
@@ -150,7 +156,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Add schema, drop schema, Drop table, Add Table, Drop Seq, Add Seq, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers, Create Extension, Drop Extension, Create Index Using Extension",
+		name: "Add schema, drop schema, Add enum, Drop enum, Drop table, Add Table, Drop Seq, Add Seq, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers, Create Extension, Drop Extension, Create Index Using Extension",
 		oldSchemaDDL: []string{
 			`
 			CREATE SCHEMA schema_1;
@@ -160,6 +166,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE TABLE fizz(
 			);
+
+			CREATE TYPE schema_1.color AS ENUM ('red', 'green', 'blue');
 
 			CREATE SEQUENCE schema_2.foobar_sequence
 			    AS BIGINT
@@ -198,6 +206,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    bar SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL,
 			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				color schema_1.color DEFAULT 'green',
 				UNIQUE (foo, bar)
 			);
 			CREATE INDEX foobar_normal_idx ON foobar USING hash (fizz);
@@ -232,6 +241,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 
 			CREATE TABLE fizz(
 			);
+
+			CREATE TYPE new_color AS ENUM ('yellow', 'orange', 'cyan');
 
 			CREATE SEQUENCE schema_3.new_foobar_sequence
 			    AS SMALLINT
@@ -269,6 +280,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    new_fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			    id INT PRIMARY KEY,
 			    version INT NOT NULL DEFAULT 0,
+			    new_color new_color DEFAULT 'cyan',
 			    new_bar SMALLSERIAL NOT NULL,
 				new_foo VARCHAR(255) DEFAULT '' NOT NULL CHECK ( new_foo IS NOT NULL),
 				UNIQUE (new_foo, new_bar)

@@ -49,6 +49,12 @@ var (
 
 			CREATE EXTENSION pg_trgm WITH SCHEMA schema_1 VERSION '1.6';
 			CREATE EXTENSION pg_visibility WITH SCHEMA schema_filtered_1 VERSION '1.2';
+			CREATE EXTENSION pg_stat_statements VERSION '1.9';
+
+			CREATE TYPE foobar_enum AS ENUM ('foobar_1', 'foobar_2', 'foobar_3');
+			CREATE TYPE schema_1.foobar_enum AS ENUM ('foobar_1', 'foobar_2');
+			-- Validate types are filtered out
+			CREATE TYPE schema_filtered_1.foobar_enum AS ENUM ('foobar_1', 'foobar_2');		
 
 			CREATE SEQUENCE schema_1.foobar_sequence
 			    AS BIGINT
@@ -156,7 +162,7 @@ var (
 				-- Reference a function in a filtered out schema. The trigger should still be included.
 				EXECUTE PROCEDURE public.increment_version();
 		`},
-			expectedHash: "8c6423fc35510e07",
+			expectedHash: "44052eb962385897",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -166,10 +172,27 @@ var (
 				Extensions: []Extension{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{
-							EscapedName: EscapeIdentifier("pg_trgm"),
 							SchemaName:  "schema_1",
+							EscapedName: EscapeIdentifier("pg_trgm"),
 						},
 						Version: "1.6",
+					},
+					{
+						SchemaQualifiedName: SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: EscapeIdentifier("pg_stat_statements"),
+						},
+						Version: "1.9",
+					},
+				},
+				Enums: []Enum{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_enum\""},
+						Labels:              []string{"foobar_1", "foobar_2", "foobar_3"},
+					},
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foobar_enum\""},
+						Labels:              []string{"foobar_1", "foobar_2"},
 					},
 				},
 				Tables: []Table{
@@ -411,7 +434,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "267c688b29df7711",
+			expectedHash: "1609376865697f2d",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -903,7 +926,7 @@ var (
 			name: "Empty Schema (aside from public schema)",
 			ddl:  nil,
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash: "7dba1f61f72422fd",
+			expectedHash: "e63f48c273376e85",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
