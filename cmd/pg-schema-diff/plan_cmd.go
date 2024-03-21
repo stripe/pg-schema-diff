@@ -85,6 +85,8 @@ type (
 
 		schemaFlags schemaFlags
 
+		dataPackNewTables bool
+
 		statementTimeoutModifiers []string
 		lockTimeoutModifiers      []string
 		insertStatements          []string
@@ -120,6 +122,8 @@ func createPlanFlags(cmd *cobra.Command) *planFlags {
 	schemaSourceFlagsVar(cmd, &flags.dbSchemaSourceFlags)
 
 	schemaFlagsVar(cmd, &flags.schemaFlags)
+
+	cmd.Flags().BoolVar(&flags.dataPackNewTables, "data-pack-new-tables", true, "If set, will data pack new tables in the plan to minimize table size (re-arranges columns).")
 
 	timeoutModifierFlagVar(cmd, &flags.statementTimeoutModifiers, "statement", "t")
 	timeoutModifierFlagVar(cmd, &flags.lockTimeoutModifiers, "lock", "l")
@@ -170,6 +174,11 @@ func parsePlanConfig(p planFlags) (planConfig, error) {
 		return planConfig{}, err
 	}
 
+	opts := parseSchemaConfig(p.schemaFlags)
+	if p.dataPackNewTables {
+		opts = append(opts, diff.WithDataPackNewTables())
+	}
+
 	var statementTimeoutModifiers []timeoutModifier
 	for _, s := range p.statementTimeoutModifiers {
 		stm, err := parseTimeoutModifier(s)
@@ -199,7 +208,7 @@ func parsePlanConfig(p planFlags) (planConfig, error) {
 
 	return planConfig{
 		schemaSourceFactory:       schemaSourceFactory,
-		opts:                      parseSchemaConfig(p.schemaFlags),
+		opts:                      opts,
 		statementTimeoutModifiers: statementTimeoutModifiers,
 		lockTimeoutModifiers:      lockTimeoutModifiers,
 		insertStatements:          insertStatements,
@@ -367,7 +376,6 @@ func generatePlan(ctx context.Context, logger log.Logger, connConfig *pgx.ConnCo
 		append(
 			planConfig.opts,
 			diff.WithTempDbFactory(tempDbFactory),
-			diff.WithDataPackNewTables(),
 		)...,
 	)
 	if err != nil {
