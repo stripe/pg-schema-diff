@@ -51,6 +51,7 @@ func (o SchemaQualifiedName) IsEmpty() bool {
 type Schema struct {
 	NamedSchemas          []NamedSchema
 	Extensions            []Extension
+	Enums                 []Enum
 	Tables                []Table
 	Indexes               []Index
 	ForeignKeyConstraints []ForeignKeyConstraint
@@ -63,6 +64,8 @@ type Schema struct {
 // Useful for hashing and testing
 func (s Schema) Normalize() Schema {
 	s.NamedSchemas = sortSchemaObjectsByName(s.NamedSchemas)
+	s.Extensions = sortSchemaObjectsByName(s.Extensions)
+	s.Enums = sortSchemaObjectsByName(s.Enums)
 
 	var normTables []Table
 	for _, table := range sortSchemaObjectsByName(s.Tables) {
@@ -84,7 +87,6 @@ func (s Schema) Normalize() Schema {
 	s.Indexes = sortSchemaObjectsByName(s.Indexes)
 	s.ForeignKeyConstraints = sortSchemaObjectsByName(s.ForeignKeyConstraints)
 	s.Sequences = sortSchemaObjectsByName(s.Sequences)
-	s.Extensions = sortSchemaObjectsByName(s.Extensions)
 
 	var normFunctions []Function
 	for _, function := range sortSchemaObjectsByName(s.Functions) {
@@ -132,11 +134,6 @@ const (
 	ReplicaIdentityIndex   ReplicaIdentity = "i"
 )
 
-type Extension struct {
-	SchemaQualifiedName
-	Version string
-}
-
 // NamedSchema represents a schema in the database. We call it NamedSchema to distinguish it from the Postgres Database
 // schema
 type NamedSchema struct {
@@ -145,6 +142,16 @@ type NamedSchema struct {
 
 func (n NamedSchema) GetName() string {
 	return n.Name
+}
+
+type Extension struct {
+	SchemaQualifiedName
+	Version string
+}
+
+type Enum struct {
+	SchemaQualifiedName
+	Labels []string
 }
 
 type Table struct {
@@ -507,6 +514,13 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("starting extensions future: %w", err)
 	}
 
+	enumsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Enum, error) {
+		return s.fetchEnums(ctx)
+	})
+	if err != nil {
+		return Schema{}, fmt.Errorf("starting enums future: %w", err)
+	}
+
 	tablesFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Table, error) {
 		return s.fetchTables(ctx)
 	})
@@ -559,6 +573,11 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("getting extensions: %w", err)
 	}
 
+	enums, err := enumsFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting enums: %w", err)
+	}
+
 	tables, err := tablesFuture.Get(ctx)
 	if err != nil {
 		return Schema{}, fmt.Errorf("getting tables: %w", err)
@@ -592,6 +611,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 	return Schema{
 		NamedSchemas:          schemas,
 		Extensions:            extensions,
+		Enums:                 enums,
 		Tables:                tables,
 		Indexes:               indexes,
 		ForeignKeyConstraints: fkCons,
@@ -654,6 +674,34 @@ func (s *schemaFetcher) fetchExtensions(ctx context.Context) ([]Extension, error
 	)
 
 	return extensions, nil
+}
+
+func (s *schemaFetcher) fetchEnums(ctx context.Context) ([]Enum, error) {
+	rawEnums, err := s.q.GetEnums(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetEnums: %w", err)
+	}
+
+	var enums []Enum
+	for _, rawEnum := range rawEnums {
+		enums = append(enums, Enum{
+			SchemaQualifiedName: SchemaQualifiedName{
+				SchemaName:  rawEnum.EnumSchemaName,
+				EscapedName: EscapeIdentifier(rawEnum.EnumName),
+			},
+			Labels: rawEnum.EnumLabels,
+		})
+	}
+
+	enums = filterSliceByName(
+		enums,
+		func(enum Enum) SchemaQualifiedName {
+			return enum.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
+	return enums, nil
 }
 
 func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
