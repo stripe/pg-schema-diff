@@ -240,6 +240,63 @@ func (q *Queries) GetDependsOnFunctions(ctx context.Context, arg GetDependsOnFun
 	return items, nil
 }
 
+const getEnums = `-- name: GetEnums :many
+SELECT
+    pg_type.typname::TEXT AS enum_name,
+    type_namespace.nspname::TEXT AS enum_schema_name,
+    (
+        SELECT ARRAY_AGG(pg_enum.enumlabel ORDER BY pg_enum.enumsortorder)
+        FROM pg_catalog.pg_enum
+        WHERE pg_enum.enumtypid = pg_type.oid
+    )::TEXT [] AS enum_labels
+FROM pg_catalog.pg_type AS pg_type
+INNER JOIN
+    pg_catalog.pg_namespace AS type_namespace
+    ON type_namespace.oid = pg_type.typnamespace
+WHERE
+    pg_type.typtype = 'e'
+    AND type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    -- Exclude enums belonging to extensions
+    AND NOT EXISTS (
+        SELECT ext_depend.objid
+        FROM pg_catalog.pg_depend AS ext_depend
+        WHERE
+            ext_depend.classid = 'pg_class'::REGCLASS
+            AND ext_depend.objid = pg_type.oid
+            AND ext_depend.deptype = 'e'
+    )
+`
+
+type GetEnumsRow struct {
+	EnumName       string
+	EnumSchemaName string
+	EnumLabels     []string
+}
+
+func (q *Queries) GetEnums(ctx context.Context) ([]GetEnumsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getEnums)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetEnumsRow
+	for rows.Next() {
+		var i GetEnumsRow
+		if err := rows.Scan(&i.EnumName, &i.EnumSchemaName, pq.Array(&i.EnumLabels)); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getExtensions = `-- name: GetExtensions :many
 SELECT
     ext.oid,
@@ -591,7 +648,7 @@ LEFT JOIN
 WHERE
     seq_ns.nspname NOT IN ('pg_catalog', 'information_schema')
     AND seq_ns.nspname !~ '^pg_toast'
-    -- It doesn't belong to an extension
+    -- Exclude sequences belonging to extensions
     AND NOT EXISTS (
         SELECT ext_depend.objid
         FROM pg_catalog.pg_depend AS ext_depend

@@ -87,6 +87,14 @@ type (
 		oldAndNew[schema.NamedSchema]
 	}
 
+	enumDiff struct {
+		oldAndNew[schema.Enum]
+	}
+
+	extensionDiff struct {
+		oldAndNew[schema.Extension]
+	}
+
 	columnDiff struct {
 		oldAndNew[schema.Column]
 		oldOrdering int
@@ -122,16 +130,13 @@ type (
 	triggerDiff struct {
 		oldAndNew[schema.Trigger]
 	}
-
-	extensionDiff struct {
-		oldAndNew[schema.Extension]
-	}
 )
 
 type schemaDiff struct {
 	oldAndNew[schema.Schema]
 	namedSchemaDiffs          listDiff[schema.NamedSchema, namedSchemaDiff]
 	extensionDiffs            listDiff[schema.Extension, extensionDiff]
+	enumDiffs                 listDiff[schema.Enum, enumDiff]
 	tableDiffs                listDiff[schema.Table, tableDiff]
 	indexDiffs                listDiff[schema.Index, indexDiff]
 	foreignKeyConstraintDiffs listDiff[schema.ForeignKeyConstraint, foreignKeyConstraintDiff]
@@ -207,6 +212,18 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing extensions: %w", err)
+	}
+
+	enumDiffs, err := diffLists(old.Enums, new.Enums, func(old, new schema.Enum, _, _ int) (enumDiff, bool, error) {
+		return enumDiff{
+			oldAndNew[schema.Enum]{
+				old: old,
+				new: new,
+			},
+		}, false, nil
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing enums: %w", err)
 	}
 
 	tableDiffs, err := diffLists(old.Tables, new.Tables, buildTableDiff)
@@ -320,6 +337,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		},
 		namedSchemaDiffs:          schemaDiffs,
 		extensionDiffs:            extensionDiffs,
+		enumDiffs:                 enumDiffs,
 		tableDiffs:                tableDiffs,
 		indexDiffs:                indexesDiff,
 		foreignKeyConstraintDiffs: foreignKeyConstraintDiffs,
@@ -520,6 +538,11 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving extension sql graphs: %w", err)
 	}
 
+	enumStatements, err := diff.enumDiffs.resolveToSQLGroupedByEffect(&enumSQLGenerator{})
+	if err != nil {
+		return nil, fmt.Errorf("resolving enum sql graphs: %w", err)
+	}
+
 	attachPartitionSQLVertexGenerator := newAttachPartitionSQLVertexGenerator(indexesInNewSchemaByTableName, addedTablesByName)
 	attachPartitionGraphs, err := diff.tableDiffs.resolveToSQLGraph(attachPartitionSQLVertexGenerator)
 	if err != nil {
@@ -619,7 +642,10 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	statements = append(statements, namedSchemaStatements.Alters...)
 	statements = append(statements, extensionStatements.Adds...)
 	statements = append(statements, extensionStatements.Alters...)
+	statements = append(statements, enumStatements.Adds...)
+	statements = append(statements, enumStatements.Alters...)
 	statements = append(statements, graphStatements...)
+	statements = append(statements, enumStatements.Deletes...)
 	statements = append(statements, extensionStatements.Deletes...)
 	statements = append(statements, namedSchemaStatements.Deletes...)
 	return statements, nil
