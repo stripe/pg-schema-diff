@@ -924,7 +924,21 @@ var (
 		},
 		{
 			name: "Empty Schema (aside from public schema)",
-			ddl:  nil,
+			ddl: []string{`
+				-- Create temporary objects to ensure they are excluded
+				CREATE TEMP TABLE temp_table (
+					id SERIAL PRIMARY KEY,
+					description TEXT
+				);
+				CREATE TEMP SEQUENCE temp_seq;
+				CREATE OR REPLACE FUNCTION pg_temp.temp_func()
+				RETURNS integer AS $$
+				BEGIN
+				RETURN 1;
+				END;
+				$$ LANGUAGE plpgsql;
+				CREATE TYPE pg_temp.color AS ENUM ('red', 'green', 'blue');
+			`},
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
 			expectedHash: "e63f48c273376e85",
 			expectedSchema: Schema{
