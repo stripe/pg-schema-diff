@@ -3,7 +3,8 @@ SELECT nspname::TEXT AS schema_name
 FROM pg_catalog.pg_namespace
 WHERE
     nspname NOT IN ('pg_catalog', 'information_schema')
-    AND nspname !~ '^pg_toast';
+    AND nspname !~ '^pg_toast'
+    AND nspname !~ '^pg_temp';
 
 -- name: GetTables :many
 SELECT
@@ -38,6 +39,7 @@ LEFT JOIN
 WHERE
     table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND table_namespace.nspname !~ '^pg_toast'
+    AND table_namespace.nspname !~ '^pg_temp'
     AND (c.relkind = 'r' OR c.relkind = 'p');
 
 -- name: GetColumnsForTable :many
@@ -103,6 +105,7 @@ LEFT JOIN
 WHERE
     table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND table_namespace.nspname !~ '^pg_toast'
+    AND table_namespace.nspname !~ '^pg_temp'
     AND (c.relkind = 'i' OR c.relkind = 'I');
 
 -- name: GetColumnsForIndex :many
@@ -141,6 +144,7 @@ INNER JOIN
 WHERE
     table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND table_namespace.nspname !~ '^pg_toast'
+    AND table_namespace.nspname !~ '^pg_temp'
     AND pg_constraint.contype = 'c'
     AND pg_constraint.conislocal;
 
@@ -168,6 +172,7 @@ INNER JOIN pg_catalog.pg_namespace AS foreign_table_namespace
 WHERE
     constraint_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND constraint_namespace.nspname !~ '^pg_toast'
+    AND constraint_namespace.nspname !~ '^pg_temp'
     AND pg_constraint.contype = 'f'
     AND pg_constraint.conislocal;
 
@@ -191,6 +196,7 @@ INNER JOIN
 WHERE
     proc_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND proc_namespace.nspname !~ '^pg_toast'
+    AND proc_namespace.nspname !~ '^pg_temp'
     AND pg_proc.prokind = 'f'
     -- Exclude functions belonging to extensions
     AND NOT EXISTS (
@@ -245,6 +251,7 @@ INNER JOIN
 WHERE
     owning_c_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND owning_c_namespace.nspname !~ '^pg_toast'
+    AND owning_c_namespace.nspname !~ '^pg_temp'
     AND trig.tgparentid = 0
     AND NOT trig.tgisinternal;
 
@@ -282,6 +289,7 @@ LEFT JOIN
 WHERE
     seq_ns.nspname NOT IN ('pg_catalog', 'information_schema')
     AND seq_ns.nspname !~ '^pg_toast'
+    AND seq_ns.nspname !~ '^pg_temp'
     -- Exclude sequences belonging to extensions
     AND NOT EXISTS (
         SELECT ext_depend.objid
@@ -304,7 +312,8 @@ INNER JOIN
     ON ext.extnamespace = extension_namespace.oid
 WHERE
     extension_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND extension_namespace.nspname !~ '^pg_toast';
+    AND extension_namespace.nspname !~ '^pg_toast'
+    AND extension_namespace.nspname !~ '^pg_temp';
 
 
 -- name: GetEnums :many
@@ -324,6 +333,7 @@ WHERE
     pg_type.typtype = 'e'
     AND type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
     -- Exclude enums belonging to extensions
     AND NOT EXISTS (
         SELECT ext_depend.objid
