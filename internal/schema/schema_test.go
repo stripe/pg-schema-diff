@@ -99,11 +99,27 @@ var (
 				PRIMARY KEY(id, version),
 				CHECK ( function_with_dependencies(id, id) > 0)
 			);
+			ALTER TABLE schema_2.foo ENABLE ROW LEVEL SECURITY;
 			ALTER TABLE schema_2.foo ADD CONSTRAINT author_content_check CHECK ( LENGTH(content) > 0 AND LENGTH(author) > 0 ) NO INHERIT NOT VALID;
 			CREATE INDEX some_idx ON schema_2.foo (created_at DESC, author ASC);
 			CREATE UNIQUE INDEX some_unique_idx ON schema_2.foo (content);
 			CREATE INDEX some_gin_idx ON schema_2.foo USING GIN (author schema_1.gin_trgm_ops);
 			ALTER TABLE schema_2.foo REPLICA IDENTITY USING INDEX some_unique_idx;
+
+			CREATE POLICY foo_policy_1 ON schema_2.foo
+				AS PERMISSIVE
+				FOR ALL
+				TO PUBLIC
+				USING (author = current_user)
+				WITH CHECK (version > 0);
+			CREATE ROLE some_role_1;
+			CREATE ROLE some_role_2;
+			CREATE POLICY foo_policy_2 ON schema_2.foo
+				AS RESTRICTIVE
+				FOR INSERT
+				TO some_role_2, some_role_1
+				WITH CHECK (version > 0);
+
 
 			CREATE FUNCTION increment_version() RETURNS TRIGGER AS $$
 				BEGIN
@@ -131,6 +147,13 @@ var (
 				id INT NOT NULL,
 				CHECK (id > 0)
 			);
+			ALTER TABLE schema_1.foo ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE schema_1.foo FORCE ROW LEVEL SECURITY;
+			CREATE POLICY foo_policy_1 ON schema_1.foo
+				AS RESTRICTIVE
+				FOR UPDATE
+				TO PUBLIC
+				WITH CHECK (id > 0);
 
 			CREATE TABLE schema_1.foo_fk(
 				id INT,
@@ -161,8 +184,14 @@ var (
 				WHEN (OLD.* IS DISTINCT FROM NEW.*)
 				-- Reference a function in a filtered out schema. The trigger should still be included.
 				EXECUTE PROCEDURE public.increment_version();
+			-- Validate policies are filtered out
+			CREATE POLICY foo_policy_1 ON schema_filtered_1.foo_fk
+				AS PERMISSIVE
+				FOR SELECT
+				TO PUBLIC
+				USING (version > 0);
 		`},
-			expectedHash: "44052eb962385897",
+			expectedHash: "ffcf26204e89f536",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -219,7 +248,26 @@ var (
 								KeyColumns: []string{"id"},
 							},
 						},
+						Policies: []Policy{
+							{
+								EscapedName:     "\"foo_policy_1\"",
+								IsPermissive:    true,
+								AppliesTo:       []string{"PUBLIC"},
+								Cmd:             AllPolicyCmd,
+								UsingExpression: "(author = CURRENT_USER)",
+								CheckExpression: "(version > 0)",
+								Columns:         []string{"author", "version"},
+							},
+							{
+								EscapedName:     "\"foo_policy_2\"",
+								AppliesTo:       []string{"some_role_1", "some_role_2"},
+								Cmd:             InsertPolicyCmd,
+								CheckExpression: "(version > 0)",
+								Columns:         []string{"version"},
+							},
+						},
 						ReplicaIdentity: ReplicaIdentityIndex,
+						RLSEnabled:      true,
 					},
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foo\""},
@@ -229,7 +277,19 @@ var (
 						CheckConstraints: []CheckConstraint{
 							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
 						},
+						Policies: []Policy{
+							{
+								EscapedName:     "\"foo_policy_1\"",
+								IsPermissive:    false,
+								AppliesTo:       []string{"PUBLIC"},
+								Cmd:             UpdatePolicyCmd,
+								CheckExpression: "(id > 0)",
+								Columns:         []string{"id"},
+							},
+						},
 						ReplicaIdentity: ReplicaIdentityDefault,
+						RLSEnabled:      true,
+						RLSForced:       true,
 					},
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foo_fk\""},
@@ -434,7 +494,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "1609376865697f2d",
+			expectedHash: "481b62a68155716d",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -1066,10 +1126,24 @@ func TestSchemaTestCases(t *testing.T) {
 }
 
 func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getDBTX func(db *sql.DB) (queries.DBTX, io.Closer)) {
+	defer func() {
+		db, err := sql.Open("pgx", engine.GetPostgresDatabaseDSN())
+		require.NoError(t, err)
+		defer db.Close()
+		require.NoError(t, pgengine.ResetInstance(context.Background(), db))
+	}()
+
 	db, err := engine.CreateDatabase()
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, db.DropDB())
+	}()
+
 	connPool, err := sql.Open("pgx", db.GetDSN())
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, connPool.Close())
+	}()
 
 	for _, stmt := range testCase.ddl {
 		_, err := connPool.Exec(stmt)
@@ -1110,9 +1184,6 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 		// Optionally assert that the hash matches the expected hash
 		assert.Equal(t, testCase.expectedHash, fetchedSchemaHash)
 	}
-
-	require.NoError(t, connPool.Close())
-	require.NoError(t, db.DropDB())
 }
 
 func TestIdxDefStmtToCreateIdxConcurrently(t *testing.T) {

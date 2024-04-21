@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -42,7 +43,9 @@ type (
 	planFactory func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error)
 
 	acceptanceTestCase struct {
-		name         string
+		name string
+		// roles is a list of roles that should be created before the DDL is applied
+		roles        []string
 		oldSchemaDDL []string
 		newSchemaDDL []string
 
@@ -88,12 +91,16 @@ func (suite *acceptanceTestSuite) runTestCases(acceptanceTestCases []acceptanceT
 			suite.Run("vanilla", func() {
 				suite.runSubtest(tc, tc.vanillaExpectations, nil)
 			})
-			suite.Run("with data packing (and ignoring column order)", func() {
-				suite.runSubtest(tc, tc.dataPackingExpectations, []diff.PlanOpt{
-					diff.WithDataPackNewTables(),
-					diff.WithLogger(log.SimpleLogger()),
+			// Only run the data packing test if there are expectations for it. We should strip out the embedded
+			// data packing tests and make them their own tests to simplify the test suite.
+			if !reflect.DeepEqual(tc.dataPackingExpectations, expectations{}) {
+				suite.Run("with data packing (and ignoring column order)", func() {
+					suite.runSubtest(tc, tc.dataPackingExpectations, []diff.PlanOpt{
+						diff.WithDataPackNewTables(),
+						diff.WithLogger(log.SimpleLogger()),
+					})
 				})
-			})
+			}
 		})
 	}
 }
@@ -105,6 +112,19 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	if expects.outputState == nil {
 		expects.outputState = tc.newSchemaDDL
 	}
+
+	// Create roles since they are global
+	rootDb, err := sql.Open("pgx", suite.pgEngine.GetPostgresDatabaseDSN())
+	suite.Require().NoError(err)
+	defer rootDb.Close()
+	for _, r := range tc.roles {
+		_, err := rootDb.Exec(fmt.Sprintf("CREATE ROLE %s", r))
+		suite.Require().NoError(err)
+	}
+	defer func() {
+		// This will drop the roles (and attempt to reset other cluster-level state)
+		suite.Require().NoError(pgengine.ResetInstance(context.Background(), rootDb))
+	}()
 
 	// Apply old schema DDL to old DB
 	oldDb, err := suite.pgEngine.CreateDatabase()

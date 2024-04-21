@@ -52,6 +52,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    PRIMARY KEY (foo, id),
 				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
+			ALTER TABLE schema_1.foobar ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE schema_1.foobar FORCE ROW LEVEL SECURITY;
 
 			CREATE TABLE foobar_1 PARTITION of schema_1.foobar(
 			    fizz NOT NULL
@@ -63,6 +65,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE UNIQUE INDEX foobar_unique_idx ON schema_1.foobar(foo, fizz);
 			-- local indexes
 			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, fizz);
+
+			CREATE POLICY foobar_foo_policy ON schema_1.foobar FOR SELECT TO PUBLIC USING (foo = current_user);
 
 			CREATE table bar(
 			    id  INT PRIMARY KEY,
@@ -122,6 +126,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			    PRIMARY KEY (foo, id),
 				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
+			ALTER TABLE schema_1.foobar ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE schema_1.foobar FORCE ROW LEVEL SECURITY;
 
 			CREATE TABLE foobar_1 PARTITION of schema_1.foobar(
 			    fizz NOT NULL
@@ -133,6 +139,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE UNIQUE INDEX foobar_unique_idx ON schema_1.foobar(foo, fizz);
 			-- local indexes
 			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, fizz);
+
+			CREATE POLICY foobar_foo_policy ON schema_1.foobar FOR SELECT TO PUBLIC USING (foo = current_user);
 
 			CREATE table bar(
 			    id  INT PRIMARY KEY,
@@ -156,7 +164,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Add schema, drop schema, Add enum, Drop enum, Drop table, Add Table, Drop Seq, Add Seq, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers, Create Extension, Drop Extension, Create Index Using Extension",
+		name:  "Add schema, drop schema, Add enum, Drop enum, Drop table, Add Table, Drop Seq, Add Seq, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers, Create Extension, Drop Extension, Create Index Using Extension, Add policies, Drop policies",
+		roles: []string{"role_1"},
 		oldSchemaDDL: []string{
 			`
 			CREATE SCHEMA schema_1;
@@ -212,6 +221,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE INDEX foobar_normal_idx ON foobar USING hash (fizz);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, fizz DESC);
 
+			CREATE POLICY foobar_foo_policy ON foobar FOR SELECT TO PUBLIC USING (foo = current_user);
+
 			CREATE TRIGGER "some trigger"
 				BEFORE UPDATE ON foobar
 				FOR EACH ROW
@@ -230,6 +241,9 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE INDEX bar_normal_idx ON schema_2.bar(bar);
 			CREATE INDEX bar_another_normal_id ON schema_2.bar(bar DESC, fizz DESC);
 			CREATE UNIQUE INDEX bar_unique_idx on schema_2.bar(fizz, buzz);
+
+			CREATE POLICY bar_bar_policy ON schema_2.bar FOR INSERT TO role_1 WITH CHECK (bar > 5.1);
+			CREATE POLICY bar_foo_policy ON schema_2.bar FOR SELECT TO PUBLIC USING (foo = 'some_foo');
 			`,
 		},
 		newSchemaDDL: []string{
@@ -288,6 +302,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			ALTER TABLE "New_table" ADD CONSTRAINT "new_fzz_check" CHECK ( new_fizz < CURRENT_TIMESTAMP - interval '1 month' ) NO INHERIT NOT VALID;
 			CREATE UNIQUE INDEX foobar_unique_idx ON "New_table"(new_foo, new_fizz);
 
+			CREATE POLICY "New_table_foo_policy" ON "New_table" FOR DELETE TO PUBLIC USING (version > 0);
+
 			CREATE TRIGGER "some trigger"
 				BEFORE UPDATE ON "New_table"
 				FOR EACH ROW
@@ -309,6 +325,8 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE UNIQUE INDEX bar_unique_idx ON schema_2.bar(fizz, buzz);
 			CREATE INDEX gin_index ON schema_2.bar USING gin (quux gin_trgm_ops);
 
+			CREATE POLICY bar_foo_policy ON schema_2.bar FOR SELECT TO role_1 USING (foo = 'some_foo' AND quux = 'some_quux');
+
 			CREATE FUNCTION check_content() RETURNS TRIGGER AS $$
 				BEGIN
 				    IF LENGTH(NEW.id) == 0 THEN
@@ -325,6 +343,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+			diff.MigrationHazardTypeAuthzUpdate,
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeHasUntrackableDependencies,
 			diff.MigrationHazardTypeIndexBuild,
@@ -414,6 +433,6 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestSchemaAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestSchemaTestCases() {
 	suite.runTestCases(schemaAcceptanceTests)
 }

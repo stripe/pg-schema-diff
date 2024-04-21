@@ -568,6 +568,6 @@ var checkConstraintCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestCheckConstraintAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestCheckConstraintTestCases() {
 	suite.runTestCases(checkConstraintCases)
 }

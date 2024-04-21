@@ -177,6 +177,6 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestBackCompatAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestBackCompatTestCases() {
 	suite.runTestCases(backCompatAcceptanceTestCases)
 }
