@@ -596,6 +596,15 @@ WHERE
     nspname NOT IN ('pg_catalog', 'information_schema')
     AND nspname !~ '^pg_toast'
     AND nspname !~ '^pg_temp'
+    -- Exclude schemas owned by extensions
+    AND NOT EXISTS (
+        SELECT depend.objid
+        FROM pg_catalog.pg_depend AS depend
+        WHERE
+            depend.classid = 'pg_namespace'::REGCLASS
+            AND depend.objid = pg_namespace.oid
+            AND depend.deptype = 'e'
+    )
 `
 
 func (q *Queries) GetSchemas(ctx context.Context) ([]string, error) {
