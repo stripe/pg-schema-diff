@@ -126,6 +126,6 @@ var enumAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (s *acceptanceTestSuite) TestEnumTestCases() {
-	s.runTestCases(enumAcceptanceTestCases)
+func (suite *acceptanceTestSuite) TestEnumTestCases() {
+	suite.runTestCases(enumAcceptanceTestCases)
 }

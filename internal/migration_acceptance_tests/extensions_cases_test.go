@@ -72,6 +72,6 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestExtensionAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestExtensionTestCases() {
 	suite.runTestCases(extensionAcceptanceTestCases)
 }

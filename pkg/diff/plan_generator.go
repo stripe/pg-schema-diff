@@ -282,7 +282,7 @@ func assertMigratedSchemaMatchesTarget(migratedSchema, targetSchema schema.Schem
 		for _, stmt := range toTargetSchemaStmts {
 			stmtsStrs = append(stmtsStrs, stmt.DDL)
 		}
-		return fmt.Errorf("diff detected:\n%s", strings.Join(stmtsStrs, "\n"))
+		return fmt.Errorf("validating plan failed. diff detected:\n%s", strings.Join(stmtsStrs, "\n"))
 	}
 
 	return nil

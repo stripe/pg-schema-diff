@@ -109,6 +109,7 @@ type (
 		oldAndNew[schema.Table]
 		columnsDiff         listDiff[schema.Column, columnDiff]
 		checkConstraintDiff listDiff[schema.CheckConstraint, checkConstraintDiff]
+		policiesDiff        listDiff[schema.Policy, policyDiff]
 	}
 
 	indexDiff struct {
@@ -244,9 +245,9 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing indexes: %w", err)
 	}
-
 	foreignKeyConstraintDiffs, err := diffLists(old.ForeignKeyConstraints, new.ForeignKeyConstraints, func(old, new schema.ForeignKeyConstraint, _, _ int) (foreignKeyConstraintDiff, bool, error) {
 		if _, isOnNewTable := addedTablesByName[new.OwningTable.GetName()]; isOnNewTable {
+
 			// If the owning table is new, then it must be re-created (this occurs if the base table has been
 			// re-created). In other words, a foreign key constraint must be re-created if the owning table or referenced
 			// table is re-created
@@ -400,7 +401,21 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 		},
 	)
 	if err != nil {
-		return tableDiff{}, false, fmt.Errorf("diffing lists: %w", err)
+		return tableDiff{}, false, fmt.Errorf("diffing check cons: %w", err)
+	}
+
+	var nilableOldTable *schema.Table
+	if !cmp.Equal(oldTable, schema.Table{}) {
+		nilableOldTable = &oldTable
+	}
+	psg, err := newPolicySQLVertexGenerator(nilableOldTable, newTable)
+	if err != nil {
+		return tableDiff{}, false, fmt.Errorf("creating policy sql vertex generator: %w", err)
+	}
+	policiesDiff, err := buildPolicyDiffs(psg, oldTable.Policies, newTable.Policies)
+	if err != nil {
+		return tableDiff{}, false, fmt.Errorf("diffing policies: %w", err)
+
 	}
 
 	return tableDiff{
@@ -410,6 +425,7 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 		},
 		columnsDiff:         columnsDiff,
 		checkConstraintDiff: checkConsDiff,
+		policiesDiff:        policiesDiff,
 	}, false, nil
 }
 
@@ -677,8 +693,6 @@ type tableSQLVertexGenerator struct {
 	tableDiffsByName        map[string]tableDiff
 }
 
-var _ sqlVertexGenerator[schema.Table, tableDiff] = &tableSQLVertexGenerator{}
-
 func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 	if table.IsPartition() {
 		if table.IsPartitioned() {
@@ -686,6 +700,9 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		}
 		if len(table.CheckConstraints) > 0 {
 			return nil, fmt.Errorf("check constraints on partitions: %w", ErrNotImplemented)
+		}
+		if len(table.Policies) > 0 {
+			return nil, fmt.Errorf("policies on partitions: %w", ErrNotImplemented)
 		}
 		// We attach the partitions separately. So the partition must have all the same check constraints
 		// as the original table
@@ -722,7 +739,7 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 			return nil, fmt.Errorf("generating add check constraint statements for check constraint %s: %w", checkCon.Name, err)
 		}
 		// Remove hazards from statements since the table is brand new
-		stmts = append(stmts, stripMigrationHazards(addConStmts)...)
+		stmts = append(stmts, stripMigrationHazards(addConStmts...)...)
 	}
 
 	if table.ReplicaIdentity != schema.ReplicaIdentityDefault {
@@ -734,6 +751,26 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		// Remove hazards from statements since the table is brand new
 		alterReplicaIdentityStmt.Hazards = nil
 		stmts = append(stmts, alterReplicaIdentityStmt)
+	}
+
+	psg, err := newPolicySQLVertexGenerator(nil, table)
+	if err != nil {
+		return nil, fmt.Errorf("creating policy sql vertex generator: %w", err)
+	}
+	for _, policy := range table.Policies {
+		addPolicyStmts, err := psg.Add(policy)
+		if err != nil {
+			return nil, fmt.Errorf("generating add policy statements for policy %s: %w", policy.EscapedName, err)
+		}
+		// Remove hazards from statements since the table is brand new
+		stmts = append(stmts, stripMigrationHazards(addPolicyStmts...)...)
+	}
+
+	if table.RLSEnabled {
+		stmts = append(stmts, stripMigrationHazards(enableRLSForTable(table))...)
+	}
+	if table.RLSForced {
+		stmts = append(stmts, stripMigrationHazards(forceRLSForTable(table))...)
 	}
 
 	return stmts, nil
@@ -771,18 +808,28 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 	}
 
 	var stmts []Statement
+	// Only handle disabling RLS if it was previously enabled.
+	// We want to disable RLS before we do any other operations on the table, e.g., delete policies, to avoid creating an
+	// outage while RLS is being disabled
+	if !diff.new.RLSEnabled && diff.old.RLSEnabled {
+		stmts = append(stmts, disableRLSForTable(diff.new))
+	}
+	if !diff.new.RLSForced && diff.old.RLSForced {
+		stmts = append(stmts, unforceRLSForTable(diff.new))
+	}
+
 	if diff.new.IsPartition() {
 		alterPartitionStmts, err := t.alterPartition(diff)
 		if err != nil {
 			return nil, fmt.Errorf("altering partition: %w", err)
 		}
-		stmts = alterPartitionStmts
+		stmts = append(stmts, alterPartitionStmts...)
 	} else {
 		alterBaseTableStmts, err := t.alterBaseTable(diff)
 		if err != nil {
 			return nil, fmt.Errorf("altering base table: %w", err)
 		}
-		stmts = alterBaseTableStmts
+		stmts = append(stmts, alterBaseTableStmts...)
 	}
 
 	if diff.old.ReplicaIdentity != diff.new.ReplicaIdentity {
@@ -791,6 +838,15 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 			return nil, fmt.Errorf("building replica identity statement: %w", err)
 		}
 		stmts = append(stmts, alterReplicaIdentityStmt)
+	}
+
+	// We want to enable RLS after we do any other operations on the table, i.e., create policies, to avoid creating an
+	// outtage while RLS is being enabled
+	if diff.new.RLSEnabled && !diff.old.RLSEnabled {
+		stmts = append(stmts, enableRLSForTable(diff.new))
+	}
+	if diff.new.RLSForced && !diff.old.RLSForced {
+		stmts = append(stmts, forceRLSForTable(diff.new))
 	}
 
 	return stmts, nil
@@ -812,7 +868,7 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	}
 
 	columnSQLVertexGenerator := columnSQLVertexGenerator{tableName: diff.new.SchemaQualifiedName}
-	columnGraphs, err := diff.columnsDiff.resolveToSQLGraph(&columnSQLVertexGenerator)
+	columnGraph, err := diff.columnsDiff.resolveToSQLGraph(&columnSQLVertexGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("resolving index diff: %w", err)
 	}
@@ -838,13 +894,33 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 		dropTempCCs = append(dropTempCCs, stmt...)
 	}
 
-	if err := columnGraphs.union(checkConGraphs); err != nil {
+	var nilableOldTable *schema.Table
+	if !cmp.Equal(diff.old, schema.Table{}) {
+		nilableOldTable = &diff.old
+	}
+	psg, err := newPolicySQLVertexGenerator(nilableOldTable, diff.new)
+	if err != nil {
+		return nil, fmt.Errorf("creating policy sql vertex generator: %w", err)
+	}
+	policyGraph, err := diff.policiesDiff.resolveToSQLGraph(psg)
+	if err != nil {
+		return nil, fmt.Errorf("resolving policy diff: %w", err)
+	}
+
+	if err := columnGraph.union(checkConGraphs); err != nil {
 		return nil, fmt.Errorf("unioning column and check constraint graphs: %w", err)
 	}
-	stmts, err := columnGraphs.toOrderedStatements()
+	if err := columnGraph.union(policyGraph); err != nil {
+		return nil, fmt.Errorf("unioning column and policy graphs: %w", err)
+	}
+
+	graphStmts, err := columnGraph.toOrderedStatements()
 	if err != nil {
 		return nil, fmt.Errorf("getting ordered statements from columnGraphs: %w", err)
 	}
+
+	var stmts []Statement
+	stmts = append(stmts, graphStmts...)
 	// Drop the temporary check constraints that were added to make changing columns to "NOT NULL" not require an
 	// extended table lock
 	stmts = append(stmts, dropTempCCs...)
@@ -858,6 +934,11 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 	}
 	if !diff.checkConstraintDiff.isEmpty() {
 		return nil, fmt.Errorf("check constraints on partitions: %w", ErrNotImplemented)
+	}
+	if !diff.policiesDiff.isEmpty() {
+		// Policy diffing on individual partitions cannot be supported until where a SQL statement is generated is
+		// _independent_ of how it is ordered.
+		return nil, fmt.Errorf("policies on partitions: %w", ErrNotImplemented)
 	}
 
 	var alteredParentColumnsByName map[string]columnDiff
@@ -1323,7 +1404,7 @@ func (isg *indexSQLVertexGenerator) Add(index schema.Index) ([]Statement, error)
 	}
 
 	if _, isNewTable := isg.addedTablesByName[index.OwningTable.GetName()]; isNewTable {
-		stmts = stripMigrationHazards(stmts)
+		stmts = stripMigrationHazards(stmts...)
 	}
 	return stmts, nil
 }
@@ -1729,7 +1810,7 @@ func (csg *checkConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ sch
 		mustRun(csg.GetSQLVertexId(con), diffTypeDelete).before(csg.GetSQLVertexId(con), diffTypeAddAlter),
 	}
 
-	targetColumns, err := getTargetColumns(con, csg.newSchemaColumnsByName)
+	targetColumns, err := getTargetColumns(con.KeyColumns, csg.newSchemaColumnsByName)
 	if err != nil {
 		return nil, fmt.Errorf("getting target columns: %w", err)
 	}
@@ -1757,7 +1838,7 @@ func (csg *checkConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ sch
 func (csg *checkConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.CheckConstraint) ([]dependency, error) {
 	var deps []dependency
 
-	targetColumns, err := getTargetColumns(con, csg.oldSchemaColumnsByName)
+	targetColumns, err := getTargetColumns(con.KeyColumns, csg.oldSchemaColumnsByName)
 	if err != nil {
 		return nil, fmt.Errorf("getting target columns: %w", err)
 	}
@@ -1799,9 +1880,9 @@ func (csg *checkConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.C
 	return deps, nil
 }
 
-func getTargetColumns(con schema.CheckConstraint, columnsByName map[string]schema.Column) ([]schema.Column, error) {
+func getTargetColumns(targetColumnNames []string, columnsByName map[string]schema.Column) ([]schema.Column, error) {
 	var targetColumns []schema.Column
-	for _, name := range con.KeyColumns {
+	for _, name := range targetColumnNames {
 		targetColumn, ok := columnsByName[name]
 		if !ok {
 			return nil, fmt.Errorf("could not find column with name %s", name)
@@ -2428,7 +2509,7 @@ func buildVertexId(objType string, id string) string {
 	return fmt.Sprintf("%s_%s", objType, id)
 }
 
-func stripMigrationHazards(stmts []Statement) []Statement {
+func stripMigrationHazards(stmts ...Statement) []Statement {
 	var noHazardsStmts []Statement
 	for _, stmt := range stmts {
 		stmt.Hazards = nil

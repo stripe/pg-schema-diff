@@ -68,19 +68,8 @@ func (s Schema) Normalize() Schema {
 	s.Enums = sortSchemaObjectsByName(s.Enums)
 
 	var normTables []Table
-	for _, table := range sortSchemaObjectsByName(s.Tables) {
-		// Don't normalize columns order. their order is derived from the postgres catalogs
-		// (relevant to data packing)
-		var normCheckConstraints []CheckConstraint
-		for _, checkConstraint := range sortSchemaObjectsByName(table.CheckConstraints) {
-			checkConstraint.DependsOnFunctions = sortSchemaObjectsByName(checkConstraint.DependsOnFunctions)
-			checkConstraint.KeyColumns = sortByKey(checkConstraint.KeyColumns, func(s string) string {
-				return s
-			})
-			normCheckConstraints = append(normCheckConstraints, checkConstraint)
-		}
-		table.CheckConstraints = normCheckConstraints
-		normTables = append(normTables, table)
+	for _, t := range sortSchemaObjectsByName(s.Tables) {
+		normTables = append(normTables, normalizeTable(t))
 	}
 	s.Tables = normTables
 
@@ -98,6 +87,33 @@ func (s Schema) Normalize() Schema {
 	s.Triggers = sortSchemaObjectsByName(s.Triggers)
 
 	return s
+}
+
+func normalizeTable(t Table) Table {
+	// Don't normalize columns order. their order is derived from the postgres catalogs
+	// (relevant to data packing)
+	var normCheckConstraints []CheckConstraint
+	for _, checkConstraint := range sortSchemaObjectsByName(t.CheckConstraints) {
+		checkConstraint.DependsOnFunctions = sortSchemaObjectsByName(checkConstraint.DependsOnFunctions)
+		checkConstraint.KeyColumns = sortByKey(checkConstraint.KeyColumns, func(s string) string {
+			return s
+		})
+		normCheckConstraints = append(normCheckConstraints, checkConstraint)
+	}
+	t.CheckConstraints = normCheckConstraints
+
+	var normPolicies []Policy
+	for _, p := range sortSchemaObjectsByName(t.Policies) {
+		p.AppliesTo = sortByKey(p.AppliesTo, func(s string) string {
+			return s
+		})
+		p.Columns = sortByKey(p.Columns, func(s string) string {
+			return s
+		})
+		normPolicies = append(normPolicies, p)
+	}
+	t.Policies = normPolicies
+	return t
 }
 
 // sortSchemaObjectsByName returns a (copied) sorted list of schema objects.
@@ -158,7 +174,10 @@ type Table struct {
 	SchemaQualifiedName
 	Columns          []Column
 	CheckConstraints []CheckConstraint
+	Policies         []Policy
 	ReplicaIdentity  ReplicaIdentity
+	RLSEnabled       bool
+	RLSForced        bool
 
 	// PartitionKeyDef is the output of Pg function pg_get_partkeydef:
 	// PARTITION BY $PartitionKeyDef
@@ -299,7 +318,7 @@ type ForeignKeyConstraint struct {
 }
 
 func (f ForeignKeyConstraint) GetName() string {
-	return f.OwningTable.GetFQEscapedName() + "_" + f.EscapedName
+	return f.OwningTable.GetFQEscapedName() + "-" + f.EscapedName
 }
 
 type (
@@ -350,6 +369,33 @@ func (g GetTriggerDefStatement) ToCreateOrReplace() (string, error) {
 	return triggerToOrReplaceRegex.ReplaceAllString(string(g), "${1}OR REPLACE ${2}"), nil
 }
 
+// PolicyCmd represents the polcmd value in the pg_policy system catalog.
+// See docs for possible values: https://www.postgresql.org/docs/current/catalog-pg-policy.html#CATALOG-PG-POLICY
+type PolicyCmd string
+
+const (
+	SelectPolicyCmd PolicyCmd = "r"
+	InsertPolicyCmd PolicyCmd = "a"
+	UpdatePolicyCmd PolicyCmd = "w"
+	DeletePolicyCmd PolicyCmd = "d"
+	AllPolicyCmd    PolicyCmd = "*"
+)
+
+type Policy struct {
+	EscapedName     string
+	IsPermissive    bool
+	AppliesTo       []string
+	Cmd             PolicyCmd
+	CheckExpression string
+	UsingExpression string
+	// Columns are the columns that the policy applies to.
+	Columns []string
+}
+
+func (p Policy) GetName() string {
+	return p.EscapedName
+}
+
 type Trigger struct {
 	EscapedName string
 	OwningTable SchemaQualifiedName
@@ -360,7 +406,7 @@ type Trigger struct {
 }
 
 func (t Trigger) GetName() string {
-	return t.OwningTable.GetFQEscapedName() + "_" + t.EscapedName
+	return t.OwningTable.GetFQEscapedName() + "-" + t.EscapedName
 }
 
 type (
@@ -710,9 +756,22 @@ func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 		return nil, fmt.Errorf("GetTables(): %w", err)
 	}
 
-	checkConsByTable, err := s.fetchCheckConsAndBuildTableToCheckConsMap(ctx)
+	checkCons, err := s.fetchCheckCons(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("fetchCheckConsAndBuildTableToCheckConsMap: %w", err)
+		return nil, fmt.Errorf("fetchCheckCons(): %w", err)
+	}
+	checkConsByTable := make(map[string][]CheckConstraint)
+	for _, cc := range checkCons {
+		checkConsByTable[cc.table.GetFQEscapedName()] = append(checkConsByTable[cc.table.GetFQEscapedName()], cc.checkConstraint)
+	}
+
+	policies, err := s.fetchPolicies(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetchPolicies(): %w", err)
+	}
+	policiesByTable := make(map[string][]Policy)
+	for _, p := range policies {
+		policiesByTable[p.table.GetFQEscapedName()] = append(policiesByTable[p.table.GetFQEscapedName()], p.policy)
 	}
 
 	goroutineRunner := s.goroutineRunnerFactory()
@@ -720,7 +779,7 @@ func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 	for _, _rawTable := range rawTables {
 		rawTable := _rawTable // Capture loop variables for go routine
 		tableFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() (Table, error) {
-			return s.buildTable(ctx, rawTable, checkConsByTable)
+			return s.buildTable(ctx, rawTable, checkConsByTable, policiesByTable)
 		})
 		if err != nil {
 			return nil, fmt.Errorf("starting table future: %w", err)
@@ -743,7 +802,12 @@ func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 	return tables, nil
 }
 
-func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesRow, checkConsByTable map[string][]CheckConstraint) (Table, error) {
+func (s *schemaFetcher) buildTable(
+	ctx context.Context,
+	table queries.GetTablesRow,
+	checkConsByTable map[string][]CheckConstraint,
+	policiesByTable map[string][]Policy,
+) (Table, error) {
 	rawColumns, err := s.q.GetColumnsForTable(ctx, table.Oid)
 	if err != nil {
 		return Table{}, fmt.Errorf("GetColumnsForTable(%s): %w", table.Oid, err)
@@ -788,7 +852,10 @@ func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesR
 		SchemaQualifiedName: schemaQualifiedName,
 		Columns:             columns,
 		CheckConstraints:    checkConsByTable[schemaQualifiedName.GetFQEscapedName()],
+		Policies:            policiesByTable[schemaQualifiedName.GetFQEscapedName()],
 		ReplicaIdentity:     ReplicaIdentity(table.ReplicaIdentity),
+		RLSEnabled:          table.RlsEnabled,
+		RLSForced:           table.RlsForced,
 
 		PartitionKeyDef: table.PartitionKeyDef,
 
@@ -797,17 +864,16 @@ func (s *schemaFetcher) buildTable(ctx context.Context, table queries.GetTablesR
 	}, nil
 }
 
-// fetchCheckConsAndBuildTableToCheckConsMap fetches the check constraints and builds a map of table name to the check
-// constraints within the table
-func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Context) (map[string][]CheckConstraint, error) {
+type checkConstraintAndTable struct {
+	checkConstraint CheckConstraint
+	table           SchemaQualifiedName
+}
+
+// fetchCheckCons fetches the check constraints
+func (s *schemaFetcher) fetchCheckCons(ctx context.Context) ([]checkConstraintAndTable, error) {
 	rawCheckCons, err := s.q.GetCheckConstraints(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetCheckConstraints: %w", err)
-	}
-
-	type checkConstraintAndTable struct {
-		checkConstraint CheckConstraint
-		table           SchemaQualifiedName
 	}
 
 	goroutineRunner := s.goroutineRunnerFactory()
@@ -821,10 +887,7 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 			}
 			return checkConstraintAndTable{
 				checkConstraint: cc,
-				table: SchemaQualifiedName{
-					SchemaName:  rawCC.TableSchemaName,
-					EscapedName: EscapeIdentifier(rawCC.TableName),
-				},
+				table:           buildNameFromUnescaped(rawCC.TableName, rawCC.TableSchemaName),
 			}, nil
 		})
 		if err != nil {
@@ -850,13 +913,7 @@ func (s *schemaFetcher) fetchCheckConsAndBuildTableToCheckConsMap(ctx context.Co
 		s.nameFilter,
 	)
 
-	// Build a map of table name to check constraints
-	tablesToCheckConsMap := make(map[string][]CheckConstraint)
-	for _, cc := range ccs {
-		tablesToCheckConsMap[cc.table.GetFQEscapedName()] = append(tablesToCheckConsMap[cc.table.GetFQEscapedName()], cc.checkConstraint)
-	}
-
-	return tablesToCheckConsMap, nil
+	return ccs, nil
 }
 
 func (s *schemaFetcher) buildCheckConstraint(ctx context.Context, cc queries.GetCheckConstraintsRow) (CheckConstraint, error) {
@@ -1102,6 +1159,47 @@ func (s *schemaFetcher) fetchDependsOnFunctions(ctx context.Context, systemCatal
 	}
 
 	return functionNames, nil
+}
+
+type policyAndTable struct {
+	policy Policy
+	table  SchemaQualifiedName
+}
+
+func (s *schemaFetcher) fetchPolicies(ctx context.Context) ([]policyAndTable, error) {
+	rawPolicies, err := s.q.GetPolicies(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetPolicies: %w", err)
+	}
+
+	var policies []policyAndTable
+	for _, rp := range rawPolicies {
+		policies = append(policies, policyAndTable{
+			policy: Policy{
+				EscapedName:     EscapeIdentifier(rp.PolicyName),
+				IsPermissive:    rp.IsPermissive,
+				AppliesTo:       rp.AppliesTo,
+				Cmd:             PolicyCmd(rp.Cmd),
+				CheckExpression: rp.CheckExpression,
+				UsingExpression: rp.UsingExpression,
+				Columns:         rp.ColumnNames,
+			},
+			table: buildNameFromUnescaped(rp.OwningTableName, rp.OwningTableSchemaName),
+		})
+	}
+
+	policies = filterSliceByName(
+		policies,
+		func(p policyAndTable) SchemaQualifiedName {
+			return SchemaQualifiedName{
+				SchemaName:  p.table.SchemaName,
+				EscapedName: p.policy.EscapedName,
+			}
+		},
+		s.nameFilter,
+	)
+
+	return policies, nil
 }
 
 func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {

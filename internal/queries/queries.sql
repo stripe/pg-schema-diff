@@ -21,6 +21,8 @@ SELECT
     c.relname::TEXT AS table_name,
     table_namespace.nspname::TEXT AS table_schema_name,
     c.relreplident::TEXT AS replica_identity,
+    c.relrowsecurity AS rls_enabled,
+    c.relforcerowsecurity AS rls_forced,
     COALESCE(parent_c.relname, '')::TEXT AS parent_table_name,
     COALESCE(parent_namespace.nspname, '')::TEXT AS parent_table_schema_name,
     (CASE
@@ -352,3 +354,56 @@ WHERE
             AND ext_depend.objid = pg_type.oid
             AND ext_depend.deptype = 'e'
     );
+
+
+-- name: GetPolicies :many
+WITH roles AS (
+    SELECT
+        oid,
+        rolname
+    FROM pg_catalog.pg_roles
+    UNION
+    (
+        SELECT
+            0 AS ois,
+            'PUBLIC' AS role_name
+    )
+)
+
+SELECT
+    pol.polname::TEXT AS policy_name,
+    table_c.relname::TEXT AS owning_table_name,
+    table_namespace.nspname::TEXT AS owning_table_schema_name,
+    pol.polpermissive AS is_permissive,
+    (
+        SELECT ARRAY_AGG(rolname)
+        FROM roles
+        WHERE roles.oid = ANY(pol.polroles)
+    )::TEXT [] AS applies_to,
+    pol.polcmd::TEXT AS cmd,
+    COALESCE(pg_catalog.pg_get_expr(
+        pol.polwithcheck, pol.polrelid
+    ), '')::TEXT AS check_expression,
+    COALESCE(
+        pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), ''
+    )::TEXT AS using_expression,
+    (
+        SELECT ARRAY_AGG(a.attname)
+        FROM pg_catalog.pg_attribute AS a
+        INNER JOIN pg_catalog.pg_depend AS d ON a.attnum = d.refobjsubid
+        WHERE
+            d.objid = pol.oid
+            AND d.refobjid = table_c.oid
+            AND d.refclassid = 'pg_class'::REGCLASS
+            AND a.attrelid = table_c.oid
+            AND NOT a.attisdropped
+    )::TEXT [] AS column_names
+FROM pg_catalog.pg_policy AS pol
+INNER JOIN pg_catalog.pg_class AS table_c ON pol.polrelid = table_c.oid
+INNER JOIN
+    pg_catalog.pg_namespace AS table_namespace
+    ON table_c.relnamespace = table_namespace.oid
+WHERE
+    table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND table_namespace.nspname !~ '^pg_toast'
+    AND table_namespace.nspname !~ '^pg_temp';

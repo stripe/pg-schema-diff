@@ -44,7 +44,7 @@ func (d *DB) DropDB() error {
 		return err
 	}
 
-	// Drop existing connections, so that we can drop the table
+	// Drop existing connections, so that we can drop the database
 	_, err = db.Exec("SELECT PG_TERMINATE_BACKEND(pid) FROM pg_stat_activity WHERE datname = $1", d.GetName())
 	if err != nil {
 		return err

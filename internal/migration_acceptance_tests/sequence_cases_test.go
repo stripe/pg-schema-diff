@@ -760,6 +760,6 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestSequenceAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestSequenceTestCases() {
 	suite.runTestCases(sequenceAcceptanceTests)
 }

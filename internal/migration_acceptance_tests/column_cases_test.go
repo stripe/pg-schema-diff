@@ -945,6 +945,6 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestColumnAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestColumnTestCases() {
 	suite.runTestCases(columnAcceptanceTestCases)
 }

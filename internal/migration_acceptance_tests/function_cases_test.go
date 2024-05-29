@@ -577,6 +577,6 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestFunctionAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestFunctionTestCases() {
 	suite.runTestCases(functionAcceptanceTestCases)
 }

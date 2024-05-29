@@ -123,7 +123,7 @@ type (
 )
 
 func (ld listDiff[S, D]) isEmpty() bool {
-	return len(ld.adds) == 0 || len(ld.alters) == 0 || len(ld.deletes) == 0
+	return len(ld.adds) == 0 && len(ld.alters) == 0 && len(ld.deletes) == 0
 }
 
 func (ld listDiff[S, D]) resolveToSQLGroupedByEffect(sqlGenerator sqlGenerator[S, D]) (sqlGroupedByEffect[S, D], error) {
