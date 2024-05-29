@@ -26,6 +26,7 @@ func buildApplyCmd() *cobra.Command {
 		"Specify the hazards that are allowed. Order does not matter, and duplicates are ignored. If the"+
 			" migration plan contains unwanted hazards (hazards not in this list), then the migration will fail to run"+
 			" (example: --allowed-hazards DELETES_DATA,INDEX_BUILD)")
+	skipConfirmPrompt := cmd.Flags().Bool("skip-confirm-prompt", false, "Skips prompt asking for user to confirm before applying")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		logger := log.SimpleLogger()
 		connConfig, err := parseConnConfig(*connFlags, logger)
@@ -54,13 +55,16 @@ func buildApplyCmd() *cobra.Command {
 		if err := failIfHazardsNotAllowed(plan, *allowedHazardsTypesStrs); err != nil {
 			return err
 		}
-		if err := mustContinuePrompt(
-			fmt.Sprintf(
-				"Apply migration with the following hazards: %s?",
-				strings.Join(*allowedHazardsTypesStrs, ", "),
-			),
-		); err != nil {
-			return err
+
+		if !*skipConfirmPrompt {
+			if err := mustContinuePrompt(
+				fmt.Sprintf(
+					"Apply migration with the following hazards: %s?",
+					strings.Join(*allowedHazardsTypesStrs, ", "),
+				),
+			); err != nil {
+				return err
+			}
 		}
 
 		if err := runPlan(context.Background(), connConfig, plan); err != nil {
