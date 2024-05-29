@@ -803,6 +803,6 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestIndexAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestIndexTestCases() {
 	suite.runTestCases(indexAcceptanceTestCases)
 }

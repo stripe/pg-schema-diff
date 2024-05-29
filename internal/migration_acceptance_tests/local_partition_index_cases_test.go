@@ -605,6 +605,6 @@ var localPartitionIndexAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestLocalPartitionIndexAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestLocalPartitionIndexTestCases() {
 	suite.runTestCases(localPartitionIndexAcceptanceTestCases)
 }

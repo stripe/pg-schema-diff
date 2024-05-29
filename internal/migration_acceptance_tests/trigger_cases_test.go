@@ -795,6 +795,6 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestTriggerAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestTriggerTestCases() {
 	suite.runTestCases(triggerAcceptanceTestCases)
 }

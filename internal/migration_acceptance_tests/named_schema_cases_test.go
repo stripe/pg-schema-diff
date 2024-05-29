@@ -40,6 +40,6 @@ var namedSchemaAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestNamedSchemaAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestNamedSchemaTestCases() {
 	suite.runTestCases(namedSchemaAcceptanceTestCases)
 }

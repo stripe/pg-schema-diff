@@ -19,9 +19,13 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE foobar REPLICA IDENTITY FULL;
+			ALTER TABLE foobar ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE foobar FORCE ROW LEVEL SECURITY;
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			ALTER TABLE foobar_1 REPLICA IDENTITY DEFAULT ;
+			ALTER TABLE foobar_1 ENABLE ROW LEVEL SECURITY;
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			ALTER TABLE foobar_2 FORCE ROW LEVEL SECURITY;
 			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
 			-- partitioned indexes
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
@@ -59,10 +63,17 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE foobar REPLICA IDENTITY FULL;
+			ALTER TABLE foobar ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE foobar FORCE ROW LEVEL SECURITY;
 			-- partitions
+			ALTER TABLE foobar REPLICA IDENTITY FULL;
+			ALTER TABLE foobar ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE foobar FORCE ROW LEVEL SECURITY;
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			ALTER TABLE foobar_1 REPLICA IDENTITY DEFAULT ;
+			ALTER TABLE foobar_1 ENABLE ROW LEVEL SECURITY;
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			ALTER TABLE foobar_2 FORCE ROW LEVEL SECURITY;
 			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
 			-- partitioned indexes
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
@@ -98,7 +109,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name:         "Create partitioned table with shared primary key",
+		name:         "Create partitioned table with shared primary key and RLS enabled globally",
 		oldSchemaDDL: nil,
 		newSchemaDDL: []string{
 			`
@@ -113,6 +124,9 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE schema_1."Foobar" REPLICA IDENTITY FULL;
+			
+			ALTER TABLE schema_1."Foobar" ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE schema_1."Foobar" FORCE ROW LEVEL SECURITY;
 
 			-- partitions
 			CREATE SCHEMA schema_2;
@@ -145,6 +159,9 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			) PARTITION BY LIST (foo);
 			ALTER TABLE schema_1."Foobar" REPLICA IDENTITY FULL;
 
+			ALTER TABLE schema_1."Foobar" ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE schema_1."Foobar" FORCE ROW LEVEL SECURITY;
+
 			-- partitions
 			CREATE SCHEMA schema_2;
 			CREATE TABLE schema_2."FOOBAR_1" PARTITION OF schema_1."Foobar"(
@@ -165,7 +182,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name:         "Create partitioned table with local primary keys",
+		name:         "Create partitioned table with local primary keys and RLS enabled locally",
 		oldSchemaDDL: nil,
 		newSchemaDDL: []string{
 			`
@@ -182,9 +199,11 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			    bar NOT NULL,
 			    PRIMARY KEY (foo, id)
 			) FOR VALUES IN ('foo_1');
+			ALTER TABLE "FOOBAR_1" ENABLE ROW LEVEL SECURITY;
 			CREATE TABLE foobar_2 PARTITION OF "Foobar"(
 			    PRIMARY KEY (foo, bar)
 			) FOR VALUES IN ('foo_2');
+			ALTER TABLE foobar_2 FORCE ROW LEVEL SECURITY;
 			CREATE TABLE foobar_3 PARTITION OF "Foobar"(
 			    PRIMARY KEY (foo, fizz),
 			    UNIQUE (foo, bar)
@@ -332,6 +351,80 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeCorrectness,
+		},
+	},
+	{
+		name: "Enable RLS of parent and children",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    PRIMARY KEY (foo, id)
+			) PARTITION BY LIST (foo);
+
+			-- partitions
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    PRIMARY KEY (foo, id)
+			) PARTITION BY LIST (foo);
+			ALTER TABLE foobar ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE foobar FORCE ROW LEVEL SECURITY;
+			-- partitions
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			ALTER TABLE foobar_1 ENABLE ROW LEVEL SECURITY;
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			ALTER TABLE foobar_2 FORCE ROW LEVEL SECURITY;
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+	},
+	{
+		name: "Disable RLS of parent and children",
+		oldSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    PRIMARY KEY (foo, id)
+			) PARTITION BY LIST (foo);
+			ALTER TABLE foobar ENABLE ROW LEVEL SECURITY;
+			ALTER TABLE foobar FORCE ROW LEVEL SECURITY;
+			-- partitions
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			ALTER TABLE foobar_1 ENABLE ROW LEVEL SECURITY;
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			ALTER TABLE foobar_2 FORCE ROW LEVEL SECURITY;
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+			CREATE TABLE foobar(
+			    id INT,
+				foo VARCHAR(255),
+			    PRIMARY KEY (foo, id)
+			) PARTITION BY LIST (foo);
+
+			-- partitions
+			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+			CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
 		},
 	},
 	{
@@ -1248,6 +1341,6 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestPartitionedTableAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestPartitionedTableTestCases() {
 	suite.runTestCases(partitionedTableAcceptanceTestCases)
 }

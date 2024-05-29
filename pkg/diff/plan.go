@@ -20,6 +20,7 @@ const (
 	MigrationHazardTypeImpactsDatabasePerformance    MigrationHazardType = "IMPACTS_DATABASE_PERFORMANCE"
 	MigrationHazardTypeIsUserGenerated               MigrationHazardType = "IS_USER_GENERATED"
 	MigrationHazardTypeExtensionVersionUpgrade       MigrationHazardType = "UPGRADING_EXTENSION_VERSION"
+	MigrationHazardTypeAuthzUpdate                   MigrationHazardType = "AUTHZ_UPDATE"
 )
 
 // MigrationHazard represents a hazard that a statement poses to a database

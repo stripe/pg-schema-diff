@@ -1245,6 +1245,6 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestPartitionedIndexAcceptanceTestCases() {
+func (suite *acceptanceTestSuite) TestPartitionedIndexTestCases() {
 	suite.runTestCases(partitionedIndexAcceptanceTestCases)
 }
