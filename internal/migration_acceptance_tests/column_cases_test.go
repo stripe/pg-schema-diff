@@ -27,10 +27,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},
@@ -141,15 +138,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			outputState: []string{`
-					CREATE TABLE foobar(
-						id INT PRIMARY KEY,
-						my_new_column VARCHAR(255) NOT NULL DEFAULT 'a'
-					)
-				`},
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			outputState: []string{`
 					CREATE TABLE foobar(
 						id INT PRIMARY KEY,
@@ -806,10 +795,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
-		vanillaExpectations: expectations{
-			planErrorContains: errValidatingPlan.Error(),
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorContains: errValidatingPlan.Error(),
 		},
 	},

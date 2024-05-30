@@ -37,10 +37,7 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
 			$$ LANGUAGE plpgsql;
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},

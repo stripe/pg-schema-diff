@@ -31,7 +31,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 					WITH CHECK (true);
 			`,
 		},
-		vanillaExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},
@@ -627,10 +627,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 					WITH CHECK (true);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
@@ -657,10 +654,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 					WITH CHECK (true);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},

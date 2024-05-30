@@ -25,10 +25,7 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},
@@ -83,10 +80,7 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
@@ -358,10 +352,7 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
@@ -536,10 +527,7 @@ var checkConstraintCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT some_constraint CHECK ( add(bar, id) > 0 );
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},

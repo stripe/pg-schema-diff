@@ -156,10 +156,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},

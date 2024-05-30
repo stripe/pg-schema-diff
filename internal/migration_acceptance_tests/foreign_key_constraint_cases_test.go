@@ -39,10 +39,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},
@@ -565,10 +562,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorContains: errValidatingPlan.Error(),
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorContains: errValidatingPlan.Error(),
 		},
 	},

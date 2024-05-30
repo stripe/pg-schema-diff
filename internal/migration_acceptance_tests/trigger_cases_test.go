@@ -79,10 +79,7 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 				EXECUTE FUNCTION check_content();
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},

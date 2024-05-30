@@ -101,10 +101,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_fk FOREIGN KEY (foo) REFERENCES foobar_fk_1(foo);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},
@@ -136,23 +133,23 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			) FOR VALUES IN ('foo_1');
 			ALTER TABLE schema_2."FOOBAR_1" REPLICA IDENTITY NOTHING ;
 			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_2');
-			ALTER TABLE schema_2.foobar_2 REPLICA IDENTITY FULL;
 			CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_3');
 			-- partitioned indexes
+			ALTER TABLE schema_2.foobar_2 REPLICA IDENTITY FULL;
 			CREATE UNIQUE INDEX foobar_unique_idx ON schema_1."Foobar"(foo, fizz);
 			-- local indexes
 			CREATE INDEX foobar_1_local_idx ON schema_2."FOOBAR_1"(foo);
 			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
 			`,
 		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			outputState: []string{`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1."Foobar"(
 			    id INT,
-				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
+				fizz SERIAL,
 				CHECK ( fizz > 0 ),
 			    PRIMARY KEY (foo, id),
 			    UNIQUE (foo, bar)
@@ -548,10 +545,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
@@ -1162,10 +1156,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			) PARTITION BY LIST (foo);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
@@ -1195,10 +1186,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_2');
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},

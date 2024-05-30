@@ -41,10 +41,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX some_other_idx ON foobar(foo DESC, fizz);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},
@@ -1048,10 +1045,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
@@ -1082,10 +1076,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_foo_id_key UNIQUE (foo, id);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
@@ -1116,10 +1107,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_foo_id_key UNIQUE (foo, id);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},

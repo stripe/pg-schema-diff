@@ -41,10 +41,7 @@ var localPartitionIndexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX foobar_2_some_unique_idx ON foobar_2 (foo);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},

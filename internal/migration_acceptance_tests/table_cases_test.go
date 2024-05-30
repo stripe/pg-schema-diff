@@ -57,10 +57,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			empty: true,
 		},
 	},
@@ -92,33 +89,6 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE schema_1.foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar_fk(foo, bar);
 			`,
-		},
-		dataPackingExpectations: expectations{
-			outputState: []string{`
-			CREATE TABLE foobar(
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
-			    fizz SERIAL NOT NULL UNIQUE,
-				buzz REAL CHECK (buzz IS NOT NULL),
-				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL
-			);
-			ALTER TABLE foobar REPLICA IDENTITY FULL;
-			ALTER TABLE foobar ENABLE ROW LEVEL SECURITY;
-			ALTER TABLE foobar FORCE ROW LEVEL SECURITY;
-			CREATE INDEX normal_idx ON foobar(fizz);
-			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, bar);
-
-			CREATE SCHEMA schema_1;
-			CREATE TABLE schema_1.foobar_fk(
-			    bar TIMESTAMP,
-			    foo VARCHAR(255)
-			);
-			CREATE UNIQUE INDEX foobar_fk_unique_idx ON schema_1.foobar_fk(foo, bar);
-			-- create a circular dependency of foreign keys (this is allowed)
-			ALTER TABLE schema_1.foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
-			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar_fk(foo, bar);
-			`,
-			},
 		},
 	},
 	{
@@ -168,10 +138,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar REPLICA IDENTITY USING INDEX some_idx;
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
@@ -293,10 +260,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeCorrectness,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
+		expectations: expectations{
 			planErrorIs: diff.ErrNotImplemented,
 		},
 	},
