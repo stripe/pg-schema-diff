@@ -87,8 +87,8 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeDeletesData,
 		},
-		expectations: expectations{
-			outputState: []string{`
+
+		expectedDBSchemaDDL: []string{`
 			-- Create a table in a different schema to validate it is being ignored (no delete operation).
             CREATE SCHEMA schema_filtered_1;
 			CREATE TABLE schema_filtered_1.foo();	
@@ -127,7 +127,6 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE fizz(
 			);
 			`},
-		},
 
 		// Ensure that we're maintaining backwards compatibility with the old generate plan func
 		planFactory: diff.GeneratePlan,

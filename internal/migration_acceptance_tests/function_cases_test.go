@@ -37,9 +37,8 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
 			$$ LANGUAGE plpgsql;
 			`,
 		},
-		expectations: expectations{
-			empty: true,
-		},
+
+		expectEmptyPlan: true,
 	},
 	{
 		name:         "Create functions (with conflicting names)",

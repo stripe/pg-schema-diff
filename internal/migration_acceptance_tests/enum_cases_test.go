@@ -22,9 +22,7 @@ var enumAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 
-		expectations: expectations{
-			empty: true,
-		},
+		expectEmptyPlan: true,
 	},
 	{
 		name: "create enum",
@@ -114,9 +112,7 @@ var enumAcceptanceTestCases = []acceptanceTestCase{
 
 		// Removing a value from an enum in-use is impossible in Postgres. pg-schema-diff will currently identify this
 		// as a validation error. In the future, we can identify this in the actual plan generation stage.
-		expectations: expectations{
-			planErrorContains: errValidatingPlan.Error(),
-		},
+		expectedPlanErrorContains: errValidatingPlan.Error(),
 	},
 }
 

@@ -101,9 +101,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar_1 ADD CONSTRAINT foobar_1_fk FOREIGN KEY (foo) REFERENCES foobar_fk_1(foo);
 			`,
 		},
-		expectations: expectations{
-			empty: true,
-		},
+		expectEmptyPlan: true,
 	},
 	{
 		name:         "Create partitioned table with shared primary key and RLS enabled globally",
@@ -142,8 +140,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
 			`,
 		},
-		expectations: expectations{
-			outputState: []string{`
+
+		expectedDBSchemaDDL: []string{`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1."Foobar"(
 			    id INT,
@@ -175,7 +173,6 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE INDEX foobar_1_local_idx ON schema_2."FOOBAR_1"(foo);
 			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
 				`,
-			},
 		},
 	},
 	{
@@ -545,9 +542,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			`,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Unpartitioned to partitioned",
@@ -1156,9 +1152,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			) PARTITION BY LIST (foo);
 			`,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Altering a partition's 'FOR VALUES' errors",
@@ -1186,9 +1181,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_2');
 			`,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Re-creating base table causes partitions to be re-created",

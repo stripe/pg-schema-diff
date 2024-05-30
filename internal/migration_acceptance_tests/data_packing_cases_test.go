@@ -32,8 +32,8 @@ var dataPackingCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar_fk(foo, bar);
 			`,
 		},
-		expectations: expectations{
-			outputState: []string{`
+
+		expectedDBSchemaDDL: []string{`
 			CREATE TABLE foobar(
 			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
@@ -57,7 +57,6 @@ var dataPackingCases = []acceptanceTestCase{
 			ALTER TABLE schema_1.foobar_fk ADD CONSTRAINT foobar_fk_fk FOREIGN KEY (foo, bar) REFERENCES foobar(foo, bar);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES schema_1.foobar_fk(foo, bar);
 			`,
-			},
 		},
 	},
 	{
@@ -97,8 +96,8 @@ var dataPackingCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
 			`,
 		},
-		expectations: expectations{
-			outputState: []string{`
+
+		expectedDBSchemaDDL: []string{`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1."Foobar"(
 			    id INT,
@@ -130,7 +129,6 @@ var dataPackingCases = []acceptanceTestCase{
 			CREATE INDEX foobar_1_local_idx ON schema_2."FOOBAR_1"(foo);
 			CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
 				`,
-			},
 		},
 	},
 }

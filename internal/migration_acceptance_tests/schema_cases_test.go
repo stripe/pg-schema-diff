@@ -156,9 +156,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);
 			`,
 		},
-		expectations: expectations{
-			empty: true,
-		},
+		expectEmptyPlan: true,
 	},
 	{
 		name:  "Add schema, drop schema, Add enum, Drop enum, Drop table, Add Table, Drop Seq, Add Seq, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers, Create Extension, Drop Extension, Create Index Using Extension, Add policies, Drop policies",

@@ -79,9 +79,7 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 				EXECUTE FUNCTION check_content();
 			`,
 		},
-		expectations: expectations{
-			empty: true,
-		},
+		expectEmptyPlan: true,
 	},
 	{
 		name: "Create trigger with quoted name",

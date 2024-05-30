@@ -57,9 +57,8 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_fk FOREIGN KEY (foo, bar) REFERENCES foobar_fk(foo, bar);
 			`,
 		},
-		expectations: expectations{
-			empty: true,
-		},
+
+		expectEmptyPlan: true,
 	},
 	{
 		name:         "Create table",
@@ -138,9 +137,8 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar REPLICA IDENTITY USING INDEX some_idx;
 			`,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Drop table",
@@ -260,9 +258,8 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeCorrectness,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Enable RLS",

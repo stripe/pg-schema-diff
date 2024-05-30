@@ -39,9 +39,8 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		expectations: expectations{
-			empty: true,
-		},
+
+		expectEmptyPlan: true,
 	},
 	{
 		name: "Add FK with most options",
@@ -358,7 +357,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 			    FOREIGN KEY (fk_id) REFERENCES foobar(id);
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar fk\" VALIDATE CONSTRAINT \"some_fk\"",
 		},
 	},
@@ -562,9 +561,8 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		expectations: expectations{
-			planErrorContains: errValidatingPlan.Error(),
-		},
+
+		expectedPlanErrorContains: errValidatingPlan.Error(),
 	},
 	{
 		name: "Switch FK owning table (to partitioned table)",

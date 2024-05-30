@@ -41,9 +41,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX some_other_idx ON foobar(foo DESC, fizz);
 			`,
 		},
-		expectations: expectations{
-			empty: true,
-		},
+		expectEmptyPlan: true,
 	},
 	{
 		name: "Add a normal partitioned index",
@@ -600,7 +598,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeDeletesData,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"DROP INDEX CONCURRENTLY \"public\".\"foobar_1_some_local_idx\"",
 			"DROP INDEX \"public\".\"some_idx\"",
 			"ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"id\"",
@@ -645,7 +643,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER INDEX \"public\".\"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_MDEyMzQ1Rje4OTo7PD0$Pw\"",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"id\" IS NOT NULL) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
@@ -1045,9 +1043,8 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
 			`,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Add unique constraint with existing matching base-table index (matching non-local index exists that backs local matching PK)",
@@ -1076,9 +1073,8 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_foo_id_key UNIQUE (foo, id);
 			`,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Add unique constraint with existing matching base-table index (matching non-local index exists that backs local matching unique constraint)",
@@ -1107,9 +1103,8 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar_foo_id_key UNIQUE (foo, id);
 			`,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Add primary key constraint with existing matching base-table index (matching local PK already exists backed by local index)",

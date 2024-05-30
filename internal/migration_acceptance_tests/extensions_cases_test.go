@@ -19,9 +19,7 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 			CREATE EXTENSION amcheck;
 			`,
 		},
-		expectations: expectations{
-			empty: true,
-		},
+		expectEmptyPlan: true,
 	},
 	{
 		name: "create multiple extensions",

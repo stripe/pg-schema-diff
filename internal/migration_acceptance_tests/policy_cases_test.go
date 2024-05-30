@@ -31,9 +31,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 					WITH CHECK (true);
 			`,
 		},
-		expectations: expectations{
-			empty: true,
-		},
+		expectEmptyPlan: true,
 	},
 	{
 		name: "Add permissive ALL policy target on non-public schema",
@@ -182,7 +180,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAuthzUpdate,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			// Ensure that the policy is created before enabling RLS.
 			"CREATE POLICY \"foobar_policy\" ON \"public\".\"foobar\"\n\tAS RESTRICTIVE\n\tFOR SELECT\n\tTO PUBLIC\n\tUSING (true)",
 			"ALTER TABLE \"public\".\"foobar\" ENABLE ROW LEVEL SECURITY",
@@ -250,7 +248,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAuthzUpdate,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" DISABLE ROW LEVEL SECURITY",
 			"ALTER TABLE \"public\".\"foobar\" NO FORCE ROW LEVEL SECURITY",
 			"DROP POLICY \"foobar_policy\" ON \"public\".\"foobar\"",
@@ -627,9 +625,8 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 					WITH CHECK (true);
 			`,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Add policy on existing partition (not implemented)",
@@ -654,9 +651,8 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 					WITH CHECK (true);
 			`,
 		},
-		expectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 }
 
