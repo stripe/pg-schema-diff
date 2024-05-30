@@ -11,12 +11,7 @@ var namedSchemaAcceptanceTestCases = []acceptanceTestCase{
 			CREATE SCHEMA "schema 1";	
 			CREATE SCHEMA "schema 2";
 		`},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
-			empty: true,
-		},
+		expectEmptyPlan: true,
 	},
 	{
 		name: "create schema",
