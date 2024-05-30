@@ -25,12 +25,7 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
-			empty: true,
-		},
+		expectEmptyPlan: true,
 	},
 	{
 		name: "Add check constraint (validate constraint added online)",
@@ -52,7 +47,7 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar_check\" CHECK((bar > id)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar_check\"",
 		},
@@ -83,12 +78,8 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Add check constraint with system function dependency should not error",
@@ -358,12 +349,8 @@ var checkConstraintCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Drop check constraint with system function dependency should not error",
@@ -408,7 +395,7 @@ var checkConstraintCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT bar_check CHECK ( bar > id );
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"bar_check\"",
 		},
 	},
@@ -536,12 +523,8 @@ var checkConstraintCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT some_constraint CHECK ( add(bar, id) > 0 );
 			`,
 		},
-		vanillaExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
-		dataPackingExpectations: expectations{
-			planErrorIs: diff.ErrNotImplemented,
-		},
+
+		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
 	{
 		name: "Alter check constraint with system function dependency should not error",

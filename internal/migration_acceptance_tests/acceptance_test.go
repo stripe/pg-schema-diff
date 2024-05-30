@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -14,9 +13,9 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/pgdump"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
+	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 
-	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
@@ -25,47 +24,41 @@ var (
 )
 
 type (
-	expectations struct {
-		planErrorIs       error
-		planErrorContains string
-		// outputState should be the DDL required to reconstruct the expected output state of the database
-		//
-		// The outputState might differ from the newSchemaDDL due to options passed to the migrator. For example,
-		// the data packing option will cause the column ordering for new tables in the outputState to differ from
-		// the column ordering of those tables defined in newSchemaDDL
-		//
-		// If no outputState is specified, the newSchemaDDL will be used
-		outputState []string
-		// empty asserts the plan is empty
-		empty bool
-	}
-
 	planFactory func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error)
 
 	acceptanceTestCase struct {
 		name string
+
+		// planOpts is a list of options that should be passed to the plan generator
+		planOpts []diff.PlanOpt
+
 		// roles is a list of roles that should be created before the DDL is applied
 		roles        []string
 		oldSchemaDDL []string
 		newSchemaDDL []string
 
-		// ddl is used to assert the exact DDL (of the statements) that  generated. This is useful when asserting
-		// exactly how a migration is performed
-		ddl []string
-
-		// expectedHazardTypes should contain all the unique migration hazard types that are expected to be within the
-		// generated plan
-		expectedHazardTypes []diff.MigrationHazardType
-
-		// vanillaExpectations refers to the expectations of the migration if no additional opts are used
-		vanillaExpectations expectations
-		// dataPackingExpectations refers to the expectations of the migration if table packing is used. We should
-		// aim to deprecate this and just split out a separate set of individual tests for data packing.
-		dataPackingExpectations expectations
-
 		// planFactory is used to generate the actual plan. This is useful for testing different plan generation paths
 		// outside of the normal path. If not specified, a plan will be generated using a default.
 		planFactory planFactory
+
+		// expectedHazardTypes should contain all the unique migration hazard types that are expected to be within the
+		// generated plan
+		expectedHazardTypes       []diff.MigrationHazardType
+		expectedPlanErrorIs       error
+		expectedPlanErrorContains string
+		// expectedPlanDDL is used to assert the exact DDL (of the statements) that  generated. This is useful when asserting
+		// exactly how a migration is performed
+		expectedPlanDDL []string
+		// expectEmptyPlan asserts the plan is expectEmptyPlan
+		expectEmptyPlan bool
+		// expectedDBSchemaDDL should be the DDL required to reconstruct the expected output state of the database
+		//
+		// The expectedDBSchemaDDL might differ from the newSchemaDDL due to options passed to the migrator. For example,
+		// the data packing option will cause the column ordering for new tables in the expectedDBSchemaDDL to differ from
+		// the column ordering of those tables defined in newSchemaDDL
+		//
+		// If no expectedDBSchemaDDL is specified, the newSchemaDDL will be used
+		expectedDBSchemaDDL []string
 	}
 
 	acceptanceTestSuite struct {
@@ -88,29 +81,26 @@ func (suite *acceptanceTestSuite) TearDownSuite() {
 func (suite *acceptanceTestSuite) runTestCases(acceptanceTestCases []acceptanceTestCase) {
 	for _, tc := range acceptanceTestCases {
 		suite.Run(tc.name, func() {
-			suite.Run("vanilla", func() {
-				suite.runSubtest(tc, tc.vanillaExpectations, nil)
-			})
-			// Only run the data packing test if there are expectations for it. We should strip out the embedded
-			// data packing tests and make them their own tests to simplify the test suite.
-			if !reflect.DeepEqual(tc.dataPackingExpectations, expectations{}) {
-				suite.Run("with data packing (and ignoring column order)", func() {
-					suite.runSubtest(tc, tc.dataPackingExpectations, []diff.PlanOpt{
-						diff.WithDataPackNewTables(),
-						diff.WithLogger(log.SimpleLogger()),
-					})
-				})
-			}
+			suite.runTest(tc)
 		})
 	}
 }
 
-func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expectations, planOpts []diff.PlanOpt) {
+func (suite *acceptanceTestSuite) runTest(tc acceptanceTestCase) {
 	uuid.SetRand(&deterministicRandReader{})
 
-	// normalize the subtest
-	if expects.outputState == nil {
-		expects.outputState = tc.newSchemaDDL
+	// Normalize the subtest
+	tc.planOpts = append(tc.planOpts, diff.WithLogger(log.SimpleLogger()))
+	if tc.expectedDBSchemaDDL == nil {
+		tc.expectedDBSchemaDDL = tc.newSchemaDDL
+	}
+	if tc.planFactory == nil {
+		tc.planFactory = func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error) {
+			return diff.Generate(ctx, connPool, diff.DDLSchemaSource(newSchemaDDL),
+				append(tc.planOpts,
+					diff.WithTempDbFactory(tempDbFactory),
+				)...)
+		}
 	}
 
 	// Create roles since they are global
@@ -148,30 +138,20 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 		suite.Require().NoError(tempDbFactory.Close())
 	}(tempDbFactory)
 
-	generatePlanFn := tc.planFactory
-	if generatePlanFn == nil {
-		generatePlanFn = func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error) {
-			return diff.Generate(ctx, connPool, diff.DDLSchemaSource(newSchemaDDL),
-				append(planOpts,
-					diff.WithTempDbFactory(tempDbFactory),
-				)...)
+	plan, err := tc.planFactory(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
+	if tc.expectedPlanErrorIs != nil || len(tc.expectedPlanErrorContains) > 0 {
+		if tc.expectedPlanErrorIs != nil {
+			suite.ErrorIs(err, tc.expectedPlanErrorIs)
 		}
-	}
-
-	plan, err := generatePlanFn(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
-	if expects.planErrorIs != nil || len(expects.planErrorContains) > 0 {
-		if expects.planErrorIs != nil {
-			suite.ErrorIs(err, expects.planErrorIs)
-		}
-		if len(expects.planErrorContains) > 0 {
-			suite.ErrorContains(err, expects.planErrorContains)
+		if len(tc.expectedPlanErrorContains) > 0 {
+			suite.ErrorContains(err, tc.expectedPlanErrorContains)
 		}
 		return
 	}
 	suite.Require().NoError(err)
 
 	suite.assertValidPlan(plan)
-	if expects.empty {
+	if tc.expectEmptyPlan {
 		// It shouldn't be necessary, but we'll run all checks below this point just in case rather than exiting early
 		suite.Empty(plan.Statements)
 	}
@@ -185,10 +165,10 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 	oldDbDump, err := pgdump.GetDump(oldDb, pgdump.WithSchemaOnly())
 	suite.Require().NoError(err)
 
-	newDbDump := suite.directlyRunDDLAndGetDump(expects.outputState)
+	newDbDump := suite.directlyRunDDLAndGetDump(tc.expectedDBSchemaDDL)
 	suite.Equal(newDbDump, oldDbDump, prettySprintPlan(plan))
 
-	if tc.ddl != nil {
+	if tc.expectedPlanDDL != nil {
 		var generatedDDL []string
 		for _, stmt := range plan.Statements {
 			generatedDDL = append(generatedDDL, stmt.DDL)
@@ -198,11 +178,11 @@ func (suite *acceptanceTestSuite) runSubtest(tc acceptanceTestCase, expects expe
 		// We can also make the system more advanced by using tokens in place of the "randomly" generated UUIDs, such
 		// the test case doesn't need to be updated if the UUID generation changes. If we built this functionality, we
 		// should also integrate it with the schema_migration_plan_test.go tests.
-		suite.Equal(tc.ddl, generatedDDL, "data packing can change the the generated UUID and DDL")
+		suite.Equal(tc.expectedPlanDDL, generatedDDL, "data packing can change the the generated UUID and DDL")
 	}
 
 	// Make sure no diff is found if we try to regenerate a plan
-	plan, err = generatePlanFn(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, planOpts...)
+	plan, err = tc.planFactory(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
 	suite.Require().NoError(err)
 	suite.Empty(plan.Statements, prettySprintPlan(plan))
 }

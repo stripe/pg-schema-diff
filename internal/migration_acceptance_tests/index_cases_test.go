@@ -31,12 +31,8 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX some_other_idx ON foobar (bar DESC, fizz);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
-			empty: true,
-		},
+
+		expectEmptyPlan: true,
 	},
 	{
 		name: "Add a normal index",
@@ -379,7 +375,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeIndexDropped,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"DROP INDEX CONCURRENTLY \"public\".\"some_idx\"",
 			"ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"foo\"",
 		},
@@ -789,7 +785,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			CREATE INDEX some_idx_with_a_very_long_name ON foobar(foo, bar);
 			CREATE INDEX new_idx ON foobar(bar);
 		`},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER INDEX \"public\".\"some_idx_with_a_very_long_name\" RENAME TO \"pgschemadiff_tmpidx_some_idx_with_a_very_EBESExQVRheYGRobHB0eHw\"",
 			"CREATE INDEX CONCURRENTLY new_idx ON public.foobar USING btree (bar)",
 			"CREATE INDEX CONCURRENTLY some_idx_with_a_very_long_name ON public.foobar USING btree (foo, bar)",

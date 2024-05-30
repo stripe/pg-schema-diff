@@ -27,12 +27,8 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			empty: true,
-		},
-		dataPackingExpectations: expectations{
-			empty: true,
-		},
+
+		expectEmptyPlan: true,
 	},
 	{
 		name: "Add one column with default",
@@ -141,22 +137,13 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		vanillaExpectations: expectations{
-			outputState: []string{`
+
+		expectedDBSchemaDDL: []string{`
 					CREATE TABLE foobar(
 						id INT PRIMARY KEY,
 						my_new_column VARCHAR(255) NOT NULL DEFAULT 'a'
 					)
 				`},
-		},
-		dataPackingExpectations: expectations{
-			outputState: []string{`
-					CREATE TABLE foobar(
-						id INT PRIMARY KEY,
-						my_new_column VARCHAR(255) NOT NULL DEFAULT 'a'
-					)
-				`},
-		},
 	},
 	{
 		name: "Delete one column",
@@ -301,7 +288,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"Foobar\" ALTER COLUMN \"some_time_col\" SET DATA TYPE timestamp without time zone using to_timestamp(\"some_time_col\" / 1000)",
 			"ANALYZE \"public\".\"Foobar\" (\"some_time_col\")",
 		},
@@ -397,7 +384,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE character varying(255) COLLATE \"pg_catalog\".\"POSIX\" using \"foobar\"::character varying(255)",
 			"ANALYZE \"public\".\"foobar\" (\"foobar\")",
 		},
@@ -504,7 +491,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		ddl: []string{"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID", "ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"", "ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL", "ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\""},
+		expectedPlanDDL: []string{"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID", "ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"", "ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL", "ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\""},
 	},
 	{
 		name: "Set NOT NULL (add invalid CC)",
@@ -525,7 +512,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
@@ -554,7 +541,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
@@ -581,7 +568,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 		},
@@ -605,7 +592,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((foobar IS NOT NULL)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
@@ -631,7 +618,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 		},
 	},
@@ -654,7 +641,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			);
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"foobar\"",
 		},
@@ -679,7 +666,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (LENGTH(foobar) > 0);
 			`,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"foobar\"",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((length((foobar)::text) > 0)) NOT VALID",
@@ -708,7 +695,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
-		ddl: []string{
+		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
@@ -806,12 +793,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
-		vanillaExpectations: expectations{
-			planErrorContains: errValidatingPlan.Error(),
-		},
-		dataPackingExpectations: expectations{
-			planErrorContains: errValidatingPlan.Error(),
-		},
+		expectedPlanErrorContains: errValidatingPlan.Error(),
 	},
 	{
 		name: "Change from NULL default to no default and NOT NULL",
