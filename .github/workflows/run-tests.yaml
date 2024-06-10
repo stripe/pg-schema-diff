@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pg_package: ["postgresql14", "postgresql15"]
+        pg_package: ["postgresql14", "postgresql15", "postgresql16"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
