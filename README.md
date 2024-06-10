@@ -166,20 +166,14 @@ for _, stmt := range plan.Statements {
 ```
 
 # Supported Postgres versions
-- 14
-- 15
-- 16
-
-Postgres v13 and below are not supported. Use at your own risk.
+Supported: 14, 15, 16  
+Unsupported: <= 13  are not supported. Use at your own risk.
 
 # Unsupported migrations
-Note, the library only currently supports diffing the *public* schema. Support for diffing other schemas is on the roadmap
-
-*Unsupported*:
-- (On roadmap) Adding and remove partitions from an existing partitioned table
-- (On roadmap) Check constraints localized to specific partitions
-- Partitioned partitions (partitioned tables are supported but not partitioned partitions)
-- Materialized views
+An abridged list of unsupported migrations:
+- Views (Planned)
+- Privileges (Planned)
+- Types (Only enums are currently supported)
 - Renaming. The diffing library relies on names to identify the old and new versions of a table, index, etc. If you rename
 an object, it will be treated as a drop and an add
 
