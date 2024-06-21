@@ -31,7 +31,7 @@ func databaseSchemaSourcePlanFactory(ctx context.Context, connPool sqldb.Queryab
 	// Clone the opts so we don't modify the original.
 	opts = append([]diff.PlanOpt(nil), opts...)
 	opts = append(opts, diff.WithTempDbFactory(tempDbFactory))
-	for _, o := range newSchemaDb.ExcludeMetadatOptions {
+	for _, o := range newSchemaDb.ExcludeMetadataOptions {
 		opts = append(opts, diff.WithGetSchemaOpts(o))
 	}
 
