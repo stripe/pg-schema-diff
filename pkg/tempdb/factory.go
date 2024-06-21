@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/stripe/pg-schema-diff/internal/pgidentifier"
+	"github.com/stripe/pg-schema-diff/internal/util"
 	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/schema"
 )
@@ -19,6 +21,8 @@ const (
 	DefaultOnInstanceDbPrefix       = "pgschemadiff_tmp_"
 	DefaultOnInstanceMetadataSchema = "pgschemadiff_tmp_metadata"
 	DefaultOnInstanceMetadataTable  = "metadata"
+
+	DefaultStatementTimeout = 3 * time.Second
 )
 
 type ContextualCloser interface {
@@ -37,7 +41,7 @@ type (
 		// ConnPool is the connection pool to the temporary database
 		ConnPool *sql.DB
 		// ExcludeMetadataOptions are the options used to exclude any internal metadata from plan generation
-		ExcludeMetadatOptions []schema.GetSchemaOpt
+		ExcludeMetadataOptions []schema.GetSchemaOpt
 		// ContextualCloser should be called to clean up the temporary database
 		ContextualCloser
 	}
@@ -99,20 +103,20 @@ func WithRootDatabase(db string) OnInstanceFactoryOpt {
 }
 
 type (
-	CreateConnForDbFn func(ctx context.Context, dbName string) (*sql.DB, error)
+	CreateConnPoolForDbFn func(ctx context.Context, dbName string) (*sql.DB, error)
 
 	// onInstanceFactory creates temporary databases on the provided Postgres server
 	onInstanceFactory struct {
-		rootDb          *sql.DB
-		createConnForDb CreateConnForDbFn
-		options         onInstanceFactoryOptions
+		rootDb              *sql.DB
+		createConnPoolForDb CreateConnPoolForDbFn
+		options             onInstanceFactoryOptions
 	}
 )
 
 // NewOnInstanceFactory provides an implementation to easily create temporary databases on the Postgres instance
-// connected to via CreateConnForDbFn. The Postgres instance is connected to via the "postgres" database, and then
+// connected to via CreateConnPoolForDbFn. The Postgres instance is connected to via the "postgres" database, and then
 // temporary databases are created using that connection. These temporary databases are also connected to via the
-// CreateConnForDbFn.
+// CreateConnPoolForDbFn.
 // Make sure to always call Close() on the returned Factory to ensure the root connection is closed
 //
 // WARNING:
@@ -120,7 +124,7 @@ type (
 // they're only being used by the pg-schema-diff library, but it's recommended to clean them up when possible. This can
 // be done by deleting all old databases with the provided temp db prefix. The metadata table can be inspected to find
 // when the temporary database was created, e.g., to create a TTL
-func NewOnInstanceFactory(ctx context.Context, createConnForDb CreateConnForDbFn, opts ...OnInstanceFactoryOpt) (Factory, error) {
+func NewOnInstanceFactory(ctx context.Context, createConnPoolForDb CreateConnPoolForDbFn, opts ...OnInstanceFactoryOpt) (_ Factory, _retErr error) {
 	options := onInstanceFactoryOptions{
 		dbPrefix:       DefaultOnInstanceDbPrefix,
 		metadataSchema: DefaultOnInstanceMetadataSchema,
@@ -135,19 +139,22 @@ func NewOnInstanceFactory(ctx context.Context, createConnForDb CreateConnForDbFn
 		return nil, fmt.Errorf("dbPrefix (%s) must be a simple Postgres identifier matching the following regex: %s", options.dbPrefix, pgidentifier.SimpleIdentifierRegex)
 	}
 
-	rootDb, err := createConnForDb(ctx, options.rootDatabase)
+	rootDb, err := createConnPoolForDb(ctx, options.rootDatabase)
 	if err != nil {
-		return &onInstanceFactory{}, err
+		return &onInstanceFactory{}, fmt.Errorf("createConnForDb: %w", err)
 	}
+	defer util.DoOnErrOrPanic(&_retErr, func() {
+		_ = rootDb.Close()
+	})
+
 	if err := assertConnPoolIsOnExpectedDatabase(ctx, rootDb, options.rootDatabase); err != nil {
-		rootDb.Close()
 		return &onInstanceFactory{}, fmt.Errorf("assertConnPoolIsOnExpectedDatabase: %w", err)
 	}
 
 	return &onInstanceFactory{
-		rootDb:          rootDb,
-		createConnForDb: createConnForDb,
-		options:         options,
+		rootDb:              rootDb,
+		createConnPoolForDb: createConnPoolForDb,
+		options:             options,
 	}, nil
 }
 
@@ -155,36 +162,40 @@ func (o *onInstanceFactory) Close() error {
 	return o.rootDb.Close()
 }
 
-func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, retErr error) {
+func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr error) {
 	dbUUID, err := uuid.NewUUID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating uuid: %w", err)
 	}
-	tempDbName := o.options.dbPrefix + strings.ReplaceAll(dbUUID.String(), "-", "_")
-	if _, err = o.rootDb.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s;", tempDbName)); err != nil {
-		return nil, err
-	}
-	defer func() {
-		// Only drop the temp database if an error occurred during creation
-		if retErr != nil {
-			if err := o.dropTempDatabase(ctx, tempDbName); err != nil {
-				o.options.logger.Errorf("Failed to drop temporary database %s because of error %s. This drop was automatically triggered by error %s", tempDbName, err.Error(), retErr.Error())
-			}
-		}
-	}()
 
-	tempDbConn, err := o.createConnForDb(ctx, tempDbName)
+	rootConn, err := openConnectionWithDefaults(ctx, o.rootDb)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("openConnectionWithDefaults: %w", err)
 	}
-	defer func() {
+	defer rootConn.Close()
+
+	tempDbName := o.options.dbPrefix + strings.ReplaceAll(dbUUID.String(), "-", "_")
+	// Create the temporary database using template0, the default Postgres template with no user-defined objects.
+	if _, err = rootConn.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE template0;", tempDbName)); err != nil {
+		return nil, fmt.Errorf("creating temporary database: %w", err)
+	}
+	defer util.DoOnErrOrPanic(&_retErr, func() {
+		// Only drop the temp database if an error occurred during creation
+		if err := o.dropTempDatabase(ctx, tempDbName); err != nil {
+			o.options.logger.Errorf("Failed to drop temporary database %s because %q. This drop was automatically triggered by %q", tempDbName, err.Error(), _retErr.Error())
+		}
+	})
+
+	tempDbConnPool, err := o.createConnPoolForDb(ctx, tempDbName)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to temporary database: %w", err)
+	}
+	defer util.DoOnErrOrPanic(&_retErr, func() {
 		// Only close the connection pool if an error occurred during creation.
 		// We should close the connection pool on the off-chance that the drop database fails
-		if retErr != nil {
-			_ = tempDbConn.Close()
-		}
-	}()
-	if err := assertConnPoolIsOnExpectedDatabase(ctx, tempDbConn, tempDbName); err != nil {
+		_ = tempDbConnPool.Close()
+	})
+	if err := assertConnPoolIsOnExpectedDatabase(ctx, tempDbConnPool, tempDbName); err != nil {
 		return nil, fmt.Errorf("assertConnPoolIsOnExpectedDatabase: %w", err)
 	}
 
@@ -201,28 +212,34 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, retErr err
 			);
 		INSERT INTO %s DEFAULT VALUES;
 	`, sanitizedSchemaName, sanitizedTableName, sanitizedTableName)
-	if _, err := tempDbConn.ExecContext(ctx, createMetadataStmts); err != nil {
-		return nil, err
+	if _, err := tempDbConnPool.ExecContext(ctx, createMetadataStmts); err != nil {
+		return nil, fmt.Errorf("creating metadata in temporary database: %w", err)
 	}
 
 	return &Database{
-		ConnPool: tempDbConn,
-		ExcludeMetadatOptions: []schema.GetSchemaOpt{
+		ConnPool: tempDbConnPool,
+		ExcludeMetadataOptions: []schema.GetSchemaOpt{
 			schema.WithExcludeSchemas(o.options.metadataSchema),
 		},
 		ContextualCloser: fnContextualCloser(func(ctx context.Context) error {
-			_ = tempDbConn.Close()
+			_ = tempDbConnPool.Close()
 			return o.dropTempDatabase(ctx, tempDbName)
 		}),
 	}, nil
 
 }
 
-// assertConnPoolIsOnExpectedDatabase provides validation that a user properly passed in a proper CreateConnForDbFn
-func assertConnPoolIsOnExpectedDatabase(ctx context.Context, connPool *sql.DB, expectedDatabase string) error {
+// assertConnPoolIsOnExpectedDatabase provides validation that a user properly passed in a proper CreateConnPoolForDbFn
+func assertConnPoolIsOnExpectedDatabase(ctx context.Context, connPool *sql.DB, expectedDatabase string) (retErr error) {
+	conn, err := openConnectionWithDefaults(ctx, connPool)
+	if err != nil {
+		return fmt.Errorf("openConnectionWithDefaults: %w", err)
+	}
+	defer conn.Close()
+
 	var dbName string
 	if err := connPool.QueryRowContext(ctx, "SELECT current_database();").Scan(&dbName); err != nil {
-		return err
+		return fmt.Errorf("query current database name: %w", err)
 	}
 	if dbName != expectedDatabase {
 		return fmt.Errorf("connection pool is on database %s, expected %s", dbName, expectedDatabase)
@@ -231,10 +248,38 @@ func assertConnPoolIsOnExpectedDatabase(ctx context.Context, connPool *sql.DB, e
 	return nil
 }
 
-func (o *onInstanceFactory) dropTempDatabase(ctx context.Context, dbName string) error {
+func (o *onInstanceFactory) dropTempDatabase(ctx context.Context, dbName string) (retErr error) {
 	if !strings.HasPrefix(dbName, o.options.dbPrefix) {
 		return fmt.Errorf("drop non-temporary database: %s", dbName)
 	}
-	_, err := o.rootDb.ExecContext(ctx, fmt.Sprintf("DROP DATABASE %s;", dbName))
-	return err
+
+	rootConn, err := openConnectionWithDefaults(ctx, o.rootDb)
+	if err != nil {
+		return fmt.Errorf("openConnectionWithDefaults: %w", err)
+	}
+	defer rootConn.Close()
+
+	_, err = rootConn.ExecContext(ctx, fmt.Sprintf("DROP DATABASE %s;", dbName))
+	if err != nil {
+		return fmt.Errorf("dropping temporary database: %w", err)
+	}
+
+	return nil
+}
+
+// openConnectionWithDefaults uses the provided connection pool to open a connection to the database and sets safe
+// defaults, such as statement_timeout
+func openConnectionWithDefaults(ctx context.Context, connPool *sql.DB) (_ *sql.Conn, retErr error) {
+	conn, err := connPool.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting connection: %w", err)
+	}
+	defer util.DoOnErrOrPanic(&retErr, func() {
+		_ = conn.Close()
+	})
+
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d;", DefaultStatementTimeout.Milliseconds())); err != nil {
+		return nil, fmt.Errorf("setting statement timeout: %w", err)
+	}
+	return conn, nil
 }
