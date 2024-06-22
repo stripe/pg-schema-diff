@@ -17,7 +17,7 @@ If you want to make changes yourself, follow these steps:
 2. Make your changes
 3. Test your changes
 ```bash
- docker build -t pg-schema-diff-test-runner -f ./build/Dockerfile.test --build-arg POSTGRES_PACKAGE=postgresql{14, 15} .
+ docker build -t pg-schema-diff-test-runner -f ./build/Dockerfile.test .
  ```
 3. Submit a [pull request](https://help.github.com/articles/creating-a-pull-request-from-a-fork/)
 
