@@ -10,7 +10,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar TEXT UNIQUE ,
 				fizz INT
@@ -22,7 +22,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar TEXT UNIQUE ,
 				fizz INT
@@ -40,7 +40,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
 			`,
@@ -49,7 +49,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
 			CREATE INDEX some_idx ON schema_1.foobar(id DESC, foo);
@@ -64,7 +64,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
 			`,
@@ -72,7 +72,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
 			CREATE INDEX some_idx ON foobar USING hash (id);
@@ -87,7 +87,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				"Foo" VARCHAR(255)
 			);
 			`,
@@ -95,7 +95,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				"Foo" VARCHAR(255)
 			);
 			CREATE INDEX "Some_idx" ON "Foobar"(id, "Foo");
@@ -110,16 +110,16 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
-			    foo VARCHAR(255) NOT NULL
+				id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
-			    foo VARCHAR(255) NOT NULL
+				id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL
 			);
 			CREATE UNIQUE INDEX some_unique_idx ON foobar(foo);
 			`,
@@ -134,7 +134,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT
+				id INT
 			);
 			`,
 		},
@@ -142,7 +142,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
@@ -155,14 +155,14 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT UNIQUE
+				id INT UNIQUE
 			);
 			`,
 		},
@@ -175,14 +175,14 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL
+				id INT NOT NULL
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL PRIMARY KEY
+				id INT NOT NULL PRIMARY KEY
 			);
 			`,
 		},
@@ -195,7 +195,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_primary_key ON foobar(id);
 			`,
@@ -203,7 +203,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_primary_key ON foobar(id);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_primary_key PRIMARY KEY USING INDEX foobar_primary_key;
@@ -215,7 +215,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(id);
 			`,
@@ -223,7 +223,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_unique_idx ON foobar(id);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_unique_idx UNIQUE USING INDEX foobar_unique_idx;
@@ -235,7 +235,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_idx ON foobar(id);
 			`,
@@ -243,7 +243,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_idx ON foobar(id);
 			-- This renames the index
@@ -260,7 +260,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_idx ON foobar(id);
 			`,
@@ -268,7 +268,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_idx ON foobar(id);
 			-- This renames the index
@@ -285,7 +285,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE INDEX foobar_idx ON foobar(id);
 			`,
@@ -293,7 +293,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_primary_key ON foobar(id);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_primary_key PRIMARY KEY USING INDEX foobar_primary_key;
@@ -309,7 +309,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE INDEX foobar_idx ON foobar(id);
 			`,
@@ -317,7 +317,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			CREATE UNIQUE INDEX foobar_idx ON foobar(id);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_unique_idx UNIQUE USING INDEX foobar_idx;
@@ -334,7 +334,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255) NOT NULL
 			);
 			CREATE INDEX some_inx ON schema_1.foobar(id, foo);
@@ -344,7 +344,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
 			`,
@@ -358,7 +358,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255) NOT NULL
 			);
 			CREATE INDEX some_idx ON foobar(foo);
@@ -367,7 +367,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
@@ -385,7 +385,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				"Foo" VARCHAR(255)
 			);
 			CREATE INDEX "Some_idx" ON "Foobar"(id, "Foo");
@@ -394,7 +394,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				"Foo" VARCHAR(255) NOT NULL
 			);
 			`,
@@ -408,8 +408,8 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
-			    foo VARCHAR(255) NOT NULL
+				id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL
 			);
 			CREATE UNIQUE INDEX some_unique_idx ON foobar(foo);
 			`,
@@ -417,8 +417,8 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
-			    foo VARCHAR(255) NOT NULL
+				id INT PRIMARY KEY,
+				foo VARCHAR(255) NOT NULL
 			);
 			`,
 		},
@@ -431,14 +431,14 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			`,
 		},
@@ -452,14 +452,14 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT UNIQUE
+				id INT UNIQUE
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			`,
 		},
@@ -474,14 +474,14 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255) NOT NULL
 			);
 			CREATE INDEX some_idx ON schema_1.foobar(id, foo);
 			
 			CREATE SCHEMA schema_2;
 			CREATE TABLE schema_2.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255) NOT NULL
 			);
 			`,
@@ -490,13 +490,13 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255) NOT NULL
 			);
 			
 			CREATE SCHEMA schema_2;
 			CREATE TABLE schema_2.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255) NOT NULL
 			);
 			CREATE INDEX some_idx ON schema_2.foobar(id, foo);
@@ -512,9 +512,9 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo TEXT NOT NULL,
-			    bar BIGINT NOT NULL
+				bar BIGINT NOT NULL
 			);
 			CREATE UNIQUE INDEX some_idx_with_a_really_long_name_that_is_nearly_61_chars ON foobar(foo, bar)
 			`,
@@ -522,9 +522,9 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo TEXT NOT NULL,
-			    bar BIGINT NOT NULL
+				bar BIGINT NOT NULL
 			);
 			CREATE UNIQUE INDEX some_idx_with_a_really_long_name_that_is_nearly_61_chars ON foobar(foo)
 			`,
@@ -540,17 +540,17 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo TEXT NOT NULL,
-			    bar BIGINT NOT NULL
+				bar BIGINT NOT NULL
 			);
 			CREATE UNIQUE INDEX some_idx ON foobar(foo, bar);
 
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo BIGINT NOT NULL,
-			    bar TEXt NOT NULL
+				bar TEXt NOT NULL
 			);
 			CREATE UNIQUE INDEX some_idx ON schema_1.foobar(foo, bar)
 			`,
@@ -558,17 +558,17 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo TEXT NOT NULL,
-			    bar BIGINT NOT NULL
+				bar BIGINT NOT NULL
 			);
 			CREATE UNIQUE INDEX some_idx ON foobar(foo);
 
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo BIGINT NOT NULL,
-			    bar TEXt NOT NULL
+				bar TEXt NOT NULL
 			);
 			CREATE UNIQUE INDEX some_idx ON schema_1.foobar(foo);
 			`,
@@ -584,9 +584,9 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo TEXT NOT NULL,
-			    bar BIGINT NOT NULL
+				bar BIGINT NOT NULL
 			);
 			CREATE INDEX some_idx ON foobar (foo)
 			`,
@@ -594,9 +594,9 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo TEXT NOT NULL,
-			    bar BIGINT NOT NULL
+				bar BIGINT NOT NULL
 			);
 			CREATE INDEX some_idx ON foobar USING hash (foo)
 			`,
@@ -612,9 +612,9 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo TEXT NOT NULL,
-			    bar BIGINT NOT NULL
+				bar BIGINT NOT NULL
 			);
 			CREATE INDEX some_idx ON foobar (foo, bar)
 			`,
@@ -622,9 +622,9 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo TEXT NOT NULL,
-			    bar BIGINT NOT NULL
+				bar BIGINT NOT NULL
 			);
 			CREATE INDEX some_idx ON foobar (foo DESC, bar)
 			`,
@@ -640,9 +640,9 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo TEXT NOT NULL,
-			    bar BIGINT NOT NULL
+				bar BIGINT NOT NULL
 			);
 			CREATE UNIQUE INDEX some_idx ON foobar(foo, bar);
 			`,
@@ -650,7 +650,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT
+				id INT
 			);
 			`,
 		},
@@ -665,7 +665,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL PRIMARY KEY,
+				id INT NOT NULL PRIMARY KEY,
 				foo TEXT NOT NULL
 			);
 			CREATE UNIQUE INDEX some_idx ON foobar(foo);
@@ -674,8 +674,8 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
-			    foo INT NOT NULL PRIMARY KEY
+				id INT,
+				foo INT NOT NULL PRIMARY KEY
 			);
 			`,
 		},
@@ -691,7 +691,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    "Id" INT NOT NULL PRIMARY KEY,
+				"Id" INT NOT NULL PRIMARY KEY,
 				foo TEXT NOT NULL
 			);
 			`,
@@ -699,8 +699,8 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    "Id" INT,
-			    foo INT NOT NULL PRIMARY KEY
+				"Id" INT,
+				foo INT NOT NULL PRIMARY KEY
 			);
 			`,
 		},
@@ -716,7 +716,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo TEXT NOT NULL
 			);
 			CREATE UNIQUE INDEX unique_idx ON foobar(id);
@@ -726,8 +726,8 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
-			    foo INT NOT NULL PRIMARY KEY
+				id INT,
+				foo INT NOT NULL PRIMARY KEY
 			);
 			`,
 		},
@@ -743,7 +743,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo TEXT NOT NULL
 			);
 			CREATE UNIQUE INDEX unique_idx ON foobar(id);
@@ -753,8 +753,8 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
-			    foo INT NOT NULL
+				id INT,
+				foo INT NOT NULL
 			);
 			CREATE UNIQUE INDEX unique_idx ON foobar(id, foo);
 			ALTER TABLE foobar ADD CONSTRAINT non_default_primary_key PRIMARY KEY USING INDEX unique_idx;
@@ -771,16 +771,16 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		name: "Alter index columns (index replacement and prioritized builds)",
 		oldSchemaDDL: []string{`
 			CREATE TABLE foobar(
-			    foo TEXT,
-			    bar INT
+				foo TEXT,
+				bar INT
 			);
 			CREATE INDEX some_idx_with_a_very_long_name ON foobar(foo);
 			CREATE INDEX old_idx ON foobar(bar);
 		`},
 		newSchemaDDL: []string{`
 			CREATE TABLE foobar(
-			    foo TEXT,
-			    bar INT
+				foo TEXT,
+				bar INT
 			);
 			CREATE INDEX some_idx_with_a_very_long_name ON foobar(foo, bar);
 			CREATE INDEX new_idx ON foobar(bar);

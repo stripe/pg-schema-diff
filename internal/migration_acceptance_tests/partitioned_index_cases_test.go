@@ -10,11 +10,11 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
 				bar TEXT,
 				fizz INT,
-			    PRIMARY KEY (foo, id),
+				PRIMARY KEY (foo, id),
 				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -27,12 +27,12 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
 				bar TEXT,
 				fizz INT,
-			    PRIMARY KEY (foo, id),
-			    UNIQUE (foo, bar)
+				PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
@@ -49,7 +49,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE schema schema_2;
@@ -62,7 +62,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE schema schema_2;
@@ -82,7 +82,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -93,7 +93,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -112,7 +112,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -123,7 +123,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -141,7 +141,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT,
+				id INT,
 				"Foo" VARCHAR(255)
 			) PARTITION BY LIST ("Foo");
 			CREATE TABLE "FOOBAR_1" PARTITION OF "Foobar" FOR VALUES IN ('foo_1');
@@ -152,7 +152,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT,
+				id INT,
 				"Foo" VARCHAR(255)
 			) PARTITION BY LIST ("Foo");
 			CREATE TABLE "FOOBAR_1" PARTITION OF "Foobar" FOR VALUES IN ('foo_1');
@@ -171,7 +171,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -182,9 +182,9 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
-			    PRIMARY KEY (foo, id)
+				PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
@@ -201,7 +201,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE SCHEMA schema_2;
@@ -214,7 +214,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
 				UNIQUE(foo, id)
 			) PARTITION BY LIST (foo);
@@ -234,7 +234,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
@@ -244,7 +244,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
@@ -256,7 +256,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			-- Create a table in a different schema to ensure that dependencies are correctly set
 			CREATE SCHEMA schema_2;
 			CREATE TABLE schema_2.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE schema_2.foobar_1 PARTITION OF schema_2.foobar FOR VALUES IN ('foo_1');
@@ -272,7 +272,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    "Id" INT,
+				"Id" INT,
 				"FOO" VARCHAR(255)
 			) PARTITION BY LIST ("FOO");
 			CREATE TABLE foobar_1 PARTITION OF "Foobar" FOR VALUES IN ('foo_1');
@@ -283,7 +283,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    "Id" INT,
+				"Id" INT,
 				"FOO" VARCHAR(255)
 			) PARTITION BY LIST ("FOO");
 			CREATE TABLE foobar_1 PARTITION OF "Foobar" FOR VALUES IN ('foo_1');
@@ -301,7 +301,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -311,7 +311,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
@@ -320,7 +320,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			-- Create a table in a different schema to ensure that dependencies are correctly set
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
@@ -328,11 +328,11 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			-- Create a flattened version of the table in a different schema
 			CREATE SCHEMA schema_2;
 			CREATE TABLE schema_2.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			); 
 			CREATE TABLE schema_2.foobar_1(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			); 
 			`,
@@ -347,7 +347,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -357,7 +357,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_unique UNIQUE (foo, id);
@@ -366,7 +366,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			-- Create a table in a different schema to ensure that dependencies are correctly set
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
@@ -374,11 +374,11 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			-- Create a flattened version of the table in a different schema
 			CREATE SCHEMA schema_2;
 			CREATE TABLE schema_2.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			); 
 			CREATE TABLE schema_2.foobar_1(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			); 
 			`,
@@ -393,7 +393,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -403,7 +403,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE foobar ADD CONSTRAINT foobar_pkey PRIMARY KEY (foo, id);
@@ -413,7 +413,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			-- Create a table in a different schema to ensure that dependencies are correctly set
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
@@ -421,11 +421,11 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			-- Create a flattened version of the table in a different schema
 			CREATE SCHEMA schema_2;
 			CREATE TABLE schema_2.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			); 
 			CREATE TABLE schema_2.foobar_1(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			); 
 			`,
@@ -440,7 +440,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE SCHEMA schema_2;
@@ -454,7 +454,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE SCHEMA schema_2;
@@ -473,7 +473,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -485,7 +485,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -504,7 +504,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
 				PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
@@ -518,7 +518,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE SCHEMA schema_2;
@@ -537,9 +537,9 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
-			    UNIQUE (foo, id)
+				UNIQUE (foo, id)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
@@ -549,7 +549,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -741,7 +741,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
 			   	bar INT
 			) PARTITION BY LIST (foo);
@@ -755,7 +755,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
 			   	bar INT
 			) PARTITION BY LIST (foo);
@@ -777,7 +777,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
 			   	bar INT
 			) PARTITION BY LIST (foo);
@@ -791,7 +791,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
 			   	bar INT
 			) PARTITION BY LIST (foo);
@@ -813,7 +813,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -844,9 +844,9 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
-			    PRIMARY KEY (foo)
+				PRIMARY KEY (foo)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
@@ -856,9 +856,9 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
-			    PRIMARY KEY (foo, id)
+				PRIMARY KEY (foo, id)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
@@ -876,9 +876,9 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
-			    PRIMARY KEY (foo)
+				PRIMARY KEY (foo)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF "Foobar" FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF "Foobar" FOR VALUES IN ('foo_2');
@@ -898,9 +898,9 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
-			    PRIMARY KEY (foo)
+				PRIMARY KEY (foo)
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF "Foobar" FOR VALUES IN ('foo_1');
 			CREATE TABLE foobar_2 PARTITION OF "Foobar" FOR VALUES IN ('foo_2');
@@ -924,7 +924,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -937,7 +937,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -957,7 +957,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -970,7 +970,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -990,7 +990,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1003,7 +1003,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1023,7 +1023,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1035,7 +1035,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1051,7 +1051,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1065,7 +1065,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1081,7 +1081,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1095,7 +1095,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1111,7 +1111,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1123,7 +1123,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1142,7 +1142,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1154,7 +1154,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1173,7 +1173,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1185,7 +1185,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1202,7 +1202,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
@@ -1214,7 +1214,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT NOT NULL,
+				id INT NOT NULL,
 				foo VARCHAR(255) NOT NULL
 			) PARTITION BY LIST (foo);
 			CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');

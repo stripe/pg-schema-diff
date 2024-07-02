@@ -9,10 +9,10 @@ var dataPackingCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
+				id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL,
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz SERIAL NOT NULL UNIQUE,
+				bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				fizz SERIAL NOT NULL UNIQUE,
 				buzz REAL CHECK (buzz IS NOT NULL)
 			);
 			ALTER TABLE foobar REPLICA IDENTITY FULL;
@@ -23,8 +23,8 @@ var dataPackingCases = []acceptanceTestCase{
 
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar_fk(
-			    bar TIMESTAMP,
-			    foo VARCHAR(255)
+				bar TIMESTAMP,
+				foo VARCHAR(255)
 			);
 			CREATE UNIQUE INDEX foobar_fk_unique_idx ON schema_1.foobar_fk(foo, bar);
 			-- create a circular dependency of foreign keys (this is allowed)
@@ -35,9 +35,9 @@ var dataPackingCases = []acceptanceTestCase{
 
 		expectedDBSchemaDDL: []string{`
 			CREATE TABLE foobar(
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
-			    fizz SERIAL NOT NULL UNIQUE,
+				bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
+				fizz SERIAL NOT NULL UNIQUE,
 				buzz REAL CHECK (buzz IS NOT NULL),
 				foo VARCHAR(255) COLLATE "POSIX" DEFAULT '' NOT NULL
 			);
@@ -49,8 +49,8 @@ var dataPackingCases = []acceptanceTestCase{
 
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar_fk(
-			    bar TIMESTAMP,
-			    foo VARCHAR(255)
+				bar TIMESTAMP,
+				foo VARCHAR(255)
 			);
 			CREATE UNIQUE INDEX foobar_fk_unique_idx ON schema_1.foobar_fk(foo, bar);
 			-- create a circular dependency of foreign keys (this is allowed)
@@ -66,13 +66,13 @@ var dataPackingCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1."Foobar"(
-			    id INT,
+				id INT,
 				foo VARCHAR(255),
 				bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
 				fizz SERIAL,
 				CHECK ( fizz > 0 ),
-			    PRIMARY KEY (foo, id),
-			    UNIQUE (foo, bar)
+				PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE schema_1."Foobar" REPLICA IDENTITY FULL;
 			
@@ -82,8 +82,8 @@ var dataPackingCases = []acceptanceTestCase{
 			-- partitions
 			CREATE SCHEMA schema_2;
 			CREATE TABLE schema_2."FOOBAR_1" PARTITION OF schema_1."Foobar"(
-			    foo NOT NULL,
-			    bar NOT NULL
+				foo NOT NULL,
+				bar NOT NULL
 			) FOR VALUES IN ('foo_1');
 			ALTER TABLE schema_2."FOOBAR_1" REPLICA IDENTITY NOTHING ;
 			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_2');
@@ -100,13 +100,13 @@ var dataPackingCases = []acceptanceTestCase{
 		expectedDBSchemaDDL: []string{`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1."Foobar"(
-			    id INT,
+				id INT,
 				fizz SERIAL,
 				foo VARCHAR(255),
 				bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
 				CHECK ( fizz > 0 ),
-			    PRIMARY KEY (foo, id),
-			    UNIQUE (foo, bar)
+				PRIMARY KEY (foo, id),
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST (foo);
 			ALTER TABLE schema_1."Foobar" REPLICA IDENTITY FULL;
 
@@ -116,8 +116,8 @@ var dataPackingCases = []acceptanceTestCase{
 			-- partitions
 			CREATE SCHEMA schema_2;
 			CREATE TABLE schema_2."FOOBAR_1" PARTITION OF schema_1."Foobar"(
-			    foo NOT NULL,
-			    bar NOT NULL
+				foo NOT NULL,
+				bar NOT NULL
 			) FOR VALUES IN ('foo_1');
 			ALTER TABLE schema_2."FOOBAR_1" REPLICA IDENTITY NOTHING ;
 			CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_2');

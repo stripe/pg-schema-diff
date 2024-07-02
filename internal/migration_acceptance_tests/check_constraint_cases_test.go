@@ -10,7 +10,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT CHECK ( bar > id )
 			);
@@ -19,7 +19,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT CHECK ( bar > id )
 			);
@@ -32,7 +32,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -41,7 +41,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT CHECK ( bar > id )
 			);
@@ -57,7 +57,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT
 			);
@@ -72,7 +72,7 @@ var checkConstraintCases = []acceptanceTestCase{
 				RETURN a + b;
 
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT CHECK ( add(bar, id) > 0 )
 			);
@@ -86,7 +86,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT
 			);
@@ -95,7 +95,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT CHECK ( to_timestamp(id) <= CURRENT_TIMESTAMP )
 			);
@@ -107,7 +107,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -116,7 +116,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT,
 				CHECK ( bar > id ), CHECK ( bar IS NOT NULL ), CHECK (bar > 0)
@@ -129,7 +129,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
 			`,
@@ -137,7 +137,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT CHECK ( bar > id ), CHECK ( bar IS NOT NULL ), CHECK (bar > 0)
 			);
@@ -149,7 +149,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
 			`,
@@ -157,7 +157,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo INT CHECK ( foo > 0 )
 			);
 			`,
@@ -172,7 +172,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "ID" INT PRIMARY KEY,
+				"ID" INT PRIMARY KEY,
 				foo VARCHAR(255),
 				"Bar" BIGINT
 			);
@@ -181,7 +181,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "ID" INT PRIMARY KEY,
+				"ID" INT PRIMARY KEY,
 				foo VARCHAR(255),
 			   	"Bar" BIGINT
 			);
@@ -194,7 +194,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -203,7 +203,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -216,7 +216,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -225,7 +225,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -238,7 +238,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT CHECK ( bar > id )
 			);
@@ -247,7 +247,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -259,7 +259,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "ID" INT PRIMARY KEY,
+				"ID" INT PRIMARY KEY,
 				foo VARCHAR(255),
 				"Bar" BIGINT
 			);
@@ -269,7 +269,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "ID" INT PRIMARY KEY,
+				"ID" INT PRIMARY KEY,
 				foo VARCHAR(255),
 			   	"Bar" BIGINT
 			);
@@ -281,7 +281,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "ID" INT PRIMARY KEY,
+				"ID" INT PRIMARY KEY,
 				foo VARCHAR(255),
 				"Bar" BIGINT CHECK ( "Bar" > 0 )
 			);
@@ -290,7 +290,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "ID" INT PRIMARY KEY,
+				"ID" INT PRIMARY KEY,
 				foo VARCHAR(255),
 			   	"Bar" TEXT
 			);
@@ -306,7 +306,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT,
 				CHECK ( bar > id ), CHECK ( bar IS NOT NULL ), CHECK (bar > 0)
@@ -316,7 +316,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255)
 			);
 			`,
@@ -334,7 +334,7 @@ var checkConstraintCases = []acceptanceTestCase{
 				RETURN a + b;
 
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT CHECK ( add(bar, id) > 0 )
 			);
@@ -343,7 +343,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT
 			);
@@ -357,7 +357,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT CHECK ( to_timestamp(id) <= CURRENT_TIMESTAMP )
 			);
@@ -366,7 +366,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT
 			);
@@ -378,7 +378,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -388,7 +388,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -404,7 +404,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -414,7 +414,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -427,7 +427,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -437,7 +437,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -450,7 +450,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -460,7 +460,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT
 			);
@@ -473,7 +473,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT CHECK (bar > id)
 			);
@@ -482,7 +482,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar BIGINT CHECK (bar < id)
 			);
@@ -500,7 +500,7 @@ var checkConstraintCases = []acceptanceTestCase{
 				RETURN a + b;
 
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT
 			);
@@ -516,7 +516,7 @@ var checkConstraintCases = []acceptanceTestCase{
 				RETURN a + b;
 
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT
 			);
@@ -531,7 +531,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT
 			);
@@ -541,7 +541,7 @@ var checkConstraintCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255),
 				bar INT
 			);
