@@ -10,20 +10,20 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255) COLLATE "C" DEFAULT '' NOT NULL,
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL
+				bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				fizz BOOLEAN NOT NULL
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255) COLLATE "C" DEFAULT '' NOT NULL,
-			    bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			    fizz BOOLEAN NOT NULL
+				bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				fizz BOOLEAN NOT NULL
 			);
 			`,
 		},
@@ -35,14 +35,14 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				my_new_column VARCHAR(255) DEFAULT 'a'
 			);
 			`,
@@ -53,14 +53,14 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				"My_new_column" VARCHAR(255) DEFAULT 'a'
 			);
 			`,
@@ -71,14 +71,14 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				my_new_column VARCHAR(255) NOT NULL
 			);
 			`,
@@ -89,14 +89,14 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				my_new_column SERIAL NOT NULL
 			);
 			`,
@@ -107,14 +107,14 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				my_new_column VARCHAR(255) COLLATE "C" NOT NULL DEFAULT 'a'
 			);
 			`,
@@ -125,7 +125,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
@@ -133,7 +133,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE TABLE foobar(
 				my_new_column VARCHAR(255) NOT NULL DEFAULT 'a',
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
@@ -150,7 +150,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
@@ -171,7 +171,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    "Id" INT PRIMARY KEY
+				"Id" INT PRIMARY KEY
 			);
 			`,
 		},
@@ -192,7 +192,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id BIGSERIAL PRIMARY KEY
+				id BIGSERIAL PRIMARY KEY
 			);
 			`,
 		},
@@ -213,7 +213,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foo VARCHAR(255) NOT NULL CHECK ( foo IS NOT NULL )
 			);
 			`,
@@ -221,7 +221,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY
+				id INT PRIMARY KEY
 			);
 			`,
 		},
@@ -234,7 +234,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT NOT NULL
 			);
 			`,
@@ -242,7 +242,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar SERIAL NOT NULL
 			);
 			`,
@@ -253,7 +253,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar SERIAL NOT NULL
 			);
 			`,
@@ -261,7 +261,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT NOT NULL
 			);
 			`,
@@ -275,7 +275,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				some_time_col BIGINT
 			);
 			`,
@@ -283,7 +283,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				some_time_col TIMESTAMP 
 			);
 			`,
@@ -302,7 +302,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) DEFAULT 'some default' NOT NULL
 			);
 			`,
@@ -310,7 +310,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar TEXT DEFAULT 'some default' NOT NULL
 			);
 			`,
@@ -325,7 +325,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) COLLATE "C" NOT NULL
 			);
 			`,
@@ -333,7 +333,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar CHAR COLLATE "POSIX" NOT NULL
 			);
 			`,
@@ -348,7 +348,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar bytea NOT NULL
 			);
 			`,
@@ -356,7 +356,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar CHAR NOT NULL
 			);
 			`,
@@ -371,7 +371,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) COLLATE "C" NOT NULL
 			);
 			`,
@@ -379,7 +379,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) COLLATE "POSIX" NOT NULL
 			);
 			`,
@@ -398,7 +398,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			`,
@@ -406,7 +406,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) COLLATE "POSIX" NOT NULL
 			);
 			`,
@@ -421,7 +421,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			`,
@@ -429,7 +429,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) DEFAULT ''
 			);
 			`,
@@ -440,7 +440,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) DEFAULT ''
 			);
 			`,
@@ -448,7 +448,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			`,
@@ -459,7 +459,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) DEFAULT 'Something else'
 			);
 			`,
@@ -467,7 +467,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) DEFAULT ''
 			);
 			`,
@@ -478,7 +478,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			`,
@@ -486,7 +486,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			`,
@@ -498,7 +498,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			`,
@@ -506,7 +506,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
@@ -526,7 +526,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
@@ -535,7 +535,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
@@ -553,7 +553,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
@@ -562,7 +562,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
@@ -578,7 +578,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			`,
@@ -586,7 +586,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
@@ -603,7 +603,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
@@ -612,7 +612,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
@@ -627,7 +627,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
@@ -636,7 +636,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			`,
@@ -651,7 +651,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
@@ -660,7 +660,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (LENGTH(foobar) > 0);
@@ -678,7 +678,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			`,
@@ -686,7 +686,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT NOT NULL CHECK (foobar > 0)
 			);
 			`,
@@ -711,7 +711,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) NOT NULL
 			);
 			`,
@@ -719,7 +719,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255)
 			);
 			`,
@@ -730,7 +730,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT
 			);
 			`,
@@ -738,7 +738,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) DEFAULT 'SOMETHING'
 			);
 			`,
@@ -753,7 +753,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT DEFAULT 0
 			);
 			`,
@@ -761,7 +761,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar VARCHAR(255) DEFAULT 'SOMETHING'
 			);
 			`,
@@ -776,7 +776,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar TEXT DEFAULT 'SOMETHING'
 			);
 			`,
@@ -784,7 +784,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT DEFAULT 8
 			);
 			`,
@@ -800,7 +800,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT DEFAULT NULL
 			);
 			`,
@@ -808,7 +808,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT NOT NULL
 			);
 			`,
@@ -819,7 +819,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT NOT NULL
 			);
 			`,
@@ -827,7 +827,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT DEFAULT NULL
 			);
 			`,
@@ -838,7 +838,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT NOT NULL
 			);
 			`,
@@ -846,7 +846,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar SMALLINT NULL
 			);
 			`,
@@ -861,7 +861,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar INT
 			);
 			`,
@@ -869,7 +869,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar SMALLINT NOT NULL
 			);
 			`,
@@ -884,7 +884,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar TEXT DEFAULT 'some default'
 			);
 			`,
@@ -892,7 +892,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				foobar CHAR NOT NULL DEFAULT 'A'
 			);
 			`,
@@ -907,7 +907,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				"Foobar" TEXT DEFAULT 'some default'
 			);
 			`,
@@ -915,7 +915,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE "Foobar"(
-			    id INT PRIMARY KEY,
+				id INT PRIMARY KEY,
 				"Foobar" CHAR COLLATE "POSIX" NOT NULL DEFAULT 'A'
 			);
 			`,

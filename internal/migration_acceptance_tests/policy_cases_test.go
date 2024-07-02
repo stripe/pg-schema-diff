@@ -504,8 +504,8 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    category TEXT,
-			    val TEXT
+				category TEXT,
+				val TEXT
 			);
 			CREATE POLICY foobar_policy ON schema_1.foobar 
 				AS PERMISSIVE 
@@ -519,8 +519,8 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    category TEXT NOT NULL,
-			    new_val TEXT
+				category TEXT NOT NULL,
+				new_val TEXT
 			);
 			CREATE POLICY foobar_policy ON schema_1.foobar 
 				AS PERMISSIVE 
@@ -541,8 +541,8 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    category TEXT,
-			    val TEXT
+				category TEXT,
+				val TEXT
 			);
 			CREATE POLICY foobar_policy ON schema_1.foobar 
 				AS PERMISSIVE 
@@ -556,8 +556,8 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    category TEXT NOT NULL,
-			    new_val TEXT
+				category TEXT NOT NULL,
+				new_val TEXT
 			);
 			CREATE POLICY foobar_policy ON schema_1.foobar 
 				AS RESTRICTIVE -- force-recreate the policy 
@@ -577,7 +577,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 				CREATE TABLE foobar(
-				    category TEXT
+					category TEXT
 				) partition by list (category);
 				CREATE POLICY foobar_policy ON foobar 
 					AS PERMISSIVE 
@@ -589,7 +589,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 				CREATE TABLE foobar(
-				    category TEXT,
+					category TEXT,
 					some_new_column TEXT
 				); -- Re-create by removing partitioning
 				CREATE POLICY foobar_policy ON foobar 
@@ -608,14 +608,14 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 				CREATE TABLE foobar(
-				    category TEXT
+					category TEXT
 				) partition by list (category);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 				CREATE TABLE foobar(
-				    category TEXT
+					category TEXT
 				) partition by list (category);
 				CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('category');
 				CREATE POLICY foobar_1_policy ON foobar_1 
@@ -633,7 +633,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 				CREATE TABLE foobar(
-				    category TEXT
+					category TEXT
 				) partition by list (category);
 				CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('category');
 			`,
@@ -641,7 +641,7 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 				CREATE TABLE foobar(
-				    category TEXT
+					category TEXT
 				) partition by list (category);
 				CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('category');
 				CREATE POLICY foobar_1_policy ON foobar_1 

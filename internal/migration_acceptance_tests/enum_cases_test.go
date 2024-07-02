@@ -56,7 +56,7 @@ var enumAcceptanceTestCases = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE foo(
-			    color VARCHAR(255) DEFAULT 'green'
+				color VARCHAR(255) DEFAULT 'green'
 			);
 			`,
 		},

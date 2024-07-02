@@ -48,7 +48,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 			`
 			CREATE SCHEMA schema_1;
 			CREATE TABLE schema_1.foobar(
-			    "some id" SERIAL
+				"some id" SERIAL
 			)
 			`,
 		},
@@ -76,7 +76,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "some id" SERIAL
+				"some id" SERIAL
 			);
 			`,
 		},
@@ -95,7 +95,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "some id" SERIAL,
+				"some id" SERIAL,
 				type TEXT
 			) PARTITION BY LIST (type);
 
@@ -122,14 +122,14 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "some id" SERIAL
+				"some id" SERIAL
 			)
 			`,
 		},
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "some id" TEXT
+				"some id" TEXT
 			)
 			`,
 		},
@@ -144,7 +144,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "some id" SERIAL,
+				"some id" SERIAL,
 				type TEXT
 			) PARTITION BY LIST (type);
 
@@ -155,7 +155,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "some id" TEXT,
+				"some id" TEXT,
 				type TEXT
 			) PARTITION BY LIST (type);
 
@@ -174,7 +174,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    id SERIAL
+				id SERIAL
 			)
 			`,
 		},
@@ -187,7 +187,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			CREATE TABLE foobar(
-			    "some id" SERIAL,
+				"some id" SERIAL,
 				type TEXT
 			) PARTITION BY LIST (type);
 
@@ -656,7 +656,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						OWNED BY NONE;
 
 			CREATE TABLE foobar(
-			    "some id" SERIAL,
+				"some id" SERIAL,
 				type TEXT
 			) PARTITION BY LIST (type);
 
@@ -676,7 +676,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 						OWNED BY NONE;
 
 			CREATE TABLE some_other_foobar(
-			    "some id" SERIAL,
+				"some id" SERIAL,
 				type TEXT
 			) PARTITION BY LIST (type);
 

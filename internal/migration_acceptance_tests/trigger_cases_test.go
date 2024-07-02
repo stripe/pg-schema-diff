@@ -31,9 +31,9 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 
 			CREATE FUNCTION check_content() RETURNS TRIGGER AS $$
 				BEGIN
-				    IF LENGTH(NEW.content) == 0 THEN
-				        RAISE EXCEPTION 'content is empty';
-				    END IF;
+					IF LENGTH(NEW.content) == 0 THEN
+						RAISE EXCEPTION 'content is empty';
+					END IF;
 				END;
 			$$ language 'plpgsql';
 
@@ -67,9 +67,9 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 
 			CREATE FUNCTION check_content() RETURNS TRIGGER AS $$
 				BEGIN
-				    IF LENGTH(NEW.content) == 0 THEN
-				        RAISE EXCEPTION 'content is empty';
-				    END IF;
+					IF LENGTH(NEW.content) == 0 THEN
+						RAISE EXCEPTION 'content is empty';
+					END IF;
 				END;
 			$$ language 'plpgsql';
 

@@ -8,20 +8,20 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
 			-- Create a table in a different schema to validate it is being ignored (no delete operation).
-            CREATE SCHEMA schema_filtered_1;
+			CREATE SCHEMA schema_filtered_1;
 			CREATE TABLE schema_filtered_1.foo();	
 
 			CREATE TABLE foobar(
-			    id INT,
-			    bar SERIAL NOT NULL,
+				id INT,
+				bar SERIAL NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    PRIMARY KEY (foo, id),
+				fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (foo, id),
 				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of foobar(
-			    fizz NOT NULL
+				fizz NOT NULL
 			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
 
 			-- partitioned indexes
@@ -31,12 +31,12 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 			CREATE INDEX foobar_1_local_idx ON foobar_1(foo, bar);
 
 			CREATE table bar(
-			    id VARCHAR(255) PRIMARY KEY,
-			    foo VARCHAR(255),
-			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
-			    FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
+				id VARCHAR(255) PRIMARY KEY,
+				foo VARCHAR(255),
+				bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
+				fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
+				FOREIGN KEY (foo, fizz) REFERENCES foobar (foo, fizz)
 			);
 			CREATE INDEX bar_normal_idx ON bar(bar);
 			CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
@@ -49,16 +49,16 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 		newSchemaDDL: []string{
 			`
 			CREATE TABLE new_foobar(
-			    id INT,
+				id INT,
 				bar TIMESTAMPTZ NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    UNIQUE (foo, bar)
+				fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of new_foobar(
-			    fizz NOT NULL,
-			    PRIMARY KEY (foo, bar)
+				fizz NOT NULL,
+				PRIMARY KEY (foo, bar)
 			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
 
 			-- local indexes
@@ -68,11 +68,11 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX foobar_unique_idx ON new_foobar(foo, fizz);
 
 			CREATE table bar(
-			    id VARCHAR(255) PRIMARY KEY,
-			    foo VARCHAR(255),
-			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
+				id VARCHAR(255) PRIMARY KEY,
+				foo VARCHAR(255),
+				bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
+				fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
 			   	FOREIGN KEY (foo, fizz) REFERENCES new_foobar (foo, fizz)
 			);
 			CREATE INDEX bar_normal_idx ON bar(bar);
@@ -90,20 +90,20 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 
 		expectedDBSchemaDDL: []string{`
 			-- Create a table in a different schema to validate it is being ignored (no delete operation).
-            CREATE SCHEMA schema_filtered_1;
+			CREATE SCHEMA schema_filtered_1;
 			CREATE TABLE schema_filtered_1.foo();	
 
 			CREATE TABLE new_foobar(
-			    id INT,
+				id INT,
 				bar TIMESTAMPTZ NOT NULL,
 				foo VARCHAR(255) DEFAULT 'some default' NOT NULL CHECK (LENGTH(foo) > 0),
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    UNIQUE (foo, bar)
+				fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE (foo, bar)
 			) PARTITION BY LIST(foo);
 
 			CREATE TABLE foobar_1 PARTITION of new_foobar(
-			    fizz NOT NULL,
-			    PRIMARY KEY (foo, bar)
+				fizz NOT NULL,
+				PRIMARY KEY (foo, bar)
 			) FOR VALUES IN ('foobar_1_val_1', 'foobar_1_val_2');
 
 			-- local indexes
@@ -113,11 +113,11 @@ var backCompatAcceptanceTestCases = []acceptanceTestCase{
 			CREATE UNIQUE INDEX foobar_unique_idx ON new_foobar(foo, fizz);
 
 			CREATE table bar(
-			    id VARCHAR(255) PRIMARY KEY,
-			    foo VARCHAR(255),
-			    bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
-			    fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-			    buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
+				id VARCHAR(255) PRIMARY KEY,
+				foo VARCHAR(255),
+				bar DOUBLE PRECISION NOT NULL DEFAULT 8.8,
+				fizz TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+				buzz REAL NOT NULL CHECK (buzz IS NOT NULL),
 			   	FOREIGN KEY (foo, fizz) REFERENCES new_foobar (foo, fizz)
 			);
 			CREATE INDEX bar_normal_idx ON bar(bar);
