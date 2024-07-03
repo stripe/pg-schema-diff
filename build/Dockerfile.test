@@ -7,8 +7,8 @@ RUN apk update && \
       build-base \
       make \
       $POSTGRES_PACKAGE \
-      postgresql-contrib \
-      postgresql-client
+      $POSTGRES_PACKAGE-contrib \
+      $POSTGRES_PACKAGE-client
 
 WORKDIR /pg-schema-diff
 
