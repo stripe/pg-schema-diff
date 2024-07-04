@@ -9,22 +9,22 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "No-op",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foo VARCHAR(255) COLLATE "C" DEFAULT '' NOT NULL,
-				bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				fizz BOOLEAN NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255) COLLATE "C" DEFAULT '' NOT NULL,
+                bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fizz BOOLEAN NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foo VARCHAR(255) COLLATE "C" DEFAULT '' NOT NULL,
-				bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				fizz BOOLEAN NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255) COLLATE "C" DEFAULT '' NOT NULL,
+                bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fizz BOOLEAN NOT NULL
+            );
 			`,
 		},
 
@@ -34,17 +34,17 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add one column with default",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				my_new_column VARCHAR(255) DEFAULT 'a'
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                my_new_column VARCHAR(255) DEFAULT 'a'
+            );
 			`,
 		},
 	},
@@ -52,17 +52,17 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add one column with quoted names",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-				id INT PRIMARY KEY
-			);
+            CREATE TABLE "Foobar"(
+                id INT PRIMARY KEY
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-				id INT PRIMARY KEY,
-				"My_new_column" VARCHAR(255) DEFAULT 'a'
-			);
+            CREATE TABLE "Foobar"(
+                id INT PRIMARY KEY,
+                "My_new_column" VARCHAR(255) DEFAULT 'a'
+            );
 			`,
 		},
 	},
@@ -70,17 +70,17 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add one column with nullability",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				my_new_column VARCHAR(255) NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                my_new_column VARCHAR(255) NOT NULL
+            );
 			`,
 		},
 	},
@@ -88,17 +88,17 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add one column with serial",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				my_new_column SERIAL NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                my_new_column SERIAL NOT NULL
+            );
 			`,
 		},
 	},
@@ -106,17 +106,17 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add one column with all options",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				my_new_column VARCHAR(255) COLLATE "C" NOT NULL DEFAULT 'a'
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                my_new_column VARCHAR(255) COLLATE "C" NOT NULL DEFAULT 'a'
+            );
 			`,
 		},
 	},
@@ -124,40 +124,40 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add one column and change ordering",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				my_new_column VARCHAR(255) NOT NULL DEFAULT 'a',
-				id INT PRIMARY KEY
-			);
+            CREATE TABLE foobar(
+                my_new_column VARCHAR(255) NOT NULL DEFAULT 'a',
+                id INT PRIMARY KEY
+            );
 			`,
 		},
 
 		expectedDBSchemaDDL: []string{`
-					CREATE TABLE foobar(
-						id INT PRIMARY KEY,
-						my_new_column VARCHAR(255) NOT NULL DEFAULT 'a'
-					)
+                    CREATE TABLE foobar(
+                        id INT PRIMARY KEY,
+                        my_new_column VARCHAR(255) NOT NULL DEFAULT 'a'
+                    )
 				`},
 	},
 	{
 		name: "Delete one column",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-			);
+            CREATE TABLE foobar(
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -170,15 +170,15 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Delete one column with quoted name",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-				"Id" INT PRIMARY KEY
-			);
+            CREATE TABLE "Foobar"(
+                "Id" INT PRIMARY KEY
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-			);
+            CREATE TABLE "Foobar"(
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -191,15 +191,15 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Delete one column with serial",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-				id BIGSERIAL PRIMARY KEY
-			);
+            CREATE TABLE "Foobar"(
+                id BIGSERIAL PRIMARY KEY
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-			);
+            CREATE TABLE "Foobar"(
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -212,17 +212,17 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Delete column with valid not null check constraint",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foo VARCHAR(255) NOT NULL CHECK ( foo IS NOT NULL )
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255) NOT NULL CHECK ( foo IS NOT NULL )
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -233,18 +233,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Modify data type (int -> serial)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar SERIAL NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar SERIAL NOT NULL
+            );
 			`,
 		},
 	},
@@ -252,18 +252,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Modify data type (serial -> int)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar SERIAL NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar SERIAL NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT NOT NULL
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -274,18 +274,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change BIGINT to TIMESTAMP (validate conversion and ANALYZE)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-				id INT PRIMARY KEY,
-				some_time_col BIGINT
-			);
+            CREATE TABLE "Foobar"(
+                id INT PRIMARY KEY,
+                some_time_col BIGINT
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-				id INT PRIMARY KEY,
-				some_time_col TIMESTAMP 
-			);
+            CREATE TABLE "Foobar"(
+                id INT PRIMARY KEY,
+                some_time_col TIMESTAMP 
+            );
 			`,
 		},
 		expectedPlanDDL: []string{
@@ -301,18 +301,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Modify data type (varchar -> TEXT) with compatible default",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) DEFAULT 'some default' NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) DEFAULT 'some default' NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar TEXT DEFAULT 'some default' NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar TEXT DEFAULT 'some default' NOT NULL
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -324,18 +324,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Modify data type and collation (varchar -> char)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) COLLATE "C" NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) COLLATE "C" NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar CHAR COLLATE "POSIX" NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar CHAR COLLATE "POSIX" NOT NULL
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -347,18 +347,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Modify data type to incompatible (bytea -> char)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar bytea NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar bytea NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar CHAR NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar CHAR NOT NULL
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -370,18 +370,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Modify collation (default -> non-default) (validate ANALYZE is run)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) COLLATE "C" NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) COLLATE "C" NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) COLLATE "POSIX" NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) COLLATE "POSIX" NOT NULL
+            );
 			`,
 		},
 		expectedPlanDDL: []string{
@@ -397,18 +397,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Modify collation (non-default -> non-default)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) COLLATE "POSIX" NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) COLLATE "POSIX" NOT NULL
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -420,18 +420,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add Default",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) DEFAULT ''
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) DEFAULT ''
+            );
 			`,
 		},
 	},
@@ -439,18 +439,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Remove Default",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) DEFAULT ''
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) DEFAULT ''
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
 			`,
 		},
 	},
@@ -458,18 +458,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change Default",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) DEFAULT 'Something else'
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) DEFAULT 'Something else'
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) DEFAULT ''
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) DEFAULT ''
+            );
 			`,
 		},
 	},
@@ -477,18 +477,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Set NOT NULL",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
 			`,
 		},
 		expectedPlanDDL: []string{"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID", "ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"", "ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL", "ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\""},
@@ -497,19 +497,19 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Set NOT NULL (add invalid CC)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
 			`,
 		},
 		expectedPlanDDL: []string{
@@ -525,20 +525,20 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Set NOT NULL (invalid CC already exists)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
 			`,
 		},
 		expectedPlanDDL: []string{
@@ -552,20 +552,20 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Set NOT NULL (invalid to valid CC)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL) NOT VALID;
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
 			`,
 		},
 		expectedPlanDDL: []string{
@@ -577,19 +577,19 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Set NOT NULL (add valid CC)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
 			`,
 		},
 		expectedPlanDDL: []string{
@@ -602,20 +602,20 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Set NOT NULL (valid CC already exists)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
 			`,
 		},
 		expectedPlanDDL: []string{
@@ -626,19 +626,19 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Set NOT NULL (dropping valid CC)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
 			`,
 		},
 		expectedPlanDDL: []string{
@@ -650,20 +650,20 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Set NOT NULL (dropping valid CC via recreation)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (foobar IS NOT NULL);
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
-			ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (LENGTH(foobar) > 0);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar CHECK (LENGTH(foobar) > 0);
 			`,
 		},
 		expectedPlanDDL: []string{
@@ -677,18 +677,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Set NOT NULL (data type change with additional CC)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT NOT NULL CHECK (foobar > 0)
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT NOT NULL CHECK (foobar > 0)
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -710,18 +710,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Remove NOT NULL",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255)
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255)
+            );
 			`,
 		},
 	},
@@ -729,18 +729,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Add default and change data type (new default is incompatible with old type)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) DEFAULT 'SOMETHING'
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) DEFAULT 'SOMETHING'
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -752,18 +752,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change default and data type (new default is incompatible with old type)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT DEFAULT 0
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT DEFAULT 0
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar VARCHAR(255) DEFAULT 'SOMETHING'
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar VARCHAR(255) DEFAULT 'SOMETHING'
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -775,18 +775,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change default and data type (old default is incompatible with new type)",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar TEXT DEFAULT 'SOMETHING'
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar TEXT DEFAULT 'SOMETHING'
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT DEFAULT 8
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT DEFAULT 8
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -799,18 +799,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change from NULL default to no default and NOT NULL",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT DEFAULT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT DEFAULT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT NOT NULL
+            );
 			`,
 		},
 	},
@@ -818,18 +818,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change from NOT NULL to no NULL default",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT DEFAULT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT DEFAULT NULL
+            );
 			`,
 		},
 	},
@@ -837,18 +837,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change data type and to nullable",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT NOT NULL
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar SMALLINT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar SMALLINT NULL
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -860,18 +860,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change data type and to not nullable",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar INT
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar INT
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar SMALLINT NOT NULL
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar SMALLINT NOT NULL
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -883,18 +883,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change data type, nullability (NOT NULL), and default",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar TEXT DEFAULT 'some default'
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar TEXT DEFAULT 'some default'
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE foobar(
-				id INT PRIMARY KEY,
-				foobar CHAR NOT NULL DEFAULT 'A'
-			);
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foobar CHAR NOT NULL DEFAULT 'A'
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -906,18 +906,18 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change data type and collation, nullability (NOT NULL), and default with quoted names",
 		oldSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-				id INT PRIMARY KEY,
-				"Foobar" TEXT DEFAULT 'some default'
-			);
+            CREATE TABLE "Foobar"(
+                id INT PRIMARY KEY,
+                "Foobar" TEXT DEFAULT 'some default'
+            );
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE TABLE "Foobar"(
-				id INT PRIMARY KEY,
-				"Foobar" CHAR COLLATE "POSIX" NOT NULL DEFAULT 'A'
-			);
+            CREATE TABLE "Foobar"(
+                id INT PRIMARY KEY,
+                "Foobar" CHAR COLLATE "POSIX" NOT NULL DEFAULT 'A'
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
