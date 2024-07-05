@@ -7,16 +7,16 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 		name: "no-op",
 		oldSchemaDDL: []string{
 			`
-			CREATE SCHEMA schema_1;
-			CREATE EXTENSION pg_trgm WITH SCHEMA schema_1;
-			CREATE EXTENSION amcheck;
+            CREATE SCHEMA schema_1;
+            CREATE EXTENSION pg_trgm WITH SCHEMA schema_1;
+            CREATE EXTENSION amcheck;
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE SCHEMA schema_1;
-			CREATE EXTENSION pg_trgm WITH SCHEMA schema_1;
-			CREATE EXTENSION amcheck;
+            CREATE SCHEMA schema_1;
+            CREATE EXTENSION pg_trgm WITH SCHEMA schema_1;
+            CREATE EXTENSION amcheck;
 			`,
 		},
 		expectEmptyPlan: true,
@@ -25,9 +25,9 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 		name: "create multiple extensions",
 		newSchemaDDL: []string{
 			`
-			CREATE SCHEMA schema_1;
-			CREATE EXTENSION pg_trgm WITH SCHEMA schema_1;
-			CREATE EXTENSION amcheck;
+            CREATE SCHEMA schema_1;
+            CREATE EXTENSION pg_trgm WITH SCHEMA schema_1;
+            CREATE EXTENSION amcheck;
 			`,
 		},
 	},
@@ -35,14 +35,14 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 		name: "drop one extension",
 		oldSchemaDDL: []string{
 			`
-			CREATE SCHEMA schema_1;
-			CREATE EXTENSION pg_trgm;
-			CREATE EXTENSION amcheck WITH SCHEMA schema_1;
+            CREATE SCHEMA schema_1;
+            CREATE EXTENSION pg_trgm;
+            CREATE EXTENSION amcheck WITH SCHEMA schema_1;
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE EXTENSION pg_trgm;
+            CREATE EXTENSION pg_trgm;
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
@@ -51,16 +51,16 @@ var extensionAcceptanceTestCases = []acceptanceTestCase{
 		name: "upgrade an extension implicitly and explicitly",
 		oldSchemaDDL: []string{
 			`
-			CREATE SCHEMA schema_1;
-			CREATE EXTENSION pg_trgm WITH VERSION '1.5';
-			CREATE EXTENSION amcheck WITH SCHEMA schema_1 VERSION '1.3'; 
+            CREATE SCHEMA schema_1;
+            CREATE EXTENSION pg_trgm WITH VERSION '1.5';
+            CREATE EXTENSION amcheck WITH SCHEMA schema_1 VERSION '1.3'; 
 			`,
 		},
 		newSchemaDDL: []string{
 			`
-			CREATE SCHEMA schema_1;
-			CREATE EXTENSION pg_trgm WITH VERSION '1.6';
-			CREATE EXTENSION AMCHECK WITH SCHEMA schema_1;
+            CREATE SCHEMA schema_1;
+            CREATE EXTENSION pg_trgm WITH VERSION '1.6';
+            CREATE EXTENSION AMCHECK WITH SCHEMA schema_1;
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeExtensionVersionUpgrade},
