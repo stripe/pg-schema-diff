@@ -75,7 +75,7 @@ $ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgre
 * The use of postgres native operations for zero-downtime migrations wherever possible:
   * Concurrent index builds
   * Online index replacement: If some index is changed, the new version will be built before the old version is dropped, preventing a window where no index is backing queries
-  * Online check constraint builds: Check constraints are added as `INVALID` before being validated, eliminating the need
+  * Online constraint builds: Constraints (check, foreign key) are added as `INVALID` before being validated, eliminating the need
 	for a long access-exclusive lock on the table
   * Online `NOT NULL` constraint creation using check constraints to eliminate the need for an access-exclusive lock on the table
   * Prioritized index builds: Building new indexes is always prioritized over deleting old indexes
