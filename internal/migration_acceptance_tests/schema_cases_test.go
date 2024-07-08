@@ -337,7 +337,6 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeAuthzUpdate,
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeHasUntrackableDependencies,
@@ -422,7 +421,6 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeDeletesData,
 		},
 	},

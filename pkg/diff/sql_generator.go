@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -245,37 +246,10 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing indexes: %w", err)
 	}
+
+	fsg := newForeignKeyConstraintSQLVertexGenerator(oldAndNew[schema.Schema]{old: old, new: new}, tableDiffs)
 	foreignKeyConstraintDiffs, err := diffLists(old.ForeignKeyConstraints, new.ForeignKeyConstraints, func(old, new schema.ForeignKeyConstraint, _, _ int) (foreignKeyConstraintDiff, bool, error) {
-		if _, isOnNewTable := addedTablesByName[new.OwningTable.GetName()]; isOnNewTable {
-
-			// If the owning table is new, then it must be re-created (this occurs if the base table has been
-			// re-created). In other words, a foreign key constraint must be re-created if the owning table or referenced
-			// table is re-created
-			return foreignKeyConstraintDiff{}, true, nil
-		} else if _, isReferencingNewTable := addedTablesByName[new.ForeignTable.GetName()]; isReferencingNewTable {
-			// Same as above, but for the referenced table
-			return foreignKeyConstraintDiff{}, true, nil
-		}
-
-		// Set the new clone to be equal to the old for all fields that can actually be altered
-		newClone := new
-		if !old.IsValid && new.IsValid {
-			// We only support alter from NOT VALID to VALID and no other alterations.
-			// Instead of checking that each individual property is equal (that's a lot of parsing), we will just
-			// assert that the constraint definitions are equal if we append "NOT VALID" to the new constraint def
-			newClone.IsValid = old.IsValid
-			newClone.ConstraintDef = fmt.Sprintf("%s NOT VALID", newClone.ConstraintDef)
-		}
-		if !cmp.Equal(old, newClone) {
-			return foreignKeyConstraintDiff{}, true, nil
-		}
-
-		return foreignKeyConstraintDiff{
-			oldAndNew[schema.ForeignKeyConstraint]{
-				old: old,
-				new: new,
-			},
-		}, false, nil
+		return buildForeignKeyConstraintDiff(fsg, addedTablesByName, old, new)
 	})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing foreign key constraints: %w", err)
@@ -526,15 +500,6 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	deletedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.deletes)
 	addedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.adds)
 
-	indexesOldSchemaByTableName := make(map[string][]schema.Index)
-	for _, idx := range diff.old.Indexes {
-		indexesOldSchemaByTableName[idx.OwningTable.GetName()] = append(indexesOldSchemaByTableName[idx.OwningTable.GetName()], idx)
-	}
-	indexesInNewSchemaByTableName := make(map[string][]schema.Index)
-	for _, idx := range diff.new.Indexes {
-		indexesInNewSchemaByTableName[idx.OwningTable.GetName()] = append(indexesInNewSchemaByTableName[idx.OwningTable.GetName()], idx)
-	}
-
 	namedSchemaStatements, err := diff.namedSchemaDiffs.resolveToSQLGroupedByEffect(&namedSchemaSQLGenerator{})
 	if err != nil {
 		return nil, fmt.Errorf("resolving named schema sql statements: %w", err)
@@ -559,7 +524,7 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving enum sql graphs: %w", err)
 	}
 
-	attachPartitionSQLVertexGenerator := newAttachPartitionSQLVertexGenerator(indexesInNewSchemaByTableName, addedTablesByName)
+	attachPartitionSQLVertexGenerator := newAttachPartitionSQLVertexGenerator(diff.new.Indexes, diff.tableDiffs.adds)
 	attachPartitionGraphs, err := diff.tableDiffs.resolveToSQLGraph(attachPartitionSQLVertexGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("resolving attach partition sql graphs: %w", err)
@@ -584,12 +549,7 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving index sql graphs: %w", err)
 	}
 
-	fkConsGraphs, err := diff.foreignKeyConstraintDiffs.resolveToSQLGraph(&foreignKeyConstraintSQLVertexGenerator{
-		deletedTablesByName:           deletedTablesByName,
-		addedTablesByName:             addedTablesByName,
-		indexInOldSchemaByTableName:   indexesInNewSchemaByTableName,
-		indexesInNewSchemaByTableName: indexesInNewSchemaByTableName,
-	})
+	fkConsGraphs, err := diff.foreignKeyConstraintDiffs.resolveToSQLGraph(newForeignKeyConstraintSQLVertexGenerator(diff.oldAndNew, diff.tableDiffs))
 	if err != nil {
 		return nil, fmt.Errorf("resolving foreign key constraint sql graphs: %w", err)
 	}
@@ -665,6 +625,62 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	statements = append(statements, extensionStatements.Deletes...)
 	statements = append(statements, namedSchemaStatements.Deletes...)
 	return statements, nil
+}
+
+func buildIndexesByTableNameMap(indexes []schema.Index) map[string][]schema.Index {
+	var output = make(map[string][]schema.Index)
+	for _, idx := range indexes {
+		output[idx.OwningTable.GetName()] = append(output[idx.OwningTable.GetName()], idx)
+	}
+	return output
+}
+
+// buildChildrenByPartitionedIndexNameMap builds a map of indexes by their parent index name. This map will include
+// all descendents, not just direct descendents. For example, if foobar idx  has 5 children and each of those children
+// has 5 children, the slice for foobar index wil contain 30 indexes (the 5 direct children and the 25 "grandchildren")
+func buildChildrenByPartitionedIndexNameMap(indexes []schema.Index) map[string][]schema.Index {
+	// Build a map of children by their direct parent index
+	var childrenByDirectParentIdxName = make(map[string][]schema.Index)
+	for _, idx := range indexes {
+		parentIdxName := ""
+		if idx.ParentIdx != nil {
+			parentIdxName = idx.ParentIdx.GetName()
+		}
+		childrenByDirectParentIdxName[parentIdxName] = append(childrenByDirectParentIdxName[parentIdxName], idx)
+	}
+
+	// Use this map to build a map of root index by child index name
+	var rootsByChildIdxName = make(map[string]schema.Index)
+	// We need to calculate this level by level. We will start with the roots.
+	var currentNodes = childrenByDirectParentIdxName[""]
+	for len(currentNodes) > 0 {
+		var idx = currentNodes[0]
+		currentNodes = currentNodes[1:]
+
+		rootIdx := idx
+		if idx.ParentIdx != nil {
+			rootIdx = rootsByChildIdxName[idx.ParentIdx.GetName()]
+		}
+		rootsByChildIdxName[idx.GetName()] = rootIdx
+
+		// We can now calculate the next level of children for this node
+		for _, child := range childrenByDirectParentIdxName[idx.GetName()] {
+			currentNodes = append(currentNodes, child)
+		}
+	}
+
+	// Build a map of all children by the root index name using the result of the previous step
+	var allChildrenByRootIndexName = make(map[string][]schema.Index)
+	for _, idx := range indexes {
+		if idx.ParentIdx == nil {
+			// Skip nodes without parents
+			continue
+		}
+		rootIdx := rootsByChildIdxName[idx.GetName()]
+		allChildrenByRootIndexName[rootIdx.GetName()] = append(allChildrenByRootIndexName[rootIdx.GetName()], idx)
+	}
+
+	return allChildrenByRootIndexName
 }
 
 func buildSchemaObjByNameMap[S schema.Object](s []S) map[string]S {
@@ -1901,10 +1917,10 @@ type attachPartitionSQLVertexGenerator struct {
 	isPartitionAttachedAfterIdxBuildsByTableName map[string]bool
 }
 
-func newAttachPartitionSQLVertexGenerator(indexesInNewSchemaByTableName map[string][]schema.Index, addedTablesByName map[string]schema.Table) *attachPartitionSQLVertexGenerator {
+func newAttachPartitionSQLVertexGenerator(newSchemaIndexes []schema.Index, addedTables []schema.Table) *attachPartitionSQLVertexGenerator {
 	return &attachPartitionSQLVertexGenerator{
-		indexesInNewSchemaByTableName: indexesInNewSchemaByTableName,
-		addedTablesByName:             addedTablesByName,
+		indexesInNewSchemaByTableName: buildIndexesByTableNameMap(newSchemaIndexes),
+		addedTablesByName:             buildSchemaObjByNameMap(addedTables),
 
 		isPartitionAttachedAfterIdxBuildsByTableName: make(map[string]bool),
 	}
@@ -1970,23 +1986,77 @@ func (a *attachPartitionSQLVertexGenerator) GetDeleteDependencies(_ schema.Table
 	return nil, nil
 }
 
+func buildForeignKeyConstraintDiff(fsg *foreignKeyConstraintSQLVertexGenerator, addedTablesByName map[string]schema.Table, old, new schema.ForeignKeyConstraint) (foreignKeyConstraintDiff, bool, error) {
+	if _, isOnNewTable := addedTablesByName[new.OwningTable.GetName()]; isOnNewTable {
+		// If the owning table is new, then it must be re-created (this occurs if the base table has been
+		// re-created). In other words, a foreign key constraint must be re-created if the owning table or referenced
+		// table is re-created
+		return foreignKeyConstraintDiff{}, true, nil
+	}
+	if _, isReferencingNewTable := addedTablesByName[new.ForeignTable.GetName()]; isReferencingNewTable {
+		// Same as above, but for the referenced table
+		return foreignKeyConstraintDiff{}, true, nil
+	}
+	fkDiff := foreignKeyConstraintDiff{
+		oldAndNew[schema.ForeignKeyConstraint]{
+			old: old,
+			new: new,
+		},
+	}
+	if _, err := fsg.Alter(fkDiff); err != nil {
+		if errors.Is(err, ErrNotImplemented) {
+			// The foreign key must be re-created if the diff cannot be reconciled via alter statements
+			return foreignKeyConstraintDiff{}, true, nil
+		}
+		return foreignKeyConstraintDiff{}, false, fmt.Errorf("generating foreign key alter statements: %w", err)
+	}
+
+	return fkDiff, false, nil
+}
+
 type foreignKeyConstraintSQLVertexGenerator struct {
-	// deletedTablesByName is a map of table name to tables (and partitions) that are deleted
-	// This is used to identify if the owning table is being dropped (meaning
-	// the foreign key can be implicitly dropped)
-	deletedTablesByName map[string]schema.Table
+	// newSchemaTablesByName is a map of table name to tables in the new schema.
+	newSchemaTablesByName map[string]schema.Table
 	// addedTablesByName is a map of table name to the added tables
 	// This is used to identify if hazards are necessary
 	addedTablesByName map[string]schema.Table
 	// indexInOldSchemaByTableName is a map of index name to the index in the old schema
 	// This is used to force the foreign key constraint to be dropped before the index it depends on is dropped
 	indexInOldSchemaByTableName map[string][]schema.Index
+	// childrenInOldSchemaByPartitionedIndexName gives all child indexes (across all levels) for a given
+	// partitioned index in the old schema.
+	childrenInOldSchemaByPartitionedIndexName map[string][]schema.Index
 	// indexesInNewSchemaByTableName is a map of index name to the index
 	// Same as above but for adds and after
 	indexesInNewSchemaByTableName map[string][]schema.Index
+	// childrenInNewSchemaByPartitionedIndexName gives all child indexes (across all levels) for a given
+	// partitioned index in the new schema.
+	childrenInNewSchemaByPartitionedIndexName map[string][]schema.Index
+}
+
+func newForeignKeyConstraintSQLVertexGenerator(oldAndNewSchema oldAndNew[schema.Schema], tableDiffs listDiff[schema.Table, tableDiff]) *foreignKeyConstraintSQLVertexGenerator {
+	return &foreignKeyConstraintSQLVertexGenerator{
+		newSchemaTablesByName:                     buildSchemaObjByNameMap(oldAndNewSchema.new.Tables),
+		addedTablesByName:                         buildSchemaObjByNameMap(tableDiffs.adds),
+		indexInOldSchemaByTableName:               buildIndexesByTableNameMap(oldAndNewSchema.old.Indexes),
+		childrenInOldSchemaByPartitionedIndexName: buildChildrenByPartitionedIndexNameMap(oldAndNewSchema.old.Indexes),
+		indexesInNewSchemaByTableName:             buildIndexesByTableNameMap(oldAndNewSchema.new.Indexes),
+		childrenInNewSchemaByPartitionedIndexName: buildChildrenByPartitionedIndexNameMap(oldAndNewSchema.new.Indexes),
+	}
 }
 
 func (f *foreignKeyConstraintSQLVertexGenerator) Add(con schema.ForeignKeyConstraint) ([]Statement, error) {
+	if con.IsValid {
+		table, ok := f.newSchemaTablesByName[con.OwningTable.GetName()]
+		if !ok {
+			return nil, fmt.Errorf("could not find table with name %s", con.OwningTable.GetName())
+		}
+		if !table.IsPartitioned() {
+			// Postgres does not support adding invalid foreign keys to partitioned tables.
+			return f.addAsInvalidThenValidateStatements(con), nil
+		}
+	}
+
 	var hazards []MigrationHazard
 	_, isOnNewTable := f.addedTablesByName[con.OwningTable.GetName()]
 	_, isReferencedTableNew := f.addedTablesByName[con.ForeignTable.GetName()]
@@ -2003,6 +2073,19 @@ func (f *foreignKeyConstraintSQLVertexGenerator) Add(con schema.ForeignKeyConstr
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     hazards,
 	}}, nil
+}
+
+func (f *foreignKeyConstraintSQLVertexGenerator) addAsInvalidThenValidateStatements(con schema.ForeignKeyConstraint) []Statement {
+	// If adding a valid constraint, we will first add the constraint as not valid then validate it in order to
+	// circumvent requiring a SHARE_ROW_EXCLUSIVE lock on the tables.
+	return []Statement{
+		{
+			DDL:         fmt.Sprintf("%s %s NOT VALID", addConstraintPrefix(con.OwningTable, con.EscapedName), con.ConstraintDef),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		},
+		validateConstraintStatement(con.OwningTable, con.EscapedName),
+	}
 }
 
 func (f *foreignKeyConstraintSQLVertexGenerator) Delete(con schema.ForeignKeyConstraint) ([]Statement, error) {
@@ -2052,6 +2135,10 @@ func (f *foreignKeyConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ 
 	// because of partitioned indexes, which are only valid when all child indexes have been built
 	for _, i := range f.indexesInNewSchemaByTableName[con.ForeignTable.GetName()] {
 		deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeAddAlter).after(buildIndexVertexId(i.GetSchemaQualifiedName()), diffTypeAddAlter))
+		// Build a dependency on any child index if the index is partitioned
+		for _, c := range f.childrenInNewSchemaByPartitionedIndexName[i.GetName()] {
+			deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeAddAlter).after(buildIndexVertexId(c.GetSchemaQualifiedName()), diffTypeAddAlter))
+		}
 	}
 
 	return deps, nil
@@ -2067,6 +2154,10 @@ func (f *foreignKeyConstraintSQLVertexGenerator) GetDeleteDependencies(con schem
 	// because of partitioned indexes, which are only valid when all child indexes have been built
 	for _, i := range f.indexInOldSchemaByTableName[con.ForeignTable.GetName()] {
 		deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildIndexVertexId(i.GetSchemaQualifiedName()), diffTypeDelete))
+		// Build a dependency on any child index if the index is partitioned
+		for _, c := range f.childrenInOldSchemaByPartitionedIndexName[i.GetName()] {
+			deps = append(deps, mustRun(f.GetSQLVertexId(con), diffTypeDelete).before(buildIndexVertexId(c.GetSchemaQualifiedName()), diffTypeDelete))
+		}
 	}
 	return deps, nil
 }
@@ -2220,7 +2311,7 @@ func (s sequenceOwnershipSQLVertexGenerator) Add(seq schema.Sequence) ([]Stateme
 		// If a new sequence has no owner, we don't need to alter it. The default is no owner
 		return nil, nil
 	}
-	return []Statement{s.buildAlterOwnershipStmt(seq, nil)}, nil
+	return []Statement{s.buildAlterOwnershipStmt(seq)}, nil
 }
 
 func (s sequenceOwnershipSQLVertexGenerator) Delete(_ schema.Sequence) ([]Statement, error) {
@@ -2231,10 +2322,10 @@ func (s sequenceOwnershipSQLVertexGenerator) Alter(diff sequenceDiff) ([]Stateme
 	if cmp.Equal(diff.new.Owner, diff.old.Owner) {
 		return nil, nil
 	}
-	return []Statement{s.buildAlterOwnershipStmt(diff.new, &diff.old)}, nil
+	return []Statement{s.buildAlterOwnershipStmt(diff.new)}, nil
 }
 
-func (s sequenceOwnershipSQLVertexGenerator) buildAlterOwnershipStmt(new schema.Sequence, old *schema.Sequence) Statement {
+func (s sequenceOwnershipSQLVertexGenerator) buildAlterOwnershipStmt(new schema.Sequence) Statement {
 	newOwner := "NONE"
 	if new.Owner != nil {
 		newOwner = schema.FQEscapedColumnName(new.Owner.TableName, new.Owner.ColumnName)

@@ -117,7 +117,6 @@ var databaseSchemaSourceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeDeletesData,
 		},
 
