@@ -1,4 +1,9 @@
 # pg-schema-diff
+[![run_tests](https://github.com/stripe/pg-schema-diff/actions/workflows/run-tests.yaml/badge.svg)](https://github.com/stripe/pg-schema-diff/actions/workflows/run-tests.yaml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/stripe/pg-schema-diff)](https://goreportcard.com/report/github.com/stripe/pg-schema-diff)
+[![Go Reference](https://pkg.go.dev/badge/github.com/stripe/pg-schema-diff.svg)](https://pkg.go.dev/github.com/stripe/pg-schema-diff)
+![GitHub Release](https://img.shields.io/github/v/release/stripe/pg-schema-diff?include_prereleases)
+
 Computes the diff(erences) between Postgres database schemas and generates the SQL required to get your database schema from point A to B with 
 minimal downtime & locks. This enables you to take your database and migrate it to any desired schema defined in plain DDL.
 
