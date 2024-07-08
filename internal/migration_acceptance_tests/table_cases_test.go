@@ -462,7 +462,6 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeAuthzUpdate,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 			diff.MigrationHazardTypeDeletesData,
@@ -531,7 +530,6 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeAuthzUpdate,
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeIndexDropped,

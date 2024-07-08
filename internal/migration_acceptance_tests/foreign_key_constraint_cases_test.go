@@ -20,7 +20,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                     ON UPDATE SET NULL
                     NOT DEFERRABLE
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -37,13 +37,13 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                     ON UPDATE SET NULL
                     NOT DEFERRABLE
             );
-			`,
+      `,
 		},
 
 		expectEmptyPlan: true,
 	},
 	{
-		name: "Add FK with most options",
+		name: "Add FK",
 		oldSchemaDDL: []string{
 			`
             CREATE TABLE "foo bar"(
@@ -54,7 +54,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             CREATE TABLE "foobar fk"(
                 fk_id INT
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -70,10 +70,135 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                     ON UPDATE SET NULL
                     NOT DEFERRABLE
             );
-			`,
+      `,
+		},
+	},
+	{
+		name: "Add FK on partitioned",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE "foo bar"(
+                id INT,
+                PRIMARY KEY (id)
+            );
+
+            CREATE TABLE "foobar fk"(
+                fk_id INT
+            ) PARTITION BY LIST (fk_id);
+      `,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE "foo bar"(
+                id INT,
+                PRIMARY KEY (id)
+            );
+
+            CREATE TABLE "foobar fk"(
+                fk_id INT,
+                FOREIGN KEY (fk_id) REFERENCES "foo bar"(id)
+                    ON DELETE SET NULL
+                    ON UPDATE SET NULL
+                    NOT DEFERRABLE
+            ) PARTITION BY LIST (fk_id);
+      `,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+		},
+	},
+	{
+		name: "Add FK on partition",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE "foo bar"(
+                id INT,
+                PRIMARY KEY (id)
+            );
+
+            CREATE TABLE foobar_fk(
+                fk_id INT
+            ) PARTITION BY LIST (fk_id);
+      CREATE TABLE foobar_fk_1 PARTITION OF foobar_fk FOR VALUES IN (1);
+      `,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE "foo bar"(
+                id INT,
+                PRIMARY KEY (id)
+            );
+
+            CREATE TABLE foobar_fk(
+                fk_id INT
+            ) PARTITION BY LIST (fk_id);
+      CREATE TABLE foobar_fk_1 PARTITION OF foobar_fk FOR VALUES IN (1);
+      ALTER TABLE foobar_fk_1 ADD CONSTRAINT some_fk FOREIGN KEY (fk_id) REFERENCES "foo bar"(id);
+      `,
+		},
+	},
+	{
+		name: "Add FK referencing partitioned",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                PRIMARY KEY (id)
+            ) PARTITION BY LIST (id);
+
+            CREATE TABLE "foobar fk"(
+                fk_id INT
+            );
+      `,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                PRIMARY KEY (id)
+            ) PARTITION BY LIST (id);
+
+            CREATE TABLE "foobar fk"(
+                fk_id INT,
+                FOREIGN KEY (fk_id) REFERENCES foobar(id)
+                    ON DELETE SET NULL
+                    ON UPDATE SET NULL
+                    NOT DEFERRABLE
+            );
+      `,
+		},
+	},
+	{
+		name: "Add FK referencing partition",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                PRIMARY KEY (id)
+            ) PARTITION BY LIST (id);
+      CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN (1);
+
+            CREATE TABLE "foobar fk"(
+                fk_id INT
+            );
+      `,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                PRIMARY KEY (id)
+            ) PARTITION BY LIST (id);
+      CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN (1);
+
+            CREATE TABLE "foobar fk"(
+                fk_id INT,
+                FOREIGN KEY (fk_id) REFERENCES foobar_1(id)
+                    ON DELETE SET NULL
+                    ON UPDATE SET NULL
+                    NOT DEFERRABLE
+            );
+      `,
 		},
 	},
 	{
@@ -84,7 +209,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 id INT,
                 PRIMARY KEY (id)
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -97,10 +222,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_id INT,
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
             );
-			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+      `,
 		},
 	},
 	{
@@ -110,7 +232,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             CREATE TABLE "foobar fk"(
                 fk_id INT
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -126,10 +248,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                     ON UPDATE SET NULL
                     NOT DEFERRABLE
             );
-			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+      `,
 		},
 	},
 	{
@@ -148,7 +267,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                     ON UPDATE SET NULL
                     NOT DEFERRABLE
             );
-			`,
+      `,
 		},
 	},
 	{
@@ -163,7 +282,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             CREATE TABLE "foobar fk"(
                 fk_id INT
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -178,9 +297,8 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             ALTER TABLE "foobar fk" ADD CONSTRAINT some_foobar_fk
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
                     NOT VALID;
-			`,
+      `,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{},
 	},
 	{
 		name: "Add FK (partitioned table)",
@@ -197,7 +315,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_foo VARCHAR(255),
                 fk_id INT
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -213,10 +331,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_id INT,
                 FOREIGN KEY (fk_foo, fk_id) REFERENCES foobar(foo, id)
             );
-			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+      `,
 		},
 	},
 	{
@@ -235,7 +350,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                     ON UPDATE SET NULL
                     NOT DEFERRABLE
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -247,7 +362,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             CREATE TABLE "foobar fk"(
                 fk_id INT
             );
-			`,
+      `,
 		},
 	},
 	{
@@ -266,7 +381,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                     ON UPDATE SET NULL
                     NOT DEFERRABLE
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -283,10 +398,10 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                     ON UPDATE SET NULL
                     NOT DEFERRABLE
             );
-			`,
+      `,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+
 			diff.MigrationHazardTypeDeletesData,
 		},
 	},
@@ -307,7 +422,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_id INT,
                 FOREIGN KEY (fk_foo, fk_id) REFERENCES schema_1.foobar(foo, id)
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -323,7 +438,37 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_foo VARCHAR(255),
                 fk_id INT
             );
-			`,
+      `,
+		},
+	},
+	{
+		name: "Drop FK with table (references partitioned table)",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                foo varchar(255),
+                id INT,
+                PRIMARY KEY (id)
+            );
+
+            CREATE TABLE "foobar partitioned"(
+                foo varchar(255),
+                id INT,
+            PRIMARY KEY (foo, id)
+            ) PARTITION BY LIST (foo);
+            CREATE TABLE foobar_1 PARTITION OF "foobar partitioned" FOR VALUES IN ('1');
+            CREATE TABLE foobar_2 PARTITION OF "foobar partitioned" FOR VALUES IN ('2');
+
+            CREATE TABLE "foobar fk"(
+                fk_foo VARCHAR(255),
+                fk_id INT
+            );
+            ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
+                FOREIGN KEY (fk_foo, fk_id) REFERENCES "foobar partitioned"(foo, id);
+      `,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
 		},
 	},
 	{
@@ -341,7 +486,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
                 NOT VALID;
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -355,7 +500,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             );
             ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_id) REFERENCES foobar(id);
-			`,
+      `,
 		},
 		expectedPlanDDL: []string{
 			"ALTER TABLE \"public\".\"foobar fk\" VALIDATE CONSTRAINT \"some_fk\"",
@@ -375,7 +520,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             );
             ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_id) REFERENCES foobar(id);
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -390,7 +535,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
                 NOT VALID;
-			`,
+      `,
 		},
 	},
 	{
@@ -411,7 +556,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
                 NOT VALID;
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -428,10 +573,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             );
             ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_foo) REFERENCES foobar(foo);
-			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+      `,
 		},
 	},
 	{
@@ -447,7 +589,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_id INT,
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -461,10 +603,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
                   ON UPDATE CASCADE
             );
-			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+      `,
 		},
 	},
 	{
@@ -480,7 +619,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_id INT,
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -494,10 +633,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
                     ON UPDATE CASCADE
             );
-			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+      `,
 		},
 	},
 	{
@@ -513,7 +649,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_id INT,
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -526,7 +662,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_id INT,
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
             );
-			`,
+      `,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
@@ -546,7 +682,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_id BIGINT,
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
             );
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -559,7 +695,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 fk_id TIMESTAMP,
                 FOREIGN KEY (fk_id) REFERENCES foobar(id)
             );
-			`,
+      `,
 		},
 
 		expectedPlanErrorContains: errValidatingPlan.Error(),
@@ -585,7 +721,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             ) PARTITION BY LIST (foo);
             CREATE TABLE foobar_1 PARTITION OF "foobar fk partitioned"  FOR VALUES IN ('1');
             CREATE TABLE foobar_2 PARTITION OF "foobar fk partitioned"  FOR VALUES IN ('2');
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -606,10 +742,52 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             CREATE TABLE foobar_2 PARTITION OF "foobar fk partitioned" FOR VALUES IN ('2');
             ALTER TABLE "foobar fk partitioned" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_id) REFERENCES foobar(id);
-			`,
+      `,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+		},
+	},
+	{
+		name: "Switch FK owning table (from partitioned table)",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                PRIMARY KEY (id)
+            );
+
+            CREATE TABLE "foobar fk"(
+                fk_id INT
+            );
+            CREATE TABLE "foobar fk partitioned"(
+                foo varchar(255),
+                fk_id INT
+            ) PARTITION BY LIST (foo);
+            ALTER TABLE "foobar fk partitioned" ADD CONSTRAINT some_fk
+                FOREIGN KEY (fk_id) REFERENCES foobar(id);
+      `,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                PRIMARY KEY (id)
+            );
+
+            CREATE TABLE "foobar fk"(
+                fk_id INT
+            );
+
+            CREATE TABLE "foobar fk partitioned"(
+                foo varchar(255),
+                fk_id INT
+            ) PARTITION BY LIST (foo);
+            CREATE TABLE foobar_1 PARTITION OF "foobar fk partitioned" FOR VALUES IN ('1');
+            CREATE TABLE foobar_2 PARTITION OF "foobar fk partitioned" FOR VALUES IN ('2');
+            ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
+                FOREIGN KEY (fk_id) REFERENCES foobar(id);
+      `,
 		},
 	},
 	{
@@ -644,7 +822,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             );
             ALTER TABLE schema_1."foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_id) REFERENCES schema_1.foobar(id);
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -681,8 +859,9 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
                 FOREIGN KEY (fk_id, fk_val) REFERENCES schema_1.foobar(id, val);
 `},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeIndexBuild,
 			diff.MigrationHazardTypeIndexDropped,
 		},
@@ -711,7 +890,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             );
             ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_foo, fk_id) REFERENCES foobar(foo, id) NOT VALID ;
-			`,
+      `,
 		},
 		newSchemaDDL: []string{
 			`
@@ -735,12 +914,11 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             );
             ALTER TABLE "foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_foo, fk_id) REFERENCES "foobar partitioned"(foo, id);
-			`,
+      `,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeIndexBuild,
-			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 		},
 	},
 }
