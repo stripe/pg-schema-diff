@@ -167,6 +167,40 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add a functional partitioned index",
+		oldSchemaDDL: []string{
+			`
+            CREATE SCHEMA schema_1;
+            CREATE TABLE schema_1.foobar(
+                id INT,
+                foo VARCHAR(255)
+            ) PARTITION BY LIST (foo);
+            CREATE schema schema_2;
+            CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+            CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+            CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE SCHEMA schema_1;
+            CREATE TABLE schema_1.foobar(
+                id INT,
+                foo VARCHAR(255)
+            ) PARTITION BY LIST (foo);
+            CREATE schema schema_2;
+            CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
+            CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_2');
+            CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_3');
+
+            CREATE INDEX some_idx ON schema_1.foobar(lower(foo));
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
 		name: "Add a primary key",
 		oldSchemaDDL: []string{
 			`
@@ -330,11 +364,11 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
             CREATE TABLE schema_2.foobar(
                 id INT,
                 foo VARCHAR(255)
-            ); 
+            );
             CREATE TABLE schema_2.foobar_1(
                 id INT,
                 foo VARCHAR(255)
-            ); 
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -376,11 +410,11 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
             CREATE TABLE schema_2.foobar(
                 id INT,
                 foo VARCHAR(255)
-            ); 
+            );
             CREATE TABLE schema_2.foobar_1(
                 id INT,
                 foo VARCHAR(255)
-            ); 
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -423,11 +457,11 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
             CREATE TABLE schema_2.foobar(
                 id INT,
                 foo VARCHAR(255)
-            ); 
+            );
             CREATE TABLE schema_2.foobar_1(
                 id INT,
                 foo VARCHAR(255)
-            ); 
+            );
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -570,12 +604,12 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
                 bar INT,
                 foo VARCHAR(255)
             ) PARTITION BY LIST (foo);
-            
+
             CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 
             CREATE INDEX some_idx ON foobar(foo, id);
             CREATE INDEX foobar_1_some_local_idx ON foobar_1(foo, bar, id);
-            
+
             -- Create a table in a different schema to ensure that dependencies are correctly set
             CREATE schema schema_1;
             CREATE TABLE schema_1.foobar(
@@ -590,7 +624,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
                 bar INT,
                 foo VARCHAR(255)
             ) PARTITION BY LIST (foo);
-            
+
             CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 		`},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -614,7 +648,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
                 bar INT,
                 foo VARCHAR(255)
             ) PARTITION BY LIST (foo);
-            
+
             CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
             CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
 
@@ -629,7 +663,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
                 bar INT,
                 foo VARCHAR(255)
             ) PARTITION BY LIST (foo);
-            
+
             CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
             CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
 
@@ -675,7 +709,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
                 bar INT,
                 foo VARCHAR(255)
             ) PARTITION BY LIST (foo);
-            
+
             CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
             CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
 
@@ -691,7 +725,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
                 bar VARCHAR(255),
                 foo INT
             ) PARTITION BY LIST (foo);
-            
+
             CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN (1);
             CREATE TABLE schema_1.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN (2);
 
@@ -706,7 +740,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
                 bar INT,
                 foo VARCHAR(255)
             ) PARTITION BY LIST (foo);
-            
+
             CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
             CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
 
@@ -721,7 +755,7 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
                 bar VARCHAR(255),
                 foo INT
             ) PARTITION BY LIST (foo);
-            
+
             CREATE TABLE schema_1.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN (1);
             CREATE TABLE schema_1.foobar_2 PARTITION OF schema_1.foobar FOR VALUES IN (2);
 
