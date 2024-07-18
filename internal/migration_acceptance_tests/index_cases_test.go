@@ -106,6 +106,31 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add a functional index",
+		oldSchemaDDL: []string{
+			`
+            CREATE SCHEMA schema_1;
+            CREATE TABLE schema_1.foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255)
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE SCHEMA schema_1;
+            CREATE TABLE schema_1.foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255)
+            );
+            CREATE INDEX some_idx ON schema_1.foobar(lower(foo));
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
 		name: "Add a unique index",
 		oldSchemaDDL: []string{
 			`
@@ -478,7 +503,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
                 foo VARCHAR(255) NOT NULL
             );
             CREATE INDEX some_idx ON schema_1.foobar(id, foo);
-            
+
             CREATE SCHEMA schema_2;
             CREATE TABLE schema_2.foobar(
                 id INT PRIMARY KEY,
@@ -493,7 +518,7 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
                 id INT PRIMARY KEY,
                 foo VARCHAR(255) NOT NULL
             );
-            
+
             CREATE SCHEMA schema_2;
             CREATE TABLE schema_2.foobar(
                 id INT PRIMARY KEY,
