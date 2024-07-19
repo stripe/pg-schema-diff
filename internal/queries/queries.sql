@@ -95,6 +95,13 @@ SELECT
     i.indisunique AS index_is_unique,
     COALESCE(parent_c.relname, '')::TEXT AS parent_index_name,
     COALESCE(parent_namespace.nspname, '')::TEXT AS parent_index_schema_name,
+    (
+        SELECT ARRAY_AGG(att.attname ORDER BY indkey_ord.ord)
+        FROM UNNEST(i.indkey) WITH ORDINALITY AS indkey_ord (attnum, ord)
+        INNER JOIN
+            pg_catalog.pg_attribute AS att
+            ON att.attrelid = table_c.oid AND att.attnum = indkey_ord.attnum
+    )::TEXT [] AS column_names,
     COALESCE(con.conislocal, false) AS constraint_is_local
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_index AS i ON (i.indexrelid = c.oid)
@@ -118,14 +125,6 @@ WHERE
     AND table_namespace.nspname !~ '^pg_toast'
     AND table_namespace.nspname !~ '^pg_temp'
     AND (c.relkind = 'i' OR c.relkind = 'I');
-
--- name: GetColumnsForIndex :many
-SELECT a.attname::TEXT AS column_name
-FROM pg_catalog.pg_attribute AS a
-WHERE
-    a.attrelid = $1
-    AND a.attnum > 0
-ORDER BY a.attnum;
 
 -- name: GetCheckConstraints :many
 SELECT

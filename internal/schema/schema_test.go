@@ -893,6 +893,38 @@ var (
 			},
 		},
 		{
+			name: "Column rename",
+			ddl: []string{`
+			CREATE TABLE foo (
+				value TEXT
+			);
+			CREATE INDEX foo_value_idx ON foo (value);
+			ALTER TABLE foo RENAME COLUMN value TO renamed_value;
+		`},
+			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "public"},
+				},
+				Tables: []Table{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Columns: []Column{
+							{Name: "renamed_value", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
+						},
+						CheckConstraints: nil,
+						ReplicaIdentity:  ReplicaIdentityDefault,
+					},
+				},
+				Indexes: []Index{
+					{
+						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						Name:        "foo_value_idx", Columns: []string{"renamed_value"},
+						GetIndexDefStmt: "CREATE INDEX foo_value_idx ON public.foo USING btree (renamed_value)",
+					},
+				},
+			},
+		},
+		{
 			name: "Filtering - filtering out the base table",
 			opts: []GetSchemaOpt{WithIncludeSchemas("public")},
 			ddl: []string{`
