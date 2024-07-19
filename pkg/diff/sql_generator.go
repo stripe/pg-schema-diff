@@ -1718,6 +1718,7 @@ func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index sche
 		}
 	}
 
+	// Otherwise, we can drop the index whenever we want.
 	return nil
 }
 
