@@ -931,31 +931,16 @@ func (s *schemaFetcher) buildCheckConstraint(ctx context.Context, cc queries.Get
 	}, nil
 }
 
-// fetchIndexes fetches the indexes We fetch all indexes at once to minimize number of queries, since each index needs
-// to fetch columns
+// fetchIndexes fetches the indexes. We fetch all the indexes at once to minimize the number of queries.
 func (s *schemaFetcher) fetchIndexes(ctx context.Context) ([]Index, error) {
 	rawIndexes, err := s.q.GetIndexes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetIndexes: %w", err)
 	}
 
-	goroutineRunner := s.goroutineRunnerFactory()
-	var idxFutures []concurrent.Future[Index]
-	for _, _rawIndex := range rawIndexes {
-		rawIndex := _rawIndex // Capture loop variable for go routine
-		f, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() (Index, error) {
-			return s.buildIndex(ctx, rawIndex)
-		})
-		if err != nil {
-			return nil, fmt.Errorf("starting index future: %w", err)
-		}
-
-		idxFutures = append(idxFutures, f)
-	}
-
-	idxs, err := concurrent.GetAll(ctx, idxFutures...)
-	if err != nil {
-		return nil, fmt.Errorf("getting indexes: %w", err)
+	var idxs []Index
+	for _, idx := range rawIndexes {
+		idxs = append(idxs, s.buildIndex(idx))
 	}
 
 	idxs = filterSliceByName(
@@ -969,12 +954,7 @@ func (s *schemaFetcher) fetchIndexes(ctx context.Context) ([]Index, error) {
 	return idxs, nil
 }
 
-func (s *schemaFetcher) buildIndex(ctx context.Context, rawIndex queries.GetIndexesRow) (Index, error) {
-	rawColumns, err := s.q.GetColumnsForIndex(ctx, rawIndex.Oid)
-	if err != nil {
-		return Index{}, fmt.Errorf("GetColumnsForIndex(%s): %w", rawIndex.Oid, err)
-	}
-
+func (s *schemaFetcher) buildIndex(rawIndex queries.GetIndexesRow) Index {
 	var indexConstraint *IndexConstraint
 	if rawIndex.ConstraintName != "" {
 		indexConstraint = &IndexConstraint{
@@ -999,7 +979,7 @@ func (s *schemaFetcher) buildIndex(ctx context.Context, rawIndex queries.GetInde
 			EscapedName: EscapeIdentifier(rawIndex.TableName),
 		},
 		Name:            rawIndex.IndexName,
-		Columns:         rawColumns,
+		Columns:         rawIndex.ColumnNames,
 		GetIndexDefStmt: GetIndexDefStatement(rawIndex.DefStmt),
 		IsInvalid:       !rawIndex.IndexIsValid,
 		IsUnique:        rawIndex.IndexIsUnique,
@@ -1007,7 +987,7 @@ func (s *schemaFetcher) buildIndex(ctx context.Context, rawIndex queries.GetInde
 		Constraint: indexConstraint,
 
 		ParentIdx: parentIdx,
-	}, nil
+	}
 }
 
 func (s *schemaFetcher) fetchForeignKeyCons(ctx context.Context) ([]ForeignKeyConstraint, error) {

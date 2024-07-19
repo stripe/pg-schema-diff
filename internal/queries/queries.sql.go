@@ -87,38 +87,6 @@ func (q *Queries) GetCheckConstraints(ctx context.Context) ([]GetCheckConstraint
 	return items, nil
 }
 
-const getColumnsForIndex = `-- name: GetColumnsForIndex :many
-SELECT a.attname::TEXT AS column_name
-FROM pg_catalog.pg_attribute AS a
-WHERE
-    a.attrelid = $1
-    AND a.attnum > 0
-ORDER BY a.attnum
-`
-
-func (q *Queries) GetColumnsForIndex(ctx context.Context, attrelid interface{}) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, getColumnsForIndex, attrelid)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var column_name string
-		if err := rows.Scan(&column_name); err != nil {
-			return nil, err
-		}
-		items = append(items, column_name)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getColumnsForTable = `-- name: GetColumnsForTable :many
 SELECT
     a.attname::TEXT AS column_name,
@@ -509,6 +477,13 @@ SELECT
     i.indisunique AS index_is_unique,
     COALESCE(parent_c.relname, '')::TEXT AS parent_index_name,
     COALESCE(parent_namespace.nspname, '')::TEXT AS parent_index_schema_name,
+    (
+        SELECT ARRAY_AGG(att.attname ORDER BY indkey_ord.ord)
+        FROM UNNEST(i.indkey) WITH ORDINALITY AS indkey_ord (attnum, ord)
+        INNER JOIN
+            pg_catalog.pg_attribute AS att
+            ON att.attrelid = table_c.oid AND att.attnum = indkey_ord.attnum
+    )::TEXT [] AS column_names,
     COALESCE(con.conislocal, false) AS constraint_is_local
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_index AS i ON (i.indexrelid = c.oid)
@@ -548,6 +523,7 @@ type GetIndexesRow struct {
 	IndexIsUnique         bool
 	ParentIndexName       string
 	ParentIndexSchemaName string
+	ColumnNames           []string
 	ConstraintIsLocal     bool
 }
 
@@ -574,6 +550,7 @@ func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
 			&i.IndexIsUnique,
 			&i.ParentIndexName,
 			&i.ParentIndexSchemaName,
+			pq.Array(&i.ColumnNames),
 			&i.ConstraintIsLocal,
 		); err != nil {
 			return nil, err
