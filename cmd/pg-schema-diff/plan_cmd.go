@@ -76,7 +76,7 @@ type (
 	}
 
 	schemaSourceFlags struct {
-		schemaDir         string
+		schemaDirs        []string
 		targetDatabaseDSN string
 	}
 
@@ -145,7 +145,7 @@ func createPlanFlags(cmd *cobra.Command) *planFlags {
 }
 
 func schemaSourceFlagsVar(cmd *cobra.Command, p *schemaSourceFlags) {
-	cmd.Flags().StringVar(&p.schemaDir, "schema-dir", "", "Directory of .SQL files to use as the schema source. Use to generate a diff between the target database and the schema in this directory.")
+	cmd.Flags().StringArrayVar(&p.schemaDirs, "schema-dir", nil, "Directory of .SQL files to use as the schema source (can be multiple). Use to generate a diff between the target database and the schema in this directory.")
 	if err := cmd.MarkFlagDirname("schema-dir"); err != nil {
 		panic(err)
 	}
@@ -222,10 +222,14 @@ func parsePlanConfig(p planFlags) (planConfig, error) {
 }
 
 func parseSchemaSource(p schemaSourceFlags) (schemaSourceFactory, error) {
-	if p.schemaDir != "" {
-		ddl, err := getDDLFromPath(p.schemaDir)
-		if err != nil {
-			return nil, err
+	if len(p.schemaDirs) > 0 {
+		var ddl []string
+		for _, schemaDir := range p.schemaDirs {
+			stmts, err := getDDLFromPath(schemaDir)
+			if err != nil {
+				return nil, fmt.Errorf("getting DDL from path %q: %w", schemaDir, err)
+			}
+			ddl = append(ddl, stmts...)
 		}
 		return func() (diff.SchemaSource, io.Closer, error) {
 			return diff.DDLSchemaSource(ddl), nil, nil
