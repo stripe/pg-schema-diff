@@ -11,9 +11,10 @@ import (
 )
 
 type schemaSourcePlanDeps struct {
-	tempDBFactory tempdb.Factory
-	logger        log.Logger
-	getSchemaOpts []schema.GetSchemaOpt
+	tempDBFactory       tempdb.Factory
+	logger              log.Logger
+	doSomethingOnTempdb DoSomethingOnTempdb
+	getSchemaOpts       []schema.GetSchemaOpt
 }
 
 type SchemaSource interface {
@@ -50,7 +51,9 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 			return schema.Schema{}, fmt.Errorf("running DDL: %w", err)
 		}
 	}
-
+	if deps.doSomethingOnTempdb != nil {
+		deps.doSomethingOnTempdb.Do(tempDb.ConnPool)
+	}
 	return schema.GetSchema(ctx, tempDb.ConnPool, append(deps.getSchemaOpts, tempDb.ExcludeMetadataOptions...)...)
 }
 

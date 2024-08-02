@@ -25,6 +25,16 @@ var (
 	errTempDbFactoryRequired = fmt.Errorf("tempDbFactory is required. include the option WithTempDbFactory")
 )
 
+type DoSomethingOnTempdb interface {
+	Do(*sql.DB)
+}
+
+func WithdoSomethingOnTempdb(doSomethingOnTempdb DoSomethingOnTempdb) PlanOpt {
+	return func(opts *planOptions) {
+		opts.doSomethingOnTempdb = doSomethingOnTempdb
+	}
+}
+
 type (
 	planOptions struct {
 		tempDbFactory           tempdb.Factory
@@ -33,6 +43,7 @@ type (
 		logger                  log.Logger
 		validatePlan            bool
 		getSchemaOpts           []schema.GetSchemaOpt
+		doSomethingOnTempdb     DoSomethingOnTempdb
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -137,9 +148,10 @@ func Generate(
 		return Plan{}, fmt.Errorf("getting current schema: %w", err)
 	}
 	newSchema, err := targetSchema.GetSchema(ctx, schemaSourcePlanDeps{
-		tempDBFactory: planOptions.tempDbFactory,
-		logger:        planOptions.logger,
-		getSchemaOpts: planOptions.getSchemaOpts,
+		tempDBFactory:       planOptions.tempDbFactory,
+		logger:              planOptions.logger,
+		getSchemaOpts:       planOptions.getSchemaOpts,
+		doSomethingOnTempdb: planOptions.doSomethingOnTempdb,
 	})
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting new schema: %w", err)
