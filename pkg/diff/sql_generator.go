@@ -729,7 +729,11 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 
 	var columnDefs []string
 	for _, column := range table.Columns {
-		columnDefs = append(columnDefs, "\t"+buildColumnDefinition(column))
+		columnDef, err := buildColumnDefinition(column)
+		if err != nil {
+			return nil, fmt.Errorf("building column definition: %w", err)
+		}
+		columnDefs = append(columnDefs, "\t"+columnDef)
 	}
 	createTableSb := strings.Builder{}
 	createTableSb.WriteString(fmt.Sprintf("CREATE TABLE %s (\n%s\n)",
@@ -883,8 +887,8 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 		tempCCs = append(tempCCs, tempCC)
 	}
 
-	columnSQLVertexGenerator := columnSQLVertexGenerator{tableName: diff.new.SchemaQualifiedName}
-	columnGraph, err := diff.columnsDiff.resolveToSQLGraph(&columnSQLVertexGenerator)
+	columnSQLVertexGenerator := newColumnSQLVertexGenerator(diff.new.SchemaQualifiedName)
+	columnGraph, err := diff.columnsDiff.resolveToSQLGraph(columnSQLVertexGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("resolving index diff: %w", err)
 	}
@@ -1125,9 +1129,17 @@ type columnSQLVertexGenerator struct {
 	tableName schema.SchemaQualifiedName
 }
 
+func newColumnSQLVertexGenerator(tableName schema.SchemaQualifiedName) *columnSQLVertexGenerator {
+	return &columnSQLVertexGenerator{tableName: tableName}
+}
+
 func (csg *columnSQLVertexGenerator) Add(column schema.Column) ([]Statement, error) {
+	columnDef, err := buildColumnDefinition(column)
+	if err != nil {
+		return nil, fmt.Errorf("building column definition: %w", err)
+	}
 	return []Statement{{
-		DDL:         fmt.Sprintf("%s ADD COLUMN %s", alterTablePrefix(csg.tableName), buildColumnDefinition(column)),
+		DDL:         fmt.Sprintf("%s ADD COLUMN %s", alterTablePrefix(csg.tableName), columnDef),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}}, nil
@@ -1155,20 +1167,30 @@ func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error)
 	var stmts []Statement
 	alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(csg.tableName), schema.EscapeIdentifier(newColumn.Name))
 
-	if oldColumn.IsNullable != newColumn.IsNullable {
-		if newColumn.IsNullable {
-			stmts = append(stmts, Statement{
-				DDL:         fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			})
-		} else {
-			stmts = append(stmts, Statement{
-				DDL:         fmt.Sprintf("%s SET NOT NULL", alterColumnPrefix),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			})
-		}
+	// Adding a "NOT NULL" constraint must come before updating a column to be an identity column, otherwise
+	// the add statement will fail because a column must be non-nullable to become an identity column.
+	if oldColumn.IsNullable != newColumn.IsNullable && !newColumn.IsNullable {
+		stmts = append(stmts, Statement{
+			DDL:         fmt.Sprintf("%s SET NOT NULL", alterColumnPrefix),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		})
+	}
+
+	updateIdentityStmts, err := csg.buildUpdateIdentityStatements(oldColumn, newColumn)
+	if err != nil {
+		return nil, fmt.Errorf("building update identity statements: %w", err)
+	}
+	stmts = append(stmts, updateIdentityStmts...)
+
+	// Removing a "NOT NULL" constraint must come after updating a column to no longer be an identity column, otherwise
+	// the "DROP NOT NULL" statement will fail because the column will still be an identity column.
+	if oldColumn.IsNullable != newColumn.IsNullable && newColumn.IsNullable {
+		stmts = append(stmts, Statement{
+			DDL:         fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		})
 	}
 
 	if len(oldColumn.Default) > 0 && len(newColumn.Default) == 0 {
@@ -1186,8 +1208,7 @@ func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error)
 		stmts = append(stmts,
 			[]Statement{
 				csg.generateTypeTransformationStatement(
-					alterColumnPrefix,
-					schema.EscapeIdentifier(newColumn.Name),
+					diff.new,
 					oldColumn.Type,
 					newColumn.Type,
 					newColumn.Collation,
@@ -1225,8 +1246,7 @@ func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error)
 }
 
 func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
-	prefix string,
-	name string,
+	col schema.Column,
 	oldType string,
 	newType string,
 	newTypeCollation schema.SchemaQualifiedName,
@@ -1235,9 +1255,9 @@ func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
 		strings.EqualFold(newType, "timestamp without time zone") {
 		return Statement{
 			DDL: fmt.Sprintf("%s SET DATA TYPE %s using to_timestamp(%s / 1000)",
-				prefix,
+				csg.alterColumnPrefix(col),
 				newType,
-				name,
+				schema.EscapeIdentifier(col.Name),
 			),
 			Timeout:     statementTimeoutDefault,
 			LockTimeout: lockTimeoutDefault,
@@ -1260,10 +1280,10 @@ func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
 
 	return Statement{
 		DDL: fmt.Sprintf("%s SET DATA TYPE %s %susing %s::%s",
-			prefix,
+			csg.alterColumnPrefix(col),
 			newType,
 			collationModifier,
-			name,
+			schema.EscapeIdentifier(col.Name),
 			newType,
 		),
 		Timeout:     statementTimeoutDefault,
@@ -1277,6 +1297,78 @@ func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
 				"contents are not changing.",
 		}},
 	}
+}
+
+func (csg *columnSQLVertexGenerator) buildUpdateIdentityStatements(old, new schema.Column) ([]Statement, error) {
+	if cmp.Equal(old.Identity, new.Identity) {
+		return nil, nil
+	}
+
+	// Drop the old identity
+	if new.Identity == nil {
+		// ALTER [ COLUMN ] column_name DROP IDENTITY [ IF EXISTS ]
+		return []Statement{{
+			DDL:         fmt.Sprintf("%s DROP IDENTITY", csg.alterColumnPrefix(old)),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		}}, nil
+	}
+
+	// Add the new identity
+	if old.Identity == nil {
+		def, err := buildColumnIdentityDefinition(*new.Identity)
+		if err != nil {
+			return nil, fmt.Errorf("building column identity definition: %w", err)
+		}
+		// ALTER [ COLUMN ] column_name ADD GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( sequence_options ) ]
+		return []Statement{{
+			DDL:         fmt.Sprintf("%s ADD %s", csg.alterColumnPrefix(new), def),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		}}, nil
+	}
+
+	// Alter the existing identity
+	var modifications []string
+	if old.Identity.Type != new.Identity.Type {
+		typeModifier, err := columnIdentityTypeToModifier(new.Identity.Type)
+		if err != nil {
+			return nil, fmt.Errorf("column identity type modifier: %w", err)
+		}
+		modifications = append(modifications, fmt.Sprintf("\tSET GENERATED %s", typeModifier))
+	}
+	if old.Identity.Increment != new.Identity.Increment {
+		modifications = append(modifications, fmt.Sprintf("\tSET INCREMENT BY %d", new.Identity.Increment))
+	}
+	if old.Identity.MinValue != new.Identity.MinValue {
+		modifications = append(modifications, fmt.Sprintf("\tSET MINVALUE %d", new.Identity.MinValue))
+	}
+	if old.Identity.MaxValue != new.Identity.MaxValue {
+		modifications = append(modifications, fmt.Sprintf("\tSET MAXVALUE %d", new.Identity.MaxValue))
+	}
+	if old.Identity.StartValue != new.Identity.StartValue {
+		modifications = append(modifications, fmt.Sprintf("\tSET START %d", new.Identity.StartValue))
+	}
+	if old.Identity.CacheSize != new.Identity.CacheSize {
+		modifications = append(modifications, fmt.Sprintf("\tSET CACHE %d", new.Identity.CacheSize))
+	}
+	if old.Identity.Cycle != new.Identity.Cycle {
+		cycleModifier := ""
+		if !new.Identity.Cycle {
+			cycleModifier = "NO "
+		}
+		modifications = append(modifications, fmt.Sprintf("\tSET %sCYCLE", cycleModifier))
+	}
+	// ALTER [ COLUMN ] column_name { SET GENERATED { ALWAYS | BY DEFAULT } | SET sequence_option | RESTART [ [ WITH ] restart ] } [...]
+	return []Statement{{
+		DDL:         fmt.Sprintf("%s\n%s", csg.alterColumnPrefix(new), strings.Join(modifications, "\n")),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+	}}, nil
+}
+
+func (csg *columnSQLVertexGenerator) alterColumnPrefix(col schema.Column) string {
+	return fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(csg.tableName), schema.EscapeIdentifier(col.Name))
 }
 
 func (csg *columnSQLVertexGenerator) GetSQLVertexId(column schema.Column) string {
@@ -2630,7 +2722,7 @@ func alterTablePrefix(table schema.SchemaQualifiedName) string {
 	return fmt.Sprintf("ALTER TABLE %s", table.GetFQEscapedName())
 }
 
-func buildColumnDefinition(column schema.Column) string {
+func buildColumnDefinition(column schema.Column) (string, error) {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%s %s", schema.EscapeIdentifier(column.Name), column.Type))
 	if column.IsCollated() {
@@ -2642,5 +2734,37 @@ func buildColumnDefinition(column schema.Column) string {
 	if len(column.Default) > 0 {
 		sb.WriteString(fmt.Sprintf(" DEFAULT %s", column.Default))
 	}
-	return sb.String()
+	if column.Identity != nil {
+		identityDef, err := buildColumnIdentityDefinition(*column.Identity)
+		if err != nil {
+			return "", fmt.Errorf("building column identity definition: %w", err)
+		}
+		sb.WriteString(" " + identityDef)
+	}
+	return sb.String(), nil
+}
+
+func buildColumnIdentityDefinition(identity schema.ColumnIdentity) (string, error) {
+	typeModifier, err := columnIdentityTypeToModifier(identity.Type)
+	if err != nil {
+		return "", fmt.Errorf("column identity type modifier: %w", err)
+	}
+
+	cycleModifier := ""
+	if !identity.Cycle {
+		cycleModifier = "NO "
+	}
+
+	return fmt.Sprintf("GENERATED %s AS IDENTITY (INCREMENT BY %d MINVALUE %d MAXVALUE %d START WITH %d CACHE %d %sCYCLE)", typeModifier, identity.Increment, identity.MinValue, identity.MaxValue, identity.StartValue, identity.CacheSize, cycleModifier), nil
+}
+
+func columnIdentityTypeToModifier(val schema.ColumnIdentityType) (string, error) {
+	switch val {
+	case schema.ColumnIdentityTypeAlways:
+		return "ALWAYS", nil
+	case schema.ColumnIdentityTypeByDefault:
+		return "BY DEFAULT", nil
+	default:
+		return "", fmt.Errorf("unknown identity type %q", val)
+	}
 }

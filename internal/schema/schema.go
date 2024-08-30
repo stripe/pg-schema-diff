@@ -199,22 +199,41 @@ func (t Table) IsPartition() bool {
 	return t.ParentTable != nil
 }
 
-type Column struct {
-	Name      string
-	Type      string
-	Collation SchemaQualifiedName
-	// If the column has a default value, this will be a SQL string representing that value.
-	// Examples:
-	//   ''::text
-	//   CURRENT_TIMESTAMP
-	// If empty, indicates that there is no default value.
-	Default    string
-	IsNullable bool
+type ColumnIdentityType string
 
-	// Size is the number of bytes required to store the value.
-	// It is used for data-packing purposes
-	Size int //
-}
+const (
+	ColumnIdentityTypeAlways    = "a"
+	ColumnIdentityTypeByDefault = "d"
+)
+
+type (
+	ColumnIdentity struct {
+		Type       ColumnIdentityType
+		MinValue   int64
+		MaxValue   int64
+		StartValue int64
+		Increment  int64
+		CacheSize  int64
+		Cycle      bool
+	}
+
+	Column struct {
+		Name      string
+		Type      string
+		Collation SchemaQualifiedName
+		// If the column has a default value, this will be a SQL string representing that value.
+		// Examples:
+		//   ''::text
+		//   CURRENT_TIMESTAMP
+		// If empty, indicates that there is no default value.
+		Default    string
+		IsNullable bool
+		// Size is the number of bytes required to store the value.
+		// It is used for data-packing purposes
+		Size     int
+		Identity *ColumnIdentity
+	}
+)
 
 func (c Column) GetName() string {
 	return c.Name
@@ -822,6 +841,19 @@ func (s *schemaFetcher) buildTable(
 			}
 		}
 
+		var identity *ColumnIdentity
+		if len(column.IdentityType) > 0 {
+			identity = &ColumnIdentity{
+				Type:       ColumnIdentityType(column.IdentityType),
+				StartValue: column.StartValue.Int64,
+				Increment:  column.IncrementValue.Int64,
+				MaxValue:   column.MaxValue.Int64,
+				MinValue:   column.MinValue.Int64,
+				CacheSize:  column.CacheSize.Int64,
+				Cycle:      column.IsCycle.Bool,
+			}
+		}
+
 		columns = append(columns, Column{
 			Name:       column.ColumnName,
 			Type:       column.ColumnType,
@@ -832,8 +864,9 @@ func (s *schemaFetcher) buildTable(
 			//   ''::text
 			//   CURRENT_TIMESTAMP
 			// If empty, indicates that there is no default value.
-			Default: column.DefaultValue,
-			Size:    int(column.ColumnSize),
+			Default:  column.DefaultValue,
+			Size:     int(column.ColumnSize),
+			Identity: identity,
 		})
 	}
 

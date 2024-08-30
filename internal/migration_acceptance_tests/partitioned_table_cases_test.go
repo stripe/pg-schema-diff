@@ -14,6 +14,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
                 foo VARCHAR(255),
                 bar TEXT COLLATE "POSIX",
                 fizz SERIAL,
+                identity BIGINT GENERATED ALWAYS AS IDENTITY ( MINVALUE 2 MAXVALUE 9 START 3 INCREMENT 4 CACHE 5 NO CYCLE ),
                 CHECK ( fizz > 0 ),
                 PRIMARY KEY (foo, id),
                 UNIQUE (foo, bar)
@@ -58,6 +59,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
                 foo VARCHAR(255),
                 bar TEXT COLLATE "POSIX",
                 fizz SERIAL,
+                identity BIGINT GENERATED ALWAYS AS IDENTITY ( MINVALUE 2 MAXVALUE 9 START 3 INCREMENT 4 CACHE 5 NO CYCLE ),
                 CHECK ( fizz > 0 ),
                 PRIMARY KEY (foo, id),
                 UNIQUE (foo, bar)
@@ -114,6 +116,7 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
                 foo VARCHAR(255),
                 bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
                 fizz SERIAL,
+                identity BIGINT GENERATED ALWAYS AS IDENTITY ( MINVALUE 2 MAXVALUE 9 START 3 INCREMENT 4 CACHE 5 NO CYCLE ),
                 CHECK ( fizz > 0 ),
                 PRIMARY KEY (foo, id),
                 UNIQUE (foo, bar)
@@ -139,40 +142,6 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
             CREATE INDEX foobar_1_local_idx ON schema_2."FOOBAR_1"(foo);
             CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
 			`,
-		},
-
-		expectedDBSchemaDDL: []string{`
-            CREATE SCHEMA schema_1;
-            CREATE TABLE schema_1."Foobar"(
-                id INT,
-                foo VARCHAR(255),
-                bar TEXT COLLATE "POSIX" NOT NULL DEFAULT 'some default',
-                fizz SERIAL,
-                CHECK ( fizz > 0 ),
-                PRIMARY KEY (foo, id),
-                UNIQUE (foo, bar)
-            ) PARTITION BY LIST (foo);
-            ALTER TABLE schema_1."Foobar" REPLICA IDENTITY FULL;
-
-            ALTER TABLE schema_1."Foobar" ENABLE ROW LEVEL SECURITY;
-            ALTER TABLE schema_1."Foobar" FORCE ROW LEVEL SECURITY;
-
-            -- partitions
-            CREATE SCHEMA schema_2;
-            CREATE TABLE schema_2."FOOBAR_1" PARTITION OF schema_1."Foobar"(
-                foo NOT NULL,
-                bar NOT NULL
-            ) FOR VALUES IN ('foo_1');
-            ALTER TABLE schema_2."FOOBAR_1" REPLICA IDENTITY NOTHING ;
-            CREATE TABLE schema_2.foobar_2 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_2');
-            ALTER TABLE schema_2.foobar_2 REPLICA IDENTITY FULL;
-            CREATE TABLE schema_2.foobar_3 PARTITION OF schema_1."Foobar" FOR VALUES IN ('foo_3');
-            -- partitioned indexes
-            CREATE UNIQUE INDEX foobar_unique_idx ON schema_1."Foobar"(foo, fizz);
-            -- local indexes
-            CREATE INDEX foobar_1_local_idx ON schema_2."FOOBAR_1"(foo);
-            CREATE UNIQUE INDEX foobar_2_local_unique_idx ON schema_2.foobar_2(foo);
-				`,
 		},
 	},
 	{

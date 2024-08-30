@@ -7,6 +7,7 @@ package queries
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/lib/pq"
 )
@@ -88,6 +89,30 @@ func (q *Queries) GetCheckConstraints(ctx context.Context) ([]GetCheckConstraint
 }
 
 const getColumnsForTable = `-- name: GetColumnsForTable :many
+WITH identity_col_seq AS (
+    SELECT
+        depend.refobjid AS owner_relid,
+        depend.refobjsubid AS owner_attnum,
+        pg_seq.seqstart,
+        pg_seq.seqincrement,
+        pg_seq.seqmax,
+        pg_seq.seqmin,
+        pg_seq.seqcache,
+        pg_seq.seqcycle
+    FROM pg_catalog.pg_sequence AS pg_seq
+    INNER JOIN pg_catalog.pg_depend AS depend
+        ON
+            depend.classid = 'pg_class'::REGCLASS
+            AND pg_seq.seqrelid = depend.objid
+            AND depend.refclassid = 'pg_class'::REGCLASS
+            AND depend.deptype = 'i'
+    INNER JOIN pg_catalog.pg_attribute AS owner_attr
+        ON
+            depend.refobjid = owner_attr.attrelid
+            AND depend.refobjsubid = owner_attr.attnum
+    WHERE owner_attr.attidentity != ''
+)
+
 SELECT
     a.attname::TEXT AS column_name,
     COALESCE(coll.collname, '')::TEXT AS collation_name,
@@ -97,6 +122,13 @@ SELECT
     )::TEXT AS default_value,
     a.attnotnull AS is_not_null,
     a.attlen AS column_size,
+    a.attidentity::TEXT AS identity_type,
+    identity_col_seq.seqstart AS start_value,
+    identity_col_seq.seqincrement AS increment_value,
+    identity_col_seq.seqmax AS max_value,
+    identity_col_seq.seqmin AS min_value,
+    identity_col_seq.seqcache AS cache_size,
+    identity_col_seq.seqcycle AS is_cycle,
     pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type
 FROM pg_catalog.pg_attribute AS a
 LEFT JOIN
@@ -106,6 +138,11 @@ LEFT JOIN pg_catalog.pg_collation AS coll ON coll.oid = a.attcollation
 LEFT JOIN
     pg_catalog.pg_namespace AS collation_namespace
     ON collation_namespace.oid = coll.collnamespace
+LEFT JOIN
+    identity_col_seq
+    ON
+        identity_col_seq.owner_relid = a.attrelid
+        AND identity_col_seq.owner_attnum = a.attnum
 WHERE
     a.attrelid = $1
     AND a.attnum > 0
@@ -120,6 +157,13 @@ type GetColumnsForTableRow struct {
 	DefaultValue        string
 	IsNotNull           bool
 	ColumnSize          int16
+	IdentityType        string
+	StartValue          sql.NullInt64
+	IncrementValue      sql.NullInt64
+	MaxValue            sql.NullInt64
+	MinValue            sql.NullInt64
+	CacheSize           sql.NullInt64
+	IsCycle             sql.NullBool
 	ColumnType          string
 }
 
@@ -139,6 +183,13 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) 
 			&i.DefaultValue,
 			&i.IsNotNull,
 			&i.ColumnSize,
+			&i.IdentityType,
+			&i.StartValue,
+			&i.IncrementValue,
+			&i.MaxValue,
+			&i.MinValue,
+			&i.CacheSize,
+			&i.IsCycle,
 			&i.ColumnType,
 		); err != nil {
 			return nil, err
@@ -727,7 +778,7 @@ LEFT JOIN pg_catalog.pg_depend AS depend
         depend.classid = 'pg_class'::REGCLASS
         AND pg_seq.seqrelid = depend.objid
         AND depend.refclassid = 'pg_class'::REGCLASS
-        AND depend.deptype = 'a'
+        AND depend.deptype IN ('a', 'i')
 LEFT JOIN pg_catalog.pg_attribute AS owner_attr
     ON
         depend.refobjid = owner_attr.attrelid
@@ -740,6 +791,9 @@ WHERE
     seq_ns.nspname NOT IN ('pg_catalog', 'information_schema')
     AND seq_ns.nspname !~ '^pg_toast'
     AND seq_ns.nspname !~ '^pg_temp'
+    -- Exclude sequences owned by identity columns.
+    --  These manifest as internal dependency on the column
+    AND (depend.deptype IS NULL OR depend.deptype != 'i')
     -- Exclude sequences belonging to extensions
     AND NOT EXISTS (
         SELECT ext_depend.objid
