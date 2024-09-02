@@ -59,6 +59,9 @@ type Plan struct {
 	// plan on running them later, you should verify that the current schema hash matches the current schema hash.
 	// To get the current schema hash, you can use schema.GetPublicSchemaHash(ctx, conn)
 	CurrentSchemaHash string
+	// PrePlanDDL is a string containing DDL statements that should be executed before the plan is applied.
+	// This can be used for setup operations or preliminary changes that need to occur before the main migration.
+	PrePlanDDL string
 }
 
 // ApplyStatementTimeoutModifier applies the given timeout to all statements that match the given regex

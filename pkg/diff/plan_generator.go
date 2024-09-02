@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -155,9 +156,20 @@ func Generate(
 		return Plan{}, fmt.Errorf("generating current schema hash: %w", err)
 	}
 
+	prePlanDDL := ""
+	// Prepend pre-plan file statements if available
+	if ddlSource, ok := targetSchema.(*ddlSchemaSource); ok && ddlSource.prePlanFile != "" {
+		content, err := os.ReadFile(ddlSource.prePlanFile)
+		if err != nil {
+			return Plan{}, fmt.Errorf("reading pre-plan file: %w", err)
+		}
+		prePlanDDL = string(content)
+	}
+
 	plan := Plan{
 		Statements:        statements,
 		CurrentSchemaHash: hash,
+		PrePlanDDL:        prePlanDDL,
 	}
 
 	if planOptions.validatePlan {

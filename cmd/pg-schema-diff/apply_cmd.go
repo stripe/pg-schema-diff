@@ -122,6 +122,14 @@ func runPlan(ctx context.Context, connConfig *pgx.ConnConfig, plan diff.Plan) er
 	}
 	defer conn.Close()
 
+	if plan.PrePlanDDL != "" {
+		fmt.Println(header("Executing pre-plan DDL"))
+		fmt.Printf("%s\n\n", plan.PrePlanDDL)
+		if _, err := conn.ExecContext(ctx, plan.PrePlanDDL); err != nil {
+			return fmt.Errorf("executing pre-plan DDL: %w", err)
+		}
+	}
+
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.
 	//

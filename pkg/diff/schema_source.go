@@ -21,13 +21,14 @@ type SchemaSource interface {
 }
 
 type ddlSchemaSource struct {
-	ddl []string
+	ddl         []string
+	prePlanFile string
 }
 
 // DDLSchemaSource returns a SchemaSource that returns a schema based on the provided DDL. You must provide a tempDBFactory
 // via the WithTempDbFactory option.
-func DDLSchemaSource(ddl []string) SchemaSource {
-	return &ddlSchemaSource{ddl: ddl}
+func DDLSchemaSource(ddl []string, prePlanFile string) SchemaSource {
+	return &ddlSchemaSource{ddl: ddl, prePlanFile: prePlanFile}
 }
 
 func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (schema.Schema, error) {
