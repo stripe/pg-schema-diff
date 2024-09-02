@@ -238,7 +238,7 @@ func parseSchemaSource(p schemaSourceFlags) (schemaSourceFactory, error) {
 			ddl = append(ddl, stmts...)
 		}
 		return func() (diff.SchemaSource, io.Closer, error) {
-			return diff.DDLSchemaSource(ddl), nil, nil
+			return diff.DDLSchemaSource(ddl, p.prePlanFile), nil, nil
 		}, nil
 	}
 

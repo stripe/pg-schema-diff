@@ -107,7 +107,7 @@ func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
 // newDDL:  		DDL encoding the new schema
 // opts:  			Additional options to configure the plan generation
 func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempdbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
-	return Generate(ctx, queryable, DDLSchemaSource(newDDL), append(opts, WithTempDbFactory(tempdbFactory), WithIncludeSchemas("public"))...)
+	return Generate(ctx, queryable, DDLSchemaSource(newDDL, ""), append(opts, WithTempDbFactory(tempdbFactory), WithIncludeSchemas("public"))...)
 }
 
 // Generate generates a migration plan to migrate the database to the target schema
