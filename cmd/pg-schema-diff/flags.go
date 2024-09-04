@@ -32,11 +32,11 @@ func parseConnConfig(c connFlags, logger log.Logger) (*pgx.ConnConfig, error) {
 	return pgx.ParseConfig(c.dsn)
 }
 
-// LogFmtToMap parses all LogFmt key/value pairs from the provided string into a
+// logFmtToMap parses all LogFmt key/value pairs from the provided string into a
 // map.
 //
 // All records are scanned. If a duplicate key is found, an error is returned.
-func LogFmtToMap(logFmt string) (map[string]string, error) {
+func logFmtToMap(logFmt string) (map[string]string, error) {
 	logMap := make(map[string]string)
 	decoder := logfmt.NewDecoder(strings.NewReader(logFmt))
 	for decoder.ScanRecord() {
