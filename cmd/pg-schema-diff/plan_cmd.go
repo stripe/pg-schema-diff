@@ -224,6 +224,9 @@ func parsePlanConfig(p planFlags) (planConfig, error) {
 func parseSchemaSource(p schemaSourceFlags) (schemaSourceFactory, error) {
 	if len(p.schemaDirs) > 0 {
 		var ddl []string
+		// Ordering of execution of schema SQL can be guaranteed by:
+		// - Splitting across multiple directories and using multiple schema dir flags
+		// - Relying on lexical order of SQL files
 		for _, schemaDir := range p.schemaDirs {
 			stmts, err := getDDLFromPath(schemaDir)
 			if err != nil {
@@ -263,7 +266,7 @@ func parseSchemaConfig(p schemaFlags) []diff.PlanOpt {
 // parseTimeoutModifier attempts to parse an option representing a statement timeout modifier in the
 // form of regex=duration where duration could be a decimal number and ends with a unit
 func parseTimeoutModifier(val string) (timeoutModifier, error) {
-	fm, err := LogFmtToMap(val)
+	fm, err := logFmtToMap(val)
 	if err != nil {
 		return timeoutModifier{}, fmt.Errorf("could not parse %q into logfmt: %w", val, err)
 	}
@@ -299,7 +302,7 @@ func parseTimeoutModifier(val string) (timeoutModifier, error) {
 }
 
 func parseInsertStatementStr(val string) (insertStatement, error) {
-	fm, err := LogFmtToMap(val)
+	fm, err := logFmtToMap(val)
 	if err != nil {
 		return insertStatement{}, fmt.Errorf("could not parse into logfmt: %w", err)
 	}
@@ -431,20 +434,26 @@ func applyPlanModifiers(
 	return plan, nil
 }
 
+// getDDLFromPath reads all .sql files under the given path (including sub-directories) and returns the DDL
+// in lexical order.
 func getDDLFromPath(path string) ([]string, error) {
-	fileEntries, err := os.ReadDir(path)
-	if err != nil {
-		return nil, err
-	}
 	var ddl []string
-	for _, entry := range fileEntries {
-		if filepath.Ext(entry.Name()) == ".sql" {
-			if stmts, err := os.ReadFile(filepath.Join(path, entry.Name())); err != nil {
-				return nil, err
-			} else {
-				ddl = append(ddl, string(stmts))
-			}
+	if err := filepath.Walk(path, func(path string, entry os.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("walking path %q: %w", path, err)
 		}
+		if strings.ToLower(filepath.Ext(entry.Name())) != ".sql" {
+			return nil
+		}
+
+		if stmts, err := os.ReadFile(path); err != nil {
+			return fmt.Errorf("reading file %q: %w", entry.Name(), err)
+		} else {
+			ddl = append(ddl, string(stmts))
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	return ddl, nil
 }
