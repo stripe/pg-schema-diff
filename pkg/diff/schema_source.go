@@ -3,6 +3,7 @@ package diff
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/stripe/pg-schema-diff/internal/schema"
 	"github.com/stripe/pg-schema-diff/pkg/log"
@@ -45,6 +46,17 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 			deps.logger.Errorf("an error occurred while dropping the temp database: %s", err)
 		}
 	}(tempDb.ContextualCloser)
+
+	if s.prePlanFile != "" {
+		prePlanDDL, err := os.ReadFile(s.prePlanFile)
+		if err != nil {
+			return schema.Schema{}, fmt.Errorf("opening pre-plan file: %w", err)
+		}
+
+		if _, err := tempDb.ConnPool.ExecContext(ctx, string(prePlanDDL)); err != nil {
+			return schema.Schema{}, fmt.Errorf("running pre-plan DDL: %w", err)
+		}
+	}
 
 	for _, stmt := range s.ddl {
 		if _, err := tempDb.ConnPool.ExecContext(ctx, stmt); err != nil {
