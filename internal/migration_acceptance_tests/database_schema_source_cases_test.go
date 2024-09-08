@@ -9,7 +9,7 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
-func databaseSchemaSourcePlanFactory(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (_ diff.Plan, retErr error) {
+func databaseSchemaSourcePlan(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (_ diff.Plan, retErr error) {
 	newSchemaDb, err := tempDbFactory.Create(ctx)
 	if err != nil {
 		return diff.Plan{}, fmt.Errorf("creating temp database: %w", err)
@@ -38,8 +38,29 @@ func databaseSchemaSourcePlanFactory(ctx context.Context, connPool sqldb.Queryab
 	return diff.Generate(ctx, connPool, diff.DBSchemaSource(newSchemaDb.ConnPool), opts...)
 }
 
+func dirSchemaSourcePlanFactory(schemaDirs []string) planFactory {
+	return func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (_ diff.Plan, retErr error) {
+		// Clone the opts so we don't modify the original.
+		opts = append([]diff.PlanOpt(nil), opts...)
+		opts = append(opts, diff.WithTempDbFactory(tempDbFactory))
+
+		if len(newSchemaDDL) != 0 {
+			panic("newSchemaDDL should be empty for dir schema sources")
+		}
+
+		schemaSource, err := diff.DirSchemaSource(schemaDirs)
+		if err != nil {
+			return diff.Plan{}, fmt.Errorf("creating schema source: %w", err)
+		}
+
+		return diff.Generate(ctx, connPool, schemaSource, opts...)
+	}
+}
+
 var databaseSchemaSourceTestCases = []acceptanceTestCase{
 	{
+		planFactory: databaseSchemaSourcePlan,
+
 		name: "Drop partitioned table, Add partitioned table with local keys",
 		oldSchemaDDL: []string{
 			`
@@ -119,8 +140,48 @@ var databaseSchemaSourceTestCases = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeDeletesData,
 		},
+	},
+	{
+		planFactory: dirSchemaSourcePlanFactory([]string{"testdata/dirsrc_happy_path/schema_0", "testdata/dirsrc_happy_path/schema_1"}),
 
-		planFactory: databaseSchemaSourcePlanFactory,
+		name: "Dir src - happy path",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar( );
+			`,
+		},
+
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+		expectedDBSchemaDDL: []string{
+			`
+                CREATE TYPE color AS ENUM ('red', 'green', 'blue');
+                CREATE TABLE foobar(
+                    color color,
+                    id varchar(255) PRIMARY KEY
+                );
+                CREATE TABLE foobar_fk(
+                    id TEXT REFERENCES foobar(id)
+                );
+                CREATE TABLE fizzbuzz(
+                    id            TEXT,
+                    primary_color color,
+                    other_color   color
+				);			`,
+		},
+	},
+	{
+		planFactory: dirSchemaSourcePlanFactory([]string{"testdata/dirsrc_invalid_sql/schema_0"}),
+
+		name: "Dir src - invalid sql",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar( );
+			`,
+		},
+
+		expectedPlanErrorContains: "testdata/dirsrc_invalid_sql/schema_0/1.sql",
 	},
 }
 

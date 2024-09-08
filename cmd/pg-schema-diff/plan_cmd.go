@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -223,19 +221,12 @@ func parsePlanConfig(p planFlags) (planConfig, error) {
 
 func parseSchemaSource(p schemaSourceFlags) (schemaSourceFactory, error) {
 	if len(p.schemaDirs) > 0 {
-		var ddl []string
-		// Ordering of execution of schema SQL can be guaranteed by:
-		// - Splitting across multiple directories and using multiple schema dir flags
-		// - Relying on lexical order of SQL files
-		for _, schemaDir := range p.schemaDirs {
-			stmts, err := getDDLFromPath(schemaDir)
-			if err != nil {
-				return nil, fmt.Errorf("getting DDL from path %q: %w", schemaDir, err)
-			}
-			ddl = append(ddl, stmts...)
-		}
 		return func() (diff.SchemaSource, io.Closer, error) {
-			return diff.DDLSchemaSource(ddl), nil, nil
+			schemaSource, err := diff.DirSchemaSource(p.schemaDirs)
+			if err != nil {
+				return nil, nil, err
+			}
+			return schemaSource, nil, nil
 		}, nil
 	}
 
@@ -432,30 +423,6 @@ func applyPlanModifiers(
 		}
 	}
 	return plan, nil
-}
-
-// getDDLFromPath reads all .sql files under the given path (including sub-directories) and returns the DDL
-// in lexical order.
-func getDDLFromPath(path string) ([]string, error) {
-	var ddl []string
-	if err := filepath.Walk(path, func(path string, entry os.FileInfo, err error) error {
-		if err != nil {
-			return fmt.Errorf("walking path %q: %w", path, err)
-		}
-		if strings.ToLower(filepath.Ext(entry.Name())) != ".sql" {
-			return nil
-		}
-
-		if stmts, err := os.ReadFile(path); err != nil {
-			return fmt.Errorf("reading file %q: %w", entry.Name(), err)
-		} else {
-			ddl = append(ddl, string(stmts))
-		}
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	return ddl, nil
 }
 
 func planToPrettyS(plan diff.Plan) string {
