@@ -3,6 +3,9 @@ package diff
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/stripe/pg-schema-diff/internal/schema"
 	"github.com/stripe/pg-schema-diff/pkg/log"
@@ -20,13 +23,79 @@ type SchemaSource interface {
 	GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (schema.Schema, error)
 }
 
-type ddlSchemaSource struct {
-	ddl []string
+type (
+	ddlStatement struct {
+		// stmt is the DDL statement to run.
+		stmt string
+		// file is an optional field that can be used to store the file name from which the DDL was read.
+		file string
+	}
+
+	ddlSchemaSource struct {
+		ddl []ddlStatement
+	}
+)
+
+// DirSchemaSource returns a SchemaSource that returns a schema based on the provided directories. You must provide a tempDBFactory
+// via the WithTempDbFactory option.
+func DirSchemaSource(dirs []string) (SchemaSource, error) {
+	var ddl []ddlStatement
+	for _, dir := range dirs {
+		stmts, err := getDDLFromPath(dir)
+		if err != nil {
+			return &ddlSchemaSource{}, err
+		}
+		ddl = append(ddl, stmts...)
+
+	}
+	return &ddlSchemaSource{
+		ddl: ddl,
+	}, nil
+}
+
+// getDDLFromPath reads all .sql files under the given path (including sub-directories) and returns the DDL
+// in lexical order.
+func getDDLFromPath(path string) ([]ddlStatement, error) {
+	var ddl []ddlStatement
+	if err := filepath.Walk(path, func(path string, entry os.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("walking path %q: %w", path, err)
+		}
+		if strings.ToLower(filepath.Ext(entry.Name())) != ".sql" {
+			return nil
+		}
+
+		fileContents, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("reading file %q: %w", entry.Name(), err)
+		}
+
+		// In the future, it would make sense to split the file contents into individual DDL statements; however,
+		// that would require fully parsing the SQL. Naively splitting on `;` would not work because `;` can be
+		// used in comments, strings, and escaped identifiers.
+		ddl = append(ddl, ddlStatement{
+			stmt: string(fileContents),
+			file: path,
+		})
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return ddl, nil
 }
 
 // DDLSchemaSource returns a SchemaSource that returns a schema based on the provided DDL. You must provide a tempDBFactory
 // via the WithTempDbFactory option.
-func DDLSchemaSource(ddl []string) SchemaSource {
+func DDLSchemaSource(stmts []string) SchemaSource {
+	var ddl []ddlStatement
+	for _, stmt := range stmts {
+		ddl = append(ddl, ddlStatement{
+			stmt: stmt,
+			// There is no file name associated with the DDL statement.
+			file: ""},
+		)
+	}
+
 	return &ddlSchemaSource{ddl: ddl}
 }
 
@@ -45,9 +114,13 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 		}
 	}(tempDb.ContextualCloser)
 
-	for _, stmt := range s.ddl {
-		if _, err := tempDb.ConnPool.ExecContext(ctx, stmt); err != nil {
-			return schema.Schema{}, fmt.Errorf("running DDL: %w", err)
+	for _, ddlStmt := range s.ddl {
+		if _, err := tempDb.ConnPool.ExecContext(ctx, ddlStmt.stmt); err != nil {
+			debugInfo := ""
+			if ddlStmt.file != "" {
+				debugInfo = fmt.Sprintf(" (from %s)", ddlStmt.file)
+			}
+			return schema.Schema{}, fmt.Errorf("running DDL%s: %w", debugInfo, err)
 		}
 	}
 
