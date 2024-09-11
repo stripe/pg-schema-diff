@@ -91,12 +91,12 @@ $ pg-schema-diff plan --dsn "postgres://postgres:postgres@localhost:5432/postgre
 # Install
 ## CLI
 ```bash
-go install github.com/stripe/pg-schema-diff/cmd/pg-schema-diff
+go install github.com/stripe/pg-schema-diff/cmd/pg-schema-diff@latest
 ```
 
 ## Library
 ```bash
-go get -u github.com/stripe/pg-schema-diff
+go get -u github.com/stripe/pg-schema-diff@latest
 ```
 # Using CLI
 ## 1. Apply schema to fresh database
