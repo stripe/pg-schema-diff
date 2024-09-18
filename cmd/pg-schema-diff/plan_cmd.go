@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -28,6 +30,31 @@ const (
 	statementTimeoutInsertStatementKey = "timeout"
 	lockTimeoutInsertStatementKey      = "lock_timeout"
 )
+
+type outputFormat string
+
+const (
+	outputFormatPretty outputFormat = "pretty"
+	outputFormatJson   outputFormat = "json"
+)
+
+func (e *outputFormat) String() string {
+	return string(*e)
+}
+
+func (e *outputFormat) Set(v string) error {
+	switch v {
+	case "pretty", "json":
+		*e = outputFormat(v)
+		return nil
+	default:
+		return errors.New(`must be one of "pretty" or "json"`)
+	}
+}
+
+func (e *outputFormat) Type() string {
+	return "outputFormat"
+}
 
 func buildPlanCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -59,8 +86,13 @@ func buildPlanCmd() *cobra.Command {
 			fmt.Println("Schema matches expected. No plan generated")
 			return nil
 		}
-		fmt.Printf("\n%s\n", header("Generated plan"))
-		fmt.Println(planToPrettyS(plan))
+
+		if planFlags.outputFormat == "" || planFlags.outputFormat == outputFormatPretty {
+			fmt.Printf("\n%s\n", header("Generated plan"))
+			fmt.Println(planToPrettyS(plan))
+		} else if planFlags.outputFormat == outputFormatJson {
+			fmt.Println(planToJsonS(plan))
+		}
 		return nil
 	}
 
@@ -89,6 +121,7 @@ type (
 		statementTimeoutModifiers []string
 		lockTimeoutModifiers      []string
 		insertStatements          []string
+		outputFormat              outputFormat
 	}
 
 	timeoutModifier struct {
@@ -138,6 +171,8 @@ func createPlanFlags(cmd *cobra.Command) *planFlags {
 			indexInsertStatementKey, statementInsertStatementKey, statementTimeoutInsertStatementKey, lockTimeoutInsertStatementKey,
 		),
 	)
+
+	cmd.Flags().Var(&flags.outputFormat, "output-format", "Change the output format for what is printed. Defaults to pretty-printed human-readable output. (options: pretty, json)")
 
 	return flags
 }
@@ -446,6 +481,14 @@ func planToPrettyS(plan diff.Plan) string {
 	sb.WriteString(strings.Join(stmtStrs, "\n\n"))
 
 	return sb.String()
+}
+
+func planToJsonS(plan diff.Plan) string {
+	jsonData, err := json.MarshalIndent(plan, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	return string(jsonData)
 }
 
 func statementToPrettyS(stmt diff.Statement) string {
