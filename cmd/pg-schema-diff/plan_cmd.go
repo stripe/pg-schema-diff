@@ -31,31 +31,6 @@ const (
 	lockTimeoutInsertStatementKey      = "lock_timeout"
 )
 
-type outputFormat string
-
-const (
-	outputFormatPretty outputFormat = "pretty"
-	outputFormatJson   outputFormat = "json"
-)
-
-func (e *outputFormat) String() string {
-	return string(*e)
-}
-
-func (e *outputFormat) Set(v string) error {
-	switch v {
-	case "pretty", "json":
-		*e = outputFormat(v)
-		return nil
-	default:
-		return errors.New(`must be one of "pretty" or "json"`)
-	}
-}
-
-func (e *outputFormat) Type() string {
-	return "outputFormat"
-}
-
 func buildPlanCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "plan",
@@ -82,17 +57,9 @@ func buildPlanCmd() *cobra.Command {
 		plan, err := generatePlan(context.Background(), logger, connConfig, planConfig)
 		if err != nil {
 			return err
-		} else if len(plan.Statements) == 0 {
-			fmt.Println("Schema matches expected. No plan generated")
-			return nil
 		}
 
-		if planFlags.outputFormat == "" || planFlags.outputFormat == outputFormatPretty {
-			fmt.Printf("\n%s\n", header("Generated plan"))
-			fmt.Println(planToPrettyS(plan))
-		} else if planFlags.outputFormat == outputFormatJson {
-			fmt.Println(planToJsonS(plan))
-		}
+		fmt.Println(planFlags.outputFormat.convertToOutputString(plan))
 		return nil
 	}
 
@@ -108,6 +75,11 @@ type (
 	schemaSourceFlags struct {
 		schemaDirs        []string
 		targetDatabaseDSN string
+	}
+
+	outputFormat struct {
+		identifier            string
+		convertToOutputString func(diff.Plan) string
 	}
 
 	planFlags struct {
@@ -148,8 +120,35 @@ type (
 	}
 )
 
+var (
+	outputFormatPretty outputFormat = outputFormat{identifier: "pretty", convertToOutputString: planToPrettyS}
+	outputFormatJson   outputFormat = outputFormat{identifier: "json", convertToOutputString: planToJsonS}
+)
+
+func (e *outputFormat) String() string {
+	return string(e.identifier)
+}
+
+func (e *outputFormat) Set(v string) error {
+	switch v {
+	case "pretty":
+		*e = outputFormatPretty
+		return nil
+	case "json":
+		*e = outputFormatJson
+		return nil
+	default:
+		return errors.New(`must be one of "pretty" or "json"`)
+	}
+}
+
+func (e *outputFormat) Type() string {
+	return "outputFormat"
+}
+
 func createPlanFlags(cmd *cobra.Command) *planFlags {
 	flags := &planFlags{}
+	flags.outputFormat = outputFormatPretty
 
 	schemaSourceFlagsVar(cmd, &flags.dbSchemaSourceFlags)
 
@@ -462,6 +461,13 @@ func applyPlanModifiers(
 
 func planToPrettyS(plan diff.Plan) string {
 	sb := strings.Builder{}
+
+	if len(plan.Statements) == 0 {
+		sb.WriteString("Schema matches expected. No plan generated")
+		return sb.String()
+	}
+
+	sb.WriteString(fmt.Sprintf("%s\n", header("Generated plan")))
 
 	// We are going to put a statement index before each statement. To do that,
 	// we need to find how many characters are in the largest index, so we can provide the appropriate amount
