@@ -489,14 +489,6 @@ func planToPrettyS(plan diff.Plan) string {
 	return sb.String()
 }
 
-func planToJsonS(plan diff.Plan) string {
-	jsonData, err := json.MarshalIndent(plan, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	return string(jsonData)
-}
-
 func statementToPrettyS(stmt diff.Statement) string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("%s;", stmt.DDL))
@@ -519,4 +511,12 @@ func hazardToPrettyS(hazard diff.MigrationHazard) string {
 	} else {
 		return hazard.Type
 	}
+}
+
+func planToJsonS(plan diff.Plan) string {
+	jsonData, err := json.MarshalIndent(plan, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	return string(jsonData)
 }
