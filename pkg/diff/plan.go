@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"time"
@@ -25,8 +26,8 @@ const (
 
 // MigrationHazard represents a hazard that a statement poses to a database
 type MigrationHazard struct {
-	Type    MigrationHazardType
-	Message string
+	Type    MigrationHazardType `json:"type"`
+	Message string              `json:"message"`
 }
 
 func (p MigrationHazard) String() string {
@@ -47,6 +48,20 @@ type Statement struct {
 	Hazards []MigrationHazard
 }
 
+func (s Statement) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		DDL         string            `json:"ddl"`
+		Timeout     int64             `json:"timeout_ms"`
+		LockTimeout int64             `json:"lock_timeout_ms"`
+		Hazards     []MigrationHazard `json:"hazards"`
+	}{
+		DDL:         s.DDL,
+		Timeout:     s.Timeout.Milliseconds(),
+		LockTimeout: s.LockTimeout.Milliseconds(),
+		Hazards:     s.Hazards,
+	})
+}
+
 func (s Statement) ToSQL() string {
 	return s.DDL + ";"
 }
@@ -54,11 +69,11 @@ func (s Statement) ToSQL() string {
 // Plan represents a set of statements to be executed in order to migrate a database from schema A to schema B
 type Plan struct {
 	// Statements is the set of statements to be executed in order to migrate a database from schema A to schema B
-	Statements []Statement
+	Statements []Statement `json:"statements"`
 	// CurrentSchemaHash is the hash of the current schema, schema A. If you serialize this plans somewhere and
 	// plan on running them later, you should verify that the current schema hash matches the current schema hash.
 	// To get the current schema hash, you can use schema.GetPublicSchemaHash(ctx, conn)
-	CurrentSchemaHash string
+	CurrentSchemaHash string `json:"current_schema_hash"`
 }
 
 // ApplyStatementTimeoutModifier applies the given timeout to all statements that match the given regex
