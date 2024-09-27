@@ -505,110 +505,106 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving named schema sql statements: %w", err)
 	}
 
-	tableGraphs, err := diff.tableDiffs.resolveToSQLGraph(&tableSQLVertexGenerator{
+	var partialGraph partialSQLGraph
+
+	tablePartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Table, tableDiff](&tableSQLVertexGenerator{
 		deletedTablesByName:     deletedTablesByName,
 		tablesInNewSchemaByName: tablesInNewSchemaByName,
 		tableDiffsByName:        buildDiffByNameMap[schema.Table, tableDiff](diff.tableDiffs.alters),
-	})
+	}), diff.tableDiffs)
 	if err != nil {
-		return nil, fmt.Errorf("resolving table sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving table diff: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, tablePartialGraph)
 
 	extensionStatements, err := diff.extensionDiffs.resolveToSQLGroupedByEffect(&extensionSQLGenerator{})
 	if err != nil {
-		return nil, fmt.Errorf("resolving extension sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving extension diff: %w", err)
 	}
 
 	enumStatements, err := diff.enumDiffs.resolveToSQLGroupedByEffect(&enumSQLGenerator{})
 	if err != nil {
-		return nil, fmt.Errorf("resolving enum sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving enum diff: %w", err)
 	}
 
-	attachPartitionSQLVertexGenerator := newAttachPartitionSQLVertexGenerator(diff.new.Indexes, diff.tableDiffs.adds)
-	attachPartitionGraphs, err := diff.tableDiffs.resolveToSQLGraph(attachPartitionSQLVertexGenerator)
+	attachPartitionGenerator := newAttachPartitionSQLVertexGenerator(diff.new.Indexes, diff.tableDiffs.adds)
+	attachPartitionsPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Table, tableDiff](attachPartitionGenerator), diff.tableDiffs)
 	if err != nil {
-		return nil, fmt.Errorf("resolving attach partition sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving attach partition diff: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, attachPartitionsPartialGraph)
 
-	renameConflictingIndexSQLVertexGenerator := newRenameConflictingIndexSQLVertexGenerator(buildSchemaObjByNameMap(diff.old.Indexes))
-	renameConflictingIndexGraphs, err := diff.indexDiffs.resolveToSQLGraph(renameConflictingIndexSQLVertexGenerator)
+	renameConflictingIndexesGenerator := newRenameConflictingIndexSQLVertexGenerator(buildSchemaObjByNameMap(diff.old.Indexes))
+	renameConflictingIndexesPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Index, indexDiff](renameConflictingIndexesGenerator), diff.indexDiffs)
 	if err != nil {
-		return nil, fmt.Errorf("resolving renaming conflicting indexes: %w", err)
+		return nil, fmt.Errorf("resolving renaming conflicting indexes diff: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, renameConflictingIndexesPartialGraph)
 
-	indexGraphs, err := diff.indexDiffs.resolveToSQLGraph(&indexSQLVertexGenerator{
+	indexGenerator := legacyToNewSqlVertexGenerator[schema.Index, indexDiff](&indexSQLVertexGenerator{
 		deletedTablesByName:      deletedTablesByName,
 		addedTablesByName:        addedTablesByName,
 		tablesInNewSchemaByName:  tablesInNewSchemaByName,
 		indexesInNewSchemaByName: buildSchemaObjByNameMap(diff.new.Indexes),
 
-		renameSQLVertexGenerator:          renameConflictingIndexSQLVertexGenerator,
-		attachPartitionSQLVertexGenerator: attachPartitionSQLVertexGenerator,
+		renameSQLVertexGenerator:          renameConflictingIndexesGenerator,
+		attachPartitionSQLVertexGenerator: attachPartitionGenerator,
 	})
+	indexesPartialGraph, err := generatePartialGraph(indexGenerator, diff.indexDiffs)
 	if err != nil {
-		return nil, fmt.Errorf("resolving index sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving index diff: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, indexesPartialGraph)
 
-	fkConsGraphs, err := diff.foreignKeyConstraintDiffs.resolveToSQLGraph(newForeignKeyConstraintSQLVertexGenerator(diff.oldAndNew, diff.tableDiffs))
+	foreignKeyGenerator := newForeignKeyConstraintSQLVertexGenerator(diff.oldAndNew, diff.tableDiffs)
+	fkConsPartialGraph, err := generatePartialGraph(foreignKeyGenerator, diff.foreignKeyConstraintDiffs)
 	if err != nil {
-		return nil, fmt.Errorf("resolving foreign key constraint sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving foreign key constraint diff: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, fkConsPartialGraph)
 
-	sequenceGraphs, err := diff.sequenceDiffs.resolveToSQLGraph(&sequenceSQLVertexGenerator{
+	sequenceGenerator := legacyToNewSqlVertexGenerator[schema.Sequence, sequenceDiff](&sequenceSQLVertexGenerator{
 		deletedTablesByName: deletedTablesByName,
 		tableDiffsByName:    buildDiffByNameMap[schema.Table, tableDiff](diff.tableDiffs.alters),
 	})
+	sequencesPartialGraph, err := generatePartialGraph(sequenceGenerator, diff.sequenceDiffs)
 	if err != nil {
-		return nil, fmt.Errorf("resolving sequence sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving sequence diff: %w", err)
 	}
-	sequenceOwnershipGraphs, err := diff.sequenceDiffs.resolveToSQLGraph(&sequenceOwnershipSQLVertexGenerator{})
+	partialGraph = concatPartialGraphs(partialGraph, sequencesPartialGraph)
+
+	sequenceOwnershipGenerator := legacyToNewSqlVertexGenerator[schema.Sequence, sequenceDiff](&sequenceOwnershipSQLVertexGenerator{})
+	sequenceOwnershipsPartialGraph, err := generatePartialGraph(sequenceOwnershipGenerator, diff.sequenceDiffs)
 	if err != nil {
-		return nil, fmt.Errorf("resolving sequence ownership sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving sequence ownership diff: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, sequenceOwnershipsPartialGraph)
 
 	functionsInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Functions)
-	functionGraphs, err := diff.functionDiffs.resolveToSQLGraph(&functionSQLVertexGenerator{
+	functionGenerator := legacyToNewSqlVertexGenerator[schema.Function, functionDiff](&functionSQLVertexGenerator{
 		functionsInNewSchemaByName: functionsInNewSchemaByName,
 	})
+	functionsPartialGraph, err := generatePartialGraph(functionGenerator, diff.functionDiffs)
 	if err != nil {
-		return nil, fmt.Errorf("resolving function sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving function diff: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, functionsPartialGraph)
 
-	triggerGraphs, err := diff.triggerDiffs.resolveToSQLGraph(&triggerSQLVertexGenerator{
+	triggerGenerator := legacyToNewSqlVertexGenerator[schema.Trigger, triggerDiff](&triggerSQLVertexGenerator{
 		functionsInNewSchemaByName: functionsInNewSchemaByName,
 	})
+	triggersPartialGraph, err := generatePartialGraph(triggerGenerator, diff.triggerDiffs)
 	if err != nil {
-		return nil, fmt.Errorf("resolving trigger sql graphs: %w", err)
+		return nil, fmt.Errorf("resolving trigger diff: %w", err)
 	}
-
-	if err := tableGraphs.union(attachPartitionGraphs); err != nil {
-		return nil, fmt.Errorf("unioning table and attach partition graphs: %w", err)
-	}
-	if err := tableGraphs.union(indexGraphs); err != nil {
-		return nil, fmt.Errorf("unioning table and index graphs: %w", err)
-	}
-	if err := tableGraphs.union(renameConflictingIndexGraphs); err != nil {
-		return nil, fmt.Errorf("unioning table and rename conflicting index graphs: %w", err)
-	}
-	if err := tableGraphs.union(fkConsGraphs); err != nil {
-		return nil, fmt.Errorf("unioning table and foreign key constraint graphs: %w", err)
-	}
-	if err := tableGraphs.union(sequenceGraphs); err != nil {
-		return nil, fmt.Errorf("unioning table and sequence graphs: %w", err)
-	}
-	if err := tableGraphs.union(sequenceOwnershipGraphs); err != nil {
-		return nil, fmt.Errorf("unioning table and sequence ownership graphs: %w", err)
-	}
-	if err := tableGraphs.union(functionGraphs); err != nil {
-		return nil, fmt.Errorf("unioning table and function graphs: %w", err)
-	}
-	if err := tableGraphs.union(triggerGraphs); err != nil {
-		return nil, fmt.Errorf("unioning table and trigger graphs: %w", err)
-	}
-
-	graphStatements, err := tableGraphs.toOrderedStatements()
+	partialGraph = concatPartialGraphs(partialGraph, triggersPartialGraph)
+	graph, err := graphFromPartials(partialGraph)
 	if err != nil {
-		return nil, fmt.Errorf("getting ordered statements from tableGraph: %w", err)
+		return nil, fmt.Errorf("converting to graph: %w", err)
+	}
+	graphStatements, err := graph.toOrderedStatements()
+	if err != nil {
+		return nil, fmt.Errorf("getting ordered statements: %w", err)
 	}
 
 	// We migrate schemas and extensions first and disable them last since their dependencies may span across
@@ -773,17 +769,17 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		stmts = append(stmts, alterReplicaIdentityStmt)
 	}
 
-	psg, err := newPolicySQLVertexGenerator(nil, table)
+	policyGenerator, err := newPolicySQLVertexGenerator(nil, table)
 	if err != nil {
 		return nil, fmt.Errorf("creating policy sql vertex generator: %w", err)
 	}
 	for _, policy := range table.Policies {
-		addPolicyStmts, err := psg.Add(policy)
+		addPolicyPartialGraph, err := policyGenerator.Add(policy)
 		if err != nil {
 			return nil, fmt.Errorf("generating add policy statements for policy %s: %w", policy.EscapedName, err)
 		}
 		// Remove hazards from statements since the table is brand new
-		stmts = append(stmts, stripMigrationHazards(addPolicyStmts...)...)
+		stmts = append(stmts, stripMigrationHazards(addPolicyPartialGraph.statements()...)...)
 	}
 
 	if table.RLSEnabled {
@@ -887,54 +883,57 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 		tempCCs = append(tempCCs, tempCC)
 	}
 
-	columnSQLVertexGenerator := newColumnSQLVertexGenerator(diff.new.SchemaQualifiedName)
-	columnGraph, err := diff.columnsDiff.resolveToSQLGraph(columnSQLVertexGenerator)
+	var partialGraph partialSQLGraph
+
+	columnGenerator := newColumnSQLVertexGenerator(diff.new.SchemaQualifiedName)
+	columnsPartialGraph, err := generatePartialGraph(columnGenerator, diff.columnsDiff)
 	if err != nil {
 		return nil, fmt.Errorf("resolving index diff: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, columnsPartialGraph)
 
-	checkConSqlVertexGenerator := checkConstraintSQLVertexGenerator{
+	checkConGenerator := legacyToNewSqlVertexGenerator[schema.CheckConstraint, checkConstraintDiff](&checkConstraintSQLVertexGenerator{
 		tableName:              diff.new.SchemaQualifiedName,
 		newSchemaColumnsByName: buildSchemaObjByNameMap(diff.new.Columns),
 		oldSchemaColumnsByName: buildSchemaObjByNameMap(diff.old.Columns),
 		addedColumnsByName:     buildSchemaObjByNameMap(diff.columnsDiff.adds),
 		deletedColumnsByName:   buildSchemaObjByNameMap(diff.columnsDiff.deletes),
 		isNewTable:             false,
-	}
-	checkConGraphs, err := diff.checkConstraintDiff.resolveToSQLGraph(&checkConSqlVertexGenerator)
+	})
+	checkConsPartialGraph, err := generatePartialGraph(checkConGenerator, diff.checkConstraintDiff)
 	if err != nil {
-		return nil, fmt.Errorf("resolving check constraints diff: %w", err)
+		return nil, fmt.Errorf("resolving check constraints sql: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, checkConsPartialGraph)
+
 	var dropTempCCs []Statement
 	for _, tempCC := range tempCCs {
-		stmt, err := checkConSqlVertexGenerator.Delete(tempCC)
+		dropTempCCsPartialGraph, err := checkConGenerator.Delete(tempCC)
 		if err != nil {
 			return nil, fmt.Errorf("deleting temp check constraint: %w", err)
 		}
-		dropTempCCs = append(dropTempCCs, stmt...)
+		dropTempCCs = append(dropTempCCs, dropTempCCsPartialGraph.statements()...)
 	}
 
 	var nilableOldTable *schema.Table
 	if !cmp.Equal(diff.old, schema.Table{}) {
 		nilableOldTable = &diff.old
 	}
-	psg, err := newPolicySQLVertexGenerator(nilableOldTable, diff.new)
+	policyGenerator, err := newPolicySQLVertexGenerator(nilableOldTable, diff.new)
 	if err != nil {
 		return nil, fmt.Errorf("creating policy sql vertex generator: %w", err)
 	}
-	policyGraph, err := diff.policiesDiff.resolveToSQLGraph(psg)
+	policiesPartialGraph, err := generatePartialGraph(policyGenerator, diff.policiesDiff)
 	if err != nil {
-		return nil, fmt.Errorf("resolving policy diff: %w", err)
+		return nil, fmt.Errorf("resolving policy sql: %w", err)
 	}
+	partialGraph = concatPartialGraphs(partialGraph, policiesPartialGraph)
 
-	if err := columnGraph.union(checkConGraphs); err != nil {
-		return nil, fmt.Errorf("unioning column and check constraint graphs: %w", err)
+	graph, err := graphFromPartials(partialGraph)
+	if err != nil {
+		return nil, fmt.Errorf("converting to graph")
 	}
-	if err := columnGraph.union(policyGraph); err != nil {
-		return nil, fmt.Errorf("unioning column and policy graphs: %w", err)
-	}
-
-	graphStmts, err := columnGraph.toOrderedStatements()
+	graphStmts, err := graph.toOrderedStatements()
 	if err != nil {
 		return nil, fmt.Errorf("getting ordered statements from columnGraphs: %w", err)
 	}
@@ -1129,8 +1128,8 @@ type columnSQLVertexGenerator struct {
 	tableName schema.SchemaQualifiedName
 }
 
-func newColumnSQLVertexGenerator(tableName schema.SchemaQualifiedName) *columnSQLVertexGenerator {
-	return &columnSQLVertexGenerator{tableName: tableName}
+func newColumnSQLVertexGenerator(tableName schema.SchemaQualifiedName) sqlVertexGenerator[schema.Column, columnDiff] {
+	return legacyToNewSqlVertexGenerator[schema.Column, columnDiff](&columnSQLVertexGenerator{tableName: tableName})
 }
 
 func (csg *columnSQLVertexGenerator) Add(column schema.Column) ([]Statement, error) {
@@ -1395,13 +1394,18 @@ type renameConflictingIndexSQLVertexGenerator struct {
 	oldSchemaIndexesByName map[string]schema.Index
 
 	indexRenamesByOldName map[string]schema.SchemaQualifiedName
+
+	sqlVertexGenerator[schema.Index, indexDiff]
 }
 
 func newRenameConflictingIndexSQLVertexGenerator(oldSchemaIndexesByName map[string]schema.Index) *renameConflictingIndexSQLVertexGenerator {
-	return &renameConflictingIndexSQLVertexGenerator{
+	rsg := &renameConflictingIndexSQLVertexGenerator{
 		oldSchemaIndexesByName: oldSchemaIndexesByName,
 		indexRenamesByOldName:  make(map[string]schema.SchemaQualifiedName),
 	}
+	generator := legacyToNewSqlVertexGenerator[schema.Index, indexDiff](rsg)
+	rsg.sqlVertexGenerator = generator
+	return rsg
 }
 
 func (rsg *renameConflictingIndexSQLVertexGenerator) Add(index schema.Index) ([]Statement, error) {
@@ -2008,15 +2012,20 @@ type attachPartitionSQLVertexGenerator struct {
 	// isPartitionAttachedAfterIdxBuildsByTableName is a map of table name to whether or not the table partition will be
 	// attached after its indexes are built. This is useful for determining when indexes need to be attached
 	isPartitionAttachedAfterIdxBuildsByTableName map[string]bool
+
+	sqlVertexGenerator[schema.Table, tableDiff]
 }
 
 func newAttachPartitionSQLVertexGenerator(newSchemaIndexes []schema.Index, addedTables []schema.Table) *attachPartitionSQLVertexGenerator {
-	return &attachPartitionSQLVertexGenerator{
+	asg := &attachPartitionSQLVertexGenerator{
 		indexesInNewSchemaByTableName: buildIndexesByTableNameMap(newSchemaIndexes),
 		addedTablesByName:             buildSchemaObjByNameMap(addedTables),
 
 		isPartitionAttachedAfterIdxBuildsByTableName: make(map[string]bool),
 	}
+	sqlVertexGenerator := legacyToNewSqlVertexGenerator[schema.Table, tableDiff](asg)
+	asg.sqlVertexGenerator = sqlVertexGenerator
+	return asg
 }
 
 func (*attachPartitionSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
@@ -2079,7 +2088,7 @@ func (a *attachPartitionSQLVertexGenerator) GetDeleteDependencies(_ schema.Table
 	return nil, nil
 }
 
-func buildForeignKeyConstraintDiff(fsg *foreignKeyConstraintSQLVertexGenerator, addedTablesByName map[string]schema.Table, old, new schema.ForeignKeyConstraint) (foreignKeyConstraintDiff, bool, error) {
+func buildForeignKeyConstraintDiff(fsg sqlVertexGenerator[schema.ForeignKeyConstraint, foreignKeyConstraintDiff], addedTablesByName map[string]schema.Table, old, new schema.ForeignKeyConstraint) (foreignKeyConstraintDiff, bool, error) {
 	if _, isOnNewTable := addedTablesByName[new.OwningTable.GetName()]; isOnNewTable {
 		// If the owning table is new, then it must be re-created (this occurs if the base table has been
 		// re-created). In other words, a foreign key constraint must be re-created if the owning table or referenced
@@ -2127,15 +2136,15 @@ type foreignKeyConstraintSQLVertexGenerator struct {
 	childrenInNewSchemaByPartitionedIndexName map[string][]schema.Index
 }
 
-func newForeignKeyConstraintSQLVertexGenerator(oldAndNewSchema oldAndNew[schema.Schema], tableDiffs listDiff[schema.Table, tableDiff]) *foreignKeyConstraintSQLVertexGenerator {
-	return &foreignKeyConstraintSQLVertexGenerator{
+func newForeignKeyConstraintSQLVertexGenerator(oldAndNewSchema oldAndNew[schema.Schema], tableDiffs listDiff[schema.Table, tableDiff]) sqlVertexGenerator[schema.ForeignKeyConstraint, foreignKeyConstraintDiff] {
+	return legacyToNewSqlVertexGenerator[schema.ForeignKeyConstraint, foreignKeyConstraintDiff](&foreignKeyConstraintSQLVertexGenerator{
 		newSchemaTablesByName:                     buildSchemaObjByNameMap(oldAndNewSchema.new.Tables),
 		addedTablesByName:                         buildSchemaObjByNameMap(tableDiffs.adds),
 		indexInOldSchemaByTableName:               buildIndexesByTableNameMap(oldAndNewSchema.old.Indexes),
 		childrenInOldSchemaByPartitionedIndexName: buildChildrenByPartitionedIndexNameMap(oldAndNewSchema.old.Indexes),
 		indexesInNewSchemaByTableName:             buildIndexesByTableNameMap(oldAndNewSchema.new.Indexes),
 		childrenInNewSchemaByPartitionedIndexName: buildChildrenByPartitionedIndexNameMap(oldAndNewSchema.new.Indexes),
-	}
+	})
 }
 
 func (f *foreignKeyConstraintSQLVertexGenerator) Add(con schema.ForeignKeyConstraint) ([]Statement, error) {

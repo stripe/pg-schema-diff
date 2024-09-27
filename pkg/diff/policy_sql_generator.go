@@ -104,7 +104,7 @@ type policyDiff struct {
 	oldAndNew[schema.Policy]
 }
 
-func buildPolicyDiffs(psg *policySQLVertexGenerator, old, new []schema.Policy) (listDiff[schema.Policy, policyDiff], error) {
+func buildPolicyDiffs(psg sqlVertexGenerator[schema.Policy, policyDiff], old, new []schema.Policy) (listDiff[schema.Policy, policyDiff], error) {
 	return diffLists(old, new, func(old, new schema.Policy, _, _ int) (_ policyDiff, requiresRecreate bool, _ error) {
 		diff := policyDiff{
 			oldAndNew: oldAndNew[schema.Policy]{
@@ -131,7 +131,7 @@ type policySQLVertexGenerator struct {
 	oldSchemaColumnsByName map[string]schema.Column
 }
 
-func newPolicySQLVertexGenerator(oldTable *schema.Table, table schema.Table) (*policySQLVertexGenerator, error) {
+func newPolicySQLVertexGenerator(oldTable *schema.Table, table schema.Table) (sqlVertexGenerator[schema.Policy, policyDiff], error) {
 	var oldSchemaColumnsByName map[string]schema.Column
 	if oldTable != nil {
 		if oldTable.SchemaQualifiedName != table.SchemaQualifiedName {
@@ -140,12 +140,12 @@ func newPolicySQLVertexGenerator(oldTable *schema.Table, table schema.Table) (*p
 		oldSchemaColumnsByName = buildSchemaObjByNameMap(oldTable.Columns)
 	}
 
-	return &policySQLVertexGenerator{
+	return legacyToNewSqlVertexGenerator[schema.Policy, policyDiff](&policySQLVertexGenerator{
 		table:                  table,
 		newSchemaColumnsByName: buildSchemaObjByNameMap(table.Columns),
 		oldTable:               oldTable,
 		oldSchemaColumnsByName: oldSchemaColumnsByName,
-	}, nil
+	}), nil
 }
 
 func (psg *policySQLVertexGenerator) Add(p schema.Policy) ([]Statement, error) {
