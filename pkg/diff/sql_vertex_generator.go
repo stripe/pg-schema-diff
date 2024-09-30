@@ -24,7 +24,7 @@ type partialSQLGraph struct {
 func (s *partialSQLGraph) statements() []Statement {
 	var statements []Statement
 	for _, vertex := range s.vertices {
-		statements = append(statements, vertex.Statements...)
+		statements = append(statements, vertex.statements...)
 	}
 	return statements
 }
@@ -54,14 +54,14 @@ func graphFromPartials(parts partialSQLGraph) (*sqlGraph, error) {
 
 	for _, dep := range parts.dependencies {
 		sourceVertex := sqlVertex{
-			ObjId:      dep.sourceObjId,
-			DiffType:   dep.sourceType,
-			Statements: nil,
+			id:         dep.source,
+			priority:   sqlPriorityUnset,
+			statements: nil,
 		}
 		targetVertex := sqlVertex{
-			ObjId:      dep.targetObjId,
-			DiffType:   dep.targetType,
-			Statements: nil,
+			id:         dep.target,
+			priority:   sqlPriorityUnset,
+			statements: nil,
 		}
 
 		// To maintain the correctness of the graph, we will add a dummy vertex for the missing dependencies
@@ -77,10 +77,14 @@ func graphFromPartials(parts partialSQLGraph) (*sqlGraph, error) {
 }
 
 func mergeVertices(old, new sqlVertex) sqlVertex {
+	priority := old.priority
+	if old.priority == sqlPriorityUnset {
+		priority = new.priority
+	}
 	return sqlVertex{
-		ObjId:      old.ObjId,
-		DiffType:   old.DiffType,
-		Statements: append(old.Statements, new.Statements...),
+		id:         old.id,
+		priority:   priority,
+		statements: append(old.statements, new.statements...),
 	}
 }
 
@@ -132,7 +136,7 @@ func generatePartialGraph[S schema.Object, Diff diff[S]](generator sqlVertexGene
 type legacySqlVertexGenerator[S schema.Object, Diff diff[S]] interface {
 	sqlGenerator[S, Diff]
 	// GetSQLVertexId gets the canonical vertex id to represent the schema object
-	GetSQLVertexId(S) string
+	GetSQLVertexId(S, diffType) sqlVertexId
 
 	// GetAddAlterDependencies gets the dependencies of the SQL generated to resolve the AddAlter diff for the
 	// schema objects. Dependencies can be formed on any other nodes in the SQL graph, even if the node has
@@ -176,9 +180,9 @@ func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Add(o S) (partialSQLGraph, er
 
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			DiffType:   diffTypeAddAlter,
-			ObjId:      s.generator.GetSQLVertexId(o),
-			Statements: statements,
+			id:         s.generator.GetSQLVertexId(o, diffTypeAddAlter),
+			priority:   sqlPrioritySooner,
+			statements: statements,
 		}},
 		dependencies: deps,
 	}, nil
@@ -196,9 +200,9 @@ func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Delete(o S) (partialSQLGraph,
 
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			DiffType:   diffTypeDelete,
-			ObjId:      s.generator.GetSQLVertexId(o),
-			Statements: statements,
+			id:         s.generator.GetSQLVertexId(o, diffTypeDelete),
+			priority:   sqlPriorityLater,
+			statements: statements,
 		}},
 		dependencies: deps,
 	}, nil
@@ -216,9 +220,9 @@ func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Alter(d Diff) (partialSQLGrap
 
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			DiffType:   diffTypeAddAlter,
-			ObjId:      s.generator.GetSQLVertexId(d.GetNew()),
-			Statements: statements,
+			id:         s.generator.GetSQLVertexId(d.GetNew(), diffTypeAddAlter),
+			priority:   sqlPrioritySooner,
+			statements: statements,
 		}},
 		dependencies: deps,
 	}, nil
