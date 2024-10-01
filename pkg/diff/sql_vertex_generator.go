@@ -53,23 +53,12 @@ func graphFromPartials(parts partialSQLGraph) (*sqlGraph, error) {
 	}
 
 	for _, dep := range parts.dependencies {
-		sourceVertex := sqlVertex{
-			id:         dep.source,
-			priority:   sqlPriorityUnset,
-			statements: nil,
-		}
-		targetVertex := sqlVertex{
-			id:         dep.target,
-			priority:   sqlPriorityUnset,
-			statements: nil,
-		}
-
 		// To maintain the correctness of the graph, we will add a dummy vertex for the missing dependencies
-		addVertexIfNotExists(graph, sourceVertex)
-		addVertexIfNotExists(graph, targetVertex)
+		addVertexIfNotExists(graph, dep.source)
+		addVertexIfNotExists(graph, dep.target)
 
-		if err := graph.AddEdge(sourceVertex.GetId(), targetVertex.GetId()); err != nil {
-			return nil, fmt.Errorf("adding edge from %s to %s: %w", sourceVertex.GetId(), targetVertex.GetId(), err)
+		if err := graph.AddEdge(dep.source.String(), dep.target.String()); err != nil {
+			return nil, fmt.Errorf("adding edge from %s to %s: %w", dep.source, dep.target, err)
 		}
 	}
 
@@ -78,9 +67,11 @@ func graphFromPartials(parts partialSQLGraph) (*sqlGraph, error) {
 
 func mergeVertices(old, new sqlVertex) sqlVertex {
 	priority := old.priority
-	if old.priority == sqlPriorityUnset {
+	if new.priority != sqlPriorityUnset && (priority == sqlPriorityUnset || new.priority > priority) {
+		// If one is unset, use the other. If both are set, use the higher priority.
 		priority = new.priority
 	}
+
 	return sqlVertex{
 		id:         old.id,
 		priority:   priority,
@@ -88,9 +79,14 @@ func mergeVertices(old, new sqlVertex) sqlVertex {
 	}
 }
 
-func addVertexIfNotExists(graph *sqlGraph, vertex sqlVertex) {
-	if !graph.HasVertexWithId(vertex.GetId()) {
-		graph.AddVertex(vertex)
+func addVertexIfNotExists(graph *sqlGraph, id sqlVertexId) {
+	if !graph.HasVertexWithId(id.String()) {
+		// Create a filler node
+		graph.AddVertex(sqlVertex{
+			id:         id,
+			priority:   sqlPriorityUnset,
+			statements: nil,
+		})
 	}
 }
 

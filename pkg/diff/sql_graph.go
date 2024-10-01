@@ -12,15 +12,15 @@ type sqlVertexId interface {
 }
 
 // sqlPriority is an enum for the priority of a statement in the SQL graph, i.e., whether it should be run sooner
-// or later in the topological sort of the graph
+// or later in the topological sort of the graph. It can be thought of as a unary unit vector.
 type sqlPriority int
 
 const (
-	// Indicates a statement should run as soon as possible
+	// Indicates a statement should run as soon as possible. Usually, most adds will have this priority.
 	sqlPrioritySooner sqlPriority = 1
 	// sqlPriorityUnset is the default priority for a statement
 	sqlPriorityUnset sqlPriority = 0
-	// Indicates a statement should run as late as possible
+	// Indicates a statement should run as late as possible. Usually, most deletes will have this priority.
 	sqlPriorityLater sqlPriority = -1
 )
 
@@ -61,19 +61,20 @@ func (s sqlVertex) GetId() string {
 }
 
 func (s sqlVertex) GetPriority() int {
-	// Prioritize adds/alters over deletes. Weight by number of statements. A 0 statement delete should be
-	// prioritized over a 1 statement delete
+	// Weight the priority (which is just a "direction") by the number of statements
 	return len(s.statements) * int(s.priority)
 }
 
 // dependency indicates an edge between the SQL to resolve a diff for a source schema object and the SQL to resolve
-// the diff of a target schema object
+// the diff of a target schema object.
 //
 // Most SchemaObjects will have two nodes in the SQL graph: a node for delete SQL and a node for add/alter SQL.
 // These nodes will almost always be present in the sqlGraph even if the schema object is not being deleted (or added/altered).
 // If a node is present for a schema object where the "diffType" is NOT occurring, it will just be a no-op (no SQl statements)
 type dependency struct {
+	// source must run before target
 	source sqlVertexId
+	// target must run after source
 	target sqlVertexId
 }
 
@@ -101,7 +102,7 @@ func (d dependencyBuilder) after(id sqlVertexId) dependency {
 	}
 }
 
-// sqlGraph represents two dependency webs of SQL statements
+// sqlGraph represents a dependency web of SQL statements
 type sqlGraph struct {
 	*graph.Graph[sqlVertex]
 }
