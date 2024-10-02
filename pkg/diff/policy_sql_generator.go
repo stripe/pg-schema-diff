@@ -104,7 +104,7 @@ type policyDiff struct {
 	oldAndNew[schema.Policy]
 }
 
-func buildPolicyDiffs(psg *policySQLVertexGenerator, old, new []schema.Policy) (listDiff[schema.Policy, policyDiff], error) {
+func buildPolicyDiffs(psg sqlVertexGenerator[schema.Policy, policyDiff], old, new []schema.Policy) (listDiff[schema.Policy, policyDiff], error) {
 	return diffLists(old, new, func(old, new schema.Policy, _, _ int) (_ policyDiff, requiresRecreate bool, _ error) {
 		diff := policyDiff{
 			oldAndNew: oldAndNew[schema.Policy]{
@@ -131,7 +131,7 @@ type policySQLVertexGenerator struct {
 	oldSchemaColumnsByName map[string]schema.Column
 }
 
-func newPolicySQLVertexGenerator(oldTable *schema.Table, table schema.Table) (*policySQLVertexGenerator, error) {
+func newPolicySQLVertexGenerator(oldTable *schema.Table, table schema.Table) (sqlVertexGenerator[schema.Policy, policyDiff], error) {
 	var oldSchemaColumnsByName map[string]schema.Column
 	if oldTable != nil {
 		if oldTable.SchemaQualifiedName != table.SchemaQualifiedName {
@@ -140,12 +140,12 @@ func newPolicySQLVertexGenerator(oldTable *schema.Table, table schema.Table) (*p
 		oldSchemaColumnsByName = buildSchemaObjByNameMap(oldTable.Columns)
 	}
 
-	return &policySQLVertexGenerator{
+	return legacyToNewSqlVertexGenerator[schema.Policy, policyDiff](&policySQLVertexGenerator{
 		table:                  table,
 		newSchemaColumnsByName: buildSchemaObjByNameMap(table.Columns),
 		oldTable:               oldTable,
 		oldSchemaColumnsByName: oldSchemaColumnsByName,
-	}, nil
+	}), nil
 }
 
 func (psg *policySQLVertexGenerator) Add(p schema.Policy) ([]Statement, error) {
@@ -262,17 +262,17 @@ func (psg *policySQLVertexGenerator) Alter(diff policyDiff) ([]Statement, error)
 	}}, nil
 }
 
-func (psg *policySQLVertexGenerator) GetSQLVertexId(p schema.Policy) string {
-	return buildPolicyVertexId(psg.table.SchemaQualifiedName, p.EscapedName)
+func (psg *policySQLVertexGenerator) GetSQLVertexId(p schema.Policy, diffType diffType) sqlVertexId {
+	return buildPolicyVertexId(psg.table.SchemaQualifiedName, p.EscapedName, diffType)
 }
 
-func buildPolicyVertexId(owningTable schema.SchemaQualifiedName, policyEscapedName string) string {
-	return buildVertexId("policy", fmt.Sprintf("%s.%s", owningTable.GetFQEscapedName(), policyEscapedName))
+func buildPolicyVertexId(owningTable schema.SchemaQualifiedName, policyEscapedName string, diffType diffType) sqlVertexId {
+	return buildSchemaObjVertexId("policy", fmt.Sprintf("%s.%s", owningTable.GetFQEscapedName(), policyEscapedName), diffType)
 }
 
 func (psg *policySQLVertexGenerator) GetAddAlterDependencies(newPolicy, oldPolicy schema.Policy) ([]dependency, error) {
 	deps := []dependency{
-		mustRun(psg.GetSQLVertexId(newPolicy), diffTypeDelete).before(psg.GetSQLVertexId(newPolicy), diffTypeAddAlter),
+		mustRun(psg.GetSQLVertexId(newPolicy, diffTypeDelete)).before(psg.GetSQLVertexId(newPolicy, diffTypeAddAlter)),
 	}
 
 	newTargetColumns, err := getTargetColumns(newPolicy.Columns, psg.newSchemaColumnsByName)
@@ -282,7 +282,7 @@ func (psg *policySQLVertexGenerator) GetAddAlterDependencies(newPolicy, oldPolic
 
 	// Run after the new columns are added/altered
 	for _, tc := range newTargetColumns {
-		deps = append(deps, mustRun(psg.GetSQLVertexId(newPolicy), diffTypeAddAlter).after(buildColumnVertexId(tc.Name), diffTypeAddAlter))
+		deps = append(deps, mustRun(psg.GetSQLVertexId(newPolicy, diffTypeAddAlter)).after(buildColumnVertexId(tc.Name, diffTypeAddAlter)))
 	}
 
 	if !cmp.Equal(oldPolicy, schema.Policy{}) {
@@ -294,7 +294,7 @@ func (psg *policySQLVertexGenerator) GetAddAlterDependencies(newPolicy, oldPolic
 		for _, tc := range oldTargetColumns {
 			// It only needs to run before the delete if the column is actually being deleted
 			if _, stillExists := psg.newSchemaColumnsByName[tc.GetName()]; !stillExists {
-				deps = append(deps, mustRun(psg.GetSQLVertexId(newPolicy), diffTypeAddAlter).before(buildColumnVertexId(tc.Name), diffTypeDelete))
+				deps = append(deps, mustRun(psg.GetSQLVertexId(newPolicy, diffTypeAddAlter)).before(buildColumnVertexId(tc.Name, diffTypeDelete)))
 			}
 		}
 	}
@@ -311,8 +311,8 @@ func (psg *policySQLVertexGenerator) GetDeleteDependencies(pol schema.Policy) ([
 	}
 	// The policy needs to be deleted before all the columns it references are deleted or add/altered
 	for _, c := range columns {
-		deps = append(deps, mustRun(psg.GetSQLVertexId(pol), diffTypeDelete).before(buildColumnVertexId(c.Name), diffTypeDelete))
-		deps = append(deps, mustRun(psg.GetSQLVertexId(pol), diffTypeDelete).before(buildColumnVertexId(c.Name), diffTypeAddAlter))
+		deps = append(deps, mustRun(psg.GetSQLVertexId(pol, diffTypeDelete)).before(buildColumnVertexId(c.Name, diffTypeDelete)))
+		deps = append(deps, mustRun(psg.GetSQLVertexId(pol, diffTypeDelete)).before(buildColumnVertexId(c.Name, diffTypeAddAlter)))
 	}
 
 	return deps, nil
