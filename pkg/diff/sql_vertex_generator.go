@@ -21,6 +21,21 @@ type partialSQLGraph struct {
 	dependencies []dependency
 }
 
+func newPartialSQLGraph() *partialSQLGraph {
+	return &partialSQLGraph{
+		vertices:     nil,
+		dependencies: nil,
+	}
+}
+
+func (s *partialSQLGraph) addVertex(v ...sqlVertex) {
+	s.vertices = append(s.vertices, v...)
+}
+
+func (s *partialSQLGraph) addDependency(dep ...dependency) {
+	s.dependencies = append(s.dependencies, dep...)
+}
+
 func (s *partialSQLGraph) statements() []Statement {
 	var statements []Statement
 	for _, vertex := range s.vertices {
@@ -29,20 +44,49 @@ func (s *partialSQLGraph) statements() []Statement {
 	return statements
 }
 
-func concatPartialGraphs(parts ...partialSQLGraph) partialSQLGraph {
+func (s *partialSQLGraph) Clone() *partialSQLGraph {
+	vertices := make([]sqlVertex, len(s.vertices))
+	copy(vertices, s.vertices)
+	dependencies := make([]dependency, len(s.dependencies))
+	copy(dependencies, s.dependencies)
+	return &partialSQLGraph{
+		vertices:     vertices,
+		dependencies: dependencies,
+	}
+}
+
+func concatPartialGraphs(parts ...*partialSQLGraph) *partialSQLGraph {
 	var vertices []sqlVertex
 	var dependencies []dependency
 	for _, part := range parts {
 		vertices = append(vertices, part.vertices...)
 		dependencies = append(dependencies, part.dependencies...)
 	}
-	return partialSQLGraph{
+	return &partialSQLGraph{
 		vertices:     vertices,
 		dependencies: dependencies,
 	}
 }
 
-func graphFromPartials(parts partialSQLGraph) (*sqlGraph, error) {
+func createNestedGraphForPartial(partial *partialSQLGraph, id nestedGraphSqlVertexId, priority sqlPriority) *partialSQLGraph {
+	partial := partial.Clone()
+	startVertex := sqlVertex{
+		id:       id.WithNestedGraphMarker(subgraphMarkerStart),
+		priority: priority,
+	}
+	endVertex := sqlVertex{
+		id:       id.WithNestedGraphMarker(subgraphMarkerEnd),
+		priority: priority,
+	}
+
+	var deps []dependency
+	for _, vertex := range partial.vertices {
+		// TODO(bplunkett) - build deps
+	}
+	partial.addVertex(startVertex, endVertex)
+}
+
+func graphFromPartials(parts *partialSQLGraph) (*sqlGraph, error) {
 	graph := newSqlGraph()
 	for _, vertex := range parts.vertices {
 		// It's possible the node already exists. merge it if it does
@@ -93,34 +137,34 @@ func addVertexIfNotExists(graph *sqlGraph, id sqlVertexId) {
 // sqlVertexGenerator generates SQL statements for a schema object and its diff. This is the canonical interface
 // for SQL generation.
 type sqlVertexGenerator[S schema.Object, Diff diff[S]] interface {
-	Add(S) (partialSQLGraph, error)
-	Delete(S) (partialSQLGraph, error)
+	Add(S) (*partialSQLGraph, error)
+	Delete(S) (*partialSQLGraph, error)
 	// Alter generates the statements required to resolve the schema object to its new state using the
 	// provided diff. Alter, e.g., with a table, might produce add/delete statements
-	Alter(Diff) (partialSQLGraph, error)
+	Alter(Diff) (*partialSQLGraph, error)
 }
 
 // generatePartialGraph generates a partial for the given schema object list diff using the inutted generator.
-func generatePartialGraph[S schema.Object, Diff diff[S]](generator sqlVertexGenerator[S, Diff], listDiff listDiff[S, Diff]) (partialSQLGraph, error) {
-	var partialGraphs []partialSQLGraph
+func generatePartialGraph[S schema.Object, Diff diff[S]](generator sqlVertexGenerator[S, Diff], listDiff listDiff[S, Diff]) (*partialSQLGraph, error) {
+	var partialGraphs []*partialSQLGraph
 	for _, a := range listDiff.adds {
 		v, err := generator.Add(a)
 		if err != nil {
-			return partialSQLGraph{}, fmt.Errorf("generating add statements for %s: %w", a.GetName(), err)
+			return nil, fmt.Errorf("generating add statements for %s: %w", a.GetName(), err)
 		}
 		partialGraphs = append(partialGraphs, v)
 	}
 	for _, d := range listDiff.deletes {
 		v, err := generator.Delete(d)
 		if err != nil {
-			return partialSQLGraph{}, fmt.Errorf("generating delete statements for %s: %w", d.GetName(), err)
+			return nil, fmt.Errorf("generating delete statements for %s: %w", d.GetName(), err)
 		}
 		partialGraphs = append(partialGraphs, v)
 	}
 	for _, a := range listDiff.alters {
 		v, err := generator.Alter(a)
 		if err != nil {
-			return partialSQLGraph{}, fmt.Errorf("generating alter statements for %s: %w", a.GetNew().GetName(), err)
+			return nil, fmt.Errorf("generating alter statements for %s: %w", a.GetNew().GetName(), err)
 		}
 		partialGraphs = append(partialGraphs, v)
 	}
@@ -132,7 +176,7 @@ func generatePartialGraph[S schema.Object, Diff diff[S]](generator sqlVertexGene
 type legacySqlVertexGenerator[S schema.Object, Diff diff[S]] interface {
 	sqlGenerator[S, Diff]
 	// GetSQLVertexId gets the canonical vertex id to represent the schema object
-	GetSQLVertexId(S, diffType) sqlVertexId
+	GetSQLVertexId(S, diffType) schemaObjNestedGraphSqlVertexId
 
 	// GetAddAlterDependencies gets the dependencies of the SQL generated to resolve the AddAlter diff for the
 	// schema objects. Dependencies can be formed on any other nodes in the SQL graph, even if the node has
@@ -162,21 +206,21 @@ func legacyToNewSqlVertexGenerator[S schema.Object, Diff diff[S]](generator lega
 	}
 }
 
-func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Add(o S) (partialSQLGraph, error) {
+func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Add(o S) (*partialSQLGraph, error) {
 	statements, err := s.generator.Add(o)
 	if err != nil {
-		return partialSQLGraph{}, fmt.Errorf("generating sql: %w", err)
+		return nil, fmt.Errorf("generating sql: %w", err)
 	}
 
 	var zeroVal S
 	deps, err := s.generator.GetAddAlterDependencies(o, zeroVal)
 	if err != nil {
-		return partialSQLGraph{}, fmt.Errorf("getting dependencies: %w", err)
+		return nil, fmt.Errorf("getting dependencies: %w", err)
 	}
 
-	return partialSQLGraph{
+	return &partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:         s.generator.GetSQLVertexId(o, diffTypeAddAlter),
+			id:         buildUUIDVertexId(),
 			priority:   sqlPrioritySooner,
 			statements: statements,
 		}},
@@ -184,19 +228,19 @@ func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Add(o S) (partialSQLGraph, er
 	}, nil
 }
 
-func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Delete(o S) (partialSQLGraph, error) {
+func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Delete(o S) (*partialSQLGraph, error) {
 	statements, err := s.generator.Delete(o)
 	if err != nil {
-		return partialSQLGraph{}, fmt.Errorf("generating sql: %w", err)
+		return nil, fmt.Errorf("generating sql: %w", err)
 	}
 	deps, err := s.generator.GetDeleteDependencies(o)
 	if err != nil {
-		return partialSQLGraph{}, fmt.Errorf("getting dependencies: %w", err)
+		return nil, fmt.Errorf("getting dependencies: %w", err)
 	}
 
-	return partialSQLGraph{
+	return &partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:         s.generator.GetSQLVertexId(o, diffTypeDelete),
+			id:         buildUUIDVertexId(),
 			priority:   sqlPriorityLater,
 			statements: statements,
 		}},
@@ -204,19 +248,19 @@ func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Delete(o S) (partialSQLGraph,
 	}, nil
 }
 
-func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Alter(d Diff) (partialSQLGraph, error) {
+func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Alter(d Diff) (*partialSQLGraph, error) {
 	statements, err := s.generator.Alter(d)
 	if err != nil {
-		return partialSQLGraph{}, fmt.Errorf("generating sql: %w", err)
+		return nil, fmt.Errorf("generating sql: %w", err)
 	}
 	deps, err := s.generator.GetAddAlterDependencies(d.GetNew(), d.GetOld())
 	if err != nil {
-		return partialSQLGraph{}, fmt.Errorf("getting dependencies: %w", err)
+		return nil, fmt.Errorf("getting dependencies: %w", err)
 	}
 
-	return partialSQLGraph{
+	return &partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:         s.generator.GetSQLVertexId(d.GetNew(), diffTypeAddAlter),
+			id:         buildUUIDVertexId(),
 			priority:   sqlPrioritySooner,
 			statements: statements,
 		}},

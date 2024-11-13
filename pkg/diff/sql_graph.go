@@ -3,6 +3,7 @@ package diff
 import (
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/stripe/pg-schema-diff/internal/graph"
 )
 
@@ -15,6 +16,23 @@ type sqlVertexId interface {
 // or later in the topological sort of the graph. It can be thought of as a unary unit vector.
 type sqlPriority int
 
+// Used to indicate the start or end of an operation in a SQL graph. One could imagine an operation comprised of
+// an entire subgraph of SQL statements.
+type nestedGraphMarker string
+
+const (
+	markerUnset nestedGraphMarker = ""
+	// subgraphMarkerStart is used to indicate the start of an operation
+	subgraphMarkerStart nestedGraphMarker = "START"
+	// subgraphMarkerEnd is used to indicate the end of an operation
+	subgraphMarkerEnd nestedGraphMarker = "END"
+)
+
+type nestedGraphSqlVertexId interface {
+	sqlVertexId
+	WithNestedGraphMarker(marker nestedGraphMarker) sqlVertexId
+}
+
 const (
 	// Indicates a statement should run as soon as possible. Usually, most adds will have this priority.
 	sqlPrioritySooner sqlPriority = 1
@@ -24,24 +42,50 @@ const (
 	sqlPriorityLater sqlPriority = -1
 )
 
-// schemaObjSqlVertexId is a vertex id for a standard schema object node, i.e., indicating the creation/deletiion
+// schemaObjNestedGraphSqlVertexId is a vertex id for a standard schema object node, i.e., indicating the creation/deletion
 // of a schema object. It slots into the legacySqlVertexGenerator system.
-type schemaObjSqlVertexId struct {
-	objType  string
-	objId    string
-	diffType diffType
+//
+// Every schemaObjNestedGraphSqlVertexId should have an accompanying id with the opposite marker, i.e., start and end, because
+// it effectively represents a subgraph.
+type schemaObjNestedGraphSqlVertexId struct {
+	objType    string
+	objId      string
+	diffType   diffType
+	diffMarker nestedGraphMarker
 }
 
-func buildSchemaObjVertexId(objType string, id string, diffType diffType) sqlVertexId {
-	return schemaObjSqlVertexId{
-		objType:  objType,
-		objId:    id,
-		diffType: diffType,
+func buildSchemaObjVertexId(objType string, id string, diffType diffType) schemaObjNestedGraphSqlVertexId {
+	return schemaObjNestedGraphSqlVertexId{
+		objType:    objType,
+		objId:      id,
+		diffType:   diffType,
+		diffMarker: markerUnset,
 	}
 }
 
-func (s schemaObjSqlVertexId) String() string {
-	return fmt.Sprintf("%s:%s:%s", s.objType, s.objId, s.diffType)
+func (s schemaObjNestedGraphSqlVertexId) WithNestedGraphMarker(m nestedGraphMarker) sqlVertexId {
+	s.diffMarker = m
+	return s
+}
+
+func (s schemaObjNestedGraphSqlVertexId) String() string {
+	return fmt.Sprintf("%T:%s:%s:%s:%s", s, s.objType, s.objId, s.diffType, s.diffMarker)
+}
+
+type uuidSqlVertexId struct {
+	uuid uuid.UUID
+}
+
+// buildUUIDVertexId creates a new UUID vertex id. This is useful if the vertex is unlikely to have a dependency
+// hard-coded.
+func buildUUIDVertexId() sqlVertexId {
+	return uuidSqlVertexId{
+		uuid: uuid.New(),
+	}
+}
+
+func (u uuidSqlVertexId) String() string {
+	return fmt.Sprintf("%T:%s", u, u.uuid.String())
 }
 
 type sqlVertex struct {
@@ -79,28 +123,50 @@ type dependency struct {
 }
 
 type dependencyBuilder struct {
-	base sqlVertexId
+	base nestedGraphSqlVertexId
 }
 
-func mustRun(id sqlVertexId) dependencyBuilder {
+func mustRun(id nestedGraphSqlVertexId) dependencyBuilder {
 	return dependencyBuilder{
 		base: id,
 	}
 }
 
-func (d dependencyBuilder) before(id sqlVertexId) dependency {
+//func mustRunVertex(vertex sqlVertex) dependencyBuilder {
+//	return dependencyBuilder{
+//		base: vertex.id,
+//	}
+//}
+
+func (d dependencyBuilder) before(id nestedGraphSqlVertexId) dependency {
 	return dependency{
-		source: d.base,
-		target: id,
+		source: d.base.WithNestedGraphMarker(subgraphMarkerEnd),
+		target: id.WithNestedGraphMarker(subgraphMarkerStart),
 	}
 }
 
-func (d dependencyBuilder) after(id sqlVertexId) dependency {
+func (d dependencyBuilder) after(id nestedGraphSqlVertexId) dependency {
 	return dependency{
-		source: id,
-		target: d.base,
+		source: id.WithNestedGraphMarker(subgraphMarkerEnd),
+		target: d.base.WithNestedGraphMarker(subgraphMarkerStart),
 	}
 }
+
+//func (d dependencyBuilder) afterAll(ids ...sqlVertexId) []dependency {
+//	var deps []dependency
+//	for _, i := range ids {
+//		deps = append(deps, d.after(i))
+//	}
+//	return deps
+//}
+//
+//func (d dependencyBuilder) afterAllVertices(vertices ...sqlVertex) []dependency {
+//	var ids []sqlVertexId
+//	for _, v := range vertices {
+//		ids = append(ids, v.id)
+//	}
+//	return d.afterAll(ids...)
+//}
 
 // sqlGraph represents a dependency web of SQL statements
 type sqlGraph struct {
