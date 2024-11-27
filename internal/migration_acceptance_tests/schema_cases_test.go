@@ -81,6 +81,12 @@ var schemaAcceptanceTests = []acceptanceTestCase{
             CREATE INDEX bar_normal_idx ON bar(bar);
             CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
             CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);
+
+            CREATE OR REPLACE PROCEDURE some_procedure(i integer) AS $$
+                    BEGIN
+                            RAISE NOTICE 'foobar';
+                    END;
+            $$ LANGUAGE plpgsql;
 			`,
 		},
 		newSchemaDDL: []string{
@@ -156,12 +162,18 @@ var schemaAcceptanceTests = []acceptanceTestCase{
             CREATE INDEX bar_normal_idx ON bar(bar);
             CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
             CREATE UNIQUE INDEX bar_unique_idx on bar(foo, buzz);
+
+            CREATE OR REPLACE PROCEDURE some_procedure(i integer) AS $$
+                    BEGIN
+                            RAISE NOTICE 'foobar';
+                    END;
+            $$ LANGUAGE plpgsql;
 			`,
 		},
 		expectEmptyPlan: true,
 	},
 	{
-		name:  "Add schema, drop schema, Add enum, Drop enum, Drop table, Add Table, Drop Seq, Add Seq, Drop Funcs, Add Funcs, Drop Triggers, Add Triggers, Create Extension, Drop Extension, Create Index Using Extension, Add policies, Drop policies",
+		name:  "Add/drop all objects",
 		roles: []string{"role_1"},
 		oldSchemaDDL: []string{
 			`
@@ -218,6 +230,10 @@ var schemaAcceptanceTests = []acceptanceTestCase{
             );
             CREATE INDEX foobar_normal_idx ON foobar USING hash (fizz);
             CREATE UNIQUE INDEX foobar_unique_idx ON foobar(foo, fizz DESC);
+
+            CREATE OR REPLACE PROCEDURE add_foobar(name TEXT) LANGUAGE SQL AS $$
+                INSERT INTO foobar DEFAULT VALUES
+            $$;
 
             CREATE POLICY foobar_foo_policy ON foobar FOR SELECT TO PUBLIC USING (foo = current_user);
 
@@ -302,6 +318,10 @@ var schemaAcceptanceTests = []acceptanceTestCase{
             CREATE UNIQUE INDEX foobar_unique_idx ON "New_table"(new_foo, new_fizz);
 
             CREATE POLICY "New_table_foo_policy" ON "New_table" FOR DELETE TO PUBLIC USING (version > 0);
+
+            CREATE OR REPLACE PROCEDURE "new new table"(name TEXT) LANGUAGE SQL AS $$
+                INSERT INTO "New_table" (id, version) VALUES (NEXTVAL('schema_3.new_foobar_sequence'), schema_3."new add"(LENGTH(name), 1))
+            $$;
 
             CREATE TRIGGER "some trigger"
                 BEFORE UPDATE ON "New_table"
