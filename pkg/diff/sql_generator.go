@@ -1181,6 +1181,23 @@ func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error)
 		})
 	}
 
+	// Drop the default before type conversion. This will allow type conversions
+	// between incompatible types if the previous column has a default and the new column is dropping its default.
+	// It also must be dropped before an identity is added to the column, otherwise adding the identity errors
+	// with "a default already exists."
+	//
+	// To keep the code simpler, put dropping the default before updating the column identity AND dropping the default.
+	// There is an argument to drop the default after removing the not null constraint, since writes will continue to succeed
+	// on columns migrating from not-null and a default to nullable with no default; however, this would not work
+	// for the case where an identity is being added to the column.
+	if len(oldColumn.Default) > 0 && len(newColumn.Default) == 0 {
+		stmts = append(stmts, Statement{
+			DDL:         fmt.Sprintf("%s DROP DEFAULT", alterColumnPrefix),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		})
+	}
+
 	updateIdentityStmts, err := csg.buildUpdateIdentityStatements(oldColumn, newColumn)
 	if err != nil {
 		return nil, fmt.Errorf("building update identity statements: %w", err)
@@ -1192,16 +1209,6 @@ func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error)
 	if oldColumn.IsNullable != newColumn.IsNullable && newColumn.IsNullable {
 		stmts = append(stmts, Statement{
 			DDL:         fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
-			Timeout:     statementTimeoutDefault,
-			LockTimeout: lockTimeoutDefault,
-		})
-	}
-
-	if len(oldColumn.Default) > 0 && len(newColumn.Default) == 0 {
-		// Drop the default before type conversion. This will allow type conversions
-		// between incompatible types if the previous column has a default and the new column is dropping its default
-		stmts = append(stmts, Statement{
-			DDL:         fmt.Sprintf("%s DROP DEFAULT", alterColumnPrefix),
 			Timeout:     statementTimeoutDefault,
 			LockTimeout: lockTimeoutDefault,
 		})
