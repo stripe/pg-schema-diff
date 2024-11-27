@@ -996,6 +996,23 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add identity to column with existing default",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                identity_always BIGINT DEFAULT 5
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                identity_always BIGINT GENERATED ALWAYS AS IDENTITY 
+            );
+			`,
+		},
+	},
+	{
 		name: "Alter identity type - to by default",
 		oldSchemaDDL: []string{
 			`
