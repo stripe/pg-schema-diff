@@ -222,7 +222,7 @@ WHERE
     AND pg_constraint.contype = 'f'
     AND pg_constraint.conislocal;
 
--- name: GetFunctions :many
+-- name: GetProcs :many
 SELECT
     pg_proc.oid,
     pg_proc.proname::TEXT AS func_name,
@@ -243,7 +243,7 @@ WHERE
     proc_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND proc_namespace.nspname !~ '^pg_toast'
     AND proc_namespace.nspname !~ '^pg_temp'
-    AND pg_proc.prokind = 'f'
+    AND pg_proc.prokind = $1
     -- Exclude functions belonging to extensions
     AND NOT EXISTS (
         SELECT depend.objid

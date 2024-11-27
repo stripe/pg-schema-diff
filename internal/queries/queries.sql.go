@@ -439,78 +439,6 @@ func (q *Queries) GetForeignKeyConstraints(ctx context.Context) ([]GetForeignKey
 	return items, nil
 }
 
-const getFunctions = `-- name: GetFunctions :many
-SELECT
-    pg_proc.oid,
-    pg_proc.proname::TEXT AS func_name,
-    proc_namespace.nspname::TEXT AS func_schema_name,
-    proc_lang.lanname::TEXT AS func_lang,
-    pg_catalog.pg_get_function_identity_arguments(
-        pg_proc.oid
-    ) AS func_identity_arguments,
-    pg_catalog.pg_get_functiondef(pg_proc.oid) AS func_def
-FROM pg_catalog.pg_proc
-INNER JOIN
-    pg_catalog.pg_namespace AS proc_namespace
-    ON pg_proc.pronamespace = proc_namespace.oid
-INNER JOIN
-    pg_catalog.pg_language AS proc_lang
-    ON proc_lang.oid = pg_proc.prolang
-WHERE
-    proc_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND proc_namespace.nspname !~ '^pg_toast'
-    AND proc_namespace.nspname !~ '^pg_temp'
-    AND pg_proc.prokind = 'f'
-    -- Exclude functions belonging to extensions
-    AND NOT EXISTS (
-        SELECT depend.objid
-        FROM pg_catalog.pg_depend AS depend
-        WHERE
-            depend.classid = 'pg_proc'::REGCLASS
-            AND depend.objid = pg_proc.oid
-            AND depend.deptype = 'e'
-    )
-`
-
-type GetFunctionsRow struct {
-	Oid                   interface{}
-	FuncName              string
-	FuncSchemaName        string
-	FuncLang              string
-	FuncIdentityArguments string
-	FuncDef               string
-}
-
-func (q *Queries) GetFunctions(ctx context.Context) ([]GetFunctionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getFunctions)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetFunctionsRow
-	for rows.Next() {
-		var i GetFunctionsRow
-		if err := rows.Scan(
-			&i.Oid,
-			&i.FuncName,
-			&i.FuncSchemaName,
-			&i.FuncLang,
-			&i.FuncIdentityArguments,
-			&i.FuncDef,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getIndexes = `-- name: GetIndexes :many
 SELECT
     c.oid AS oid,
@@ -701,6 +629,78 @@ func (q *Queries) GetPolicies(ctx context.Context) ([]GetPoliciesRow, error) {
 			&i.CheckExpression,
 			&i.UsingExpression,
 			pq.Array(&i.ColumnNames),
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getProcs = `-- name: GetProcs :many
+SELECT
+    pg_proc.oid,
+    pg_proc.proname::TEXT AS func_name,
+    proc_namespace.nspname::TEXT AS func_schema_name,
+    proc_lang.lanname::TEXT AS func_lang,
+    pg_catalog.pg_get_function_identity_arguments(
+        pg_proc.oid
+    ) AS func_identity_arguments,
+    pg_catalog.pg_get_functiondef(pg_proc.oid) AS func_def
+FROM pg_catalog.pg_proc
+INNER JOIN
+    pg_catalog.pg_namespace AS proc_namespace
+    ON pg_proc.pronamespace = proc_namespace.oid
+INNER JOIN
+    pg_catalog.pg_language AS proc_lang
+    ON proc_lang.oid = pg_proc.prolang
+WHERE
+    proc_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND proc_namespace.nspname !~ '^pg_toast'
+    AND proc_namespace.nspname !~ '^pg_temp'
+    AND pg_proc.prokind = $1
+    -- Exclude functions belonging to extensions
+    AND NOT EXISTS (
+        SELECT depend.objid
+        FROM pg_catalog.pg_depend AS depend
+        WHERE
+            depend.classid = 'pg_proc'::REGCLASS
+            AND depend.objid = pg_proc.oid
+            AND depend.deptype = 'e'
+    )
+`
+
+type GetProcsRow struct {
+	Oid                   interface{}
+	FuncName              string
+	FuncSchemaName        string
+	FuncLang              string
+	FuncIdentityArguments string
+	FuncDef               string
+}
+
+func (q *Queries) GetProcs(ctx context.Context, prokind interface{}) ([]GetProcsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getProcs, prokind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetProcsRow
+	for rows.Next() {
+		var i GetProcsRow
+		if err := rows.Scan(
+			&i.Oid,
+			&i.FuncName,
+			&i.FuncSchemaName,
+			&i.FuncLang,
+			&i.FuncIdentityArguments,
+			&i.FuncDef,
 		); err != nil {
 			return nil, err
 		}
