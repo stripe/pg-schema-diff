@@ -57,11 +57,12 @@ type Schema struct {
 	ForeignKeyConstraints []ForeignKeyConstraint
 	Sequences             []Sequence
 	Functions             []Function
+	Procedures            []Procedure
 	Triggers              []Trigger
 }
 
-// Normalize normalizes the schema (alphabetically sorts tables and columns in tables)
-// Useful for hashing and testing
+// Normalize normalizes the schema (alphabetically sorts tables and columns in tables).
+// Useful for hashing and testing.
 func (s Schema) Normalize() Schema {
 	s.NamedSchemas = sortSchemaObjectsByName(s.NamedSchemas)
 	s.Extensions = sortSchemaObjectsByName(s.Extensions)
@@ -84,6 +85,7 @@ func (s Schema) Normalize() Schema {
 	}
 	s.Functions = normFunctions
 
+	s.Procedures = sortSchemaObjectsByName(s.Procedures)
 	s.Triggers = sortSchemaObjectsByName(s.Triggers)
 
 	return s
@@ -372,6 +374,14 @@ type Function struct {
 	DependsOnFunctions []SchemaQualifiedName
 }
 
+type Procedure struct {
+	SchemaQualifiedName
+	// Def is the statement required to completely (re)create
+	// the procedure, as returned by `pg_get_functiondef`. It is a CREATE OR REPLACE
+	// statement.
+	Def string
+}
+
 var (
 	// The first matching group is the "CREATE ". The second matching group is the rest of the statement
 	triggerToOrReplaceRegex = regexp.MustCompile("^(CREATE )(.*)$")
@@ -621,6 +631,13 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("starting functions future: %w", err)
 	}
 
+	proceduresFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Procedure, error) {
+		return s.fetchProcedures(ctx)
+	})
+	if err != nil {
+		return Schema{}, fmt.Errorf("starting functions future: %w", err)
+	}
+
 	triggersFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Trigger, error) {
 		return s.fetchTriggers(ctx)
 	})
@@ -668,6 +685,11 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("getting functions: %w", err)
 	}
 
+	procedures, err := proceduresFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting procedures: %w", err)
+	}
+
 	triggers, err := triggersFuture.Get(ctx)
 	if err != nil {
 		return Schema{}, fmt.Errorf("getting triggers: %w", err)
@@ -682,6 +704,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		ForeignKeyConstraints: fkCons,
 		Sequences:             sequences,
 		Functions:             functions,
+		Procedures:            procedures,
 		Triggers:              triggers,
 	}, nil
 }
@@ -1109,9 +1132,9 @@ func (s *schemaFetcher) fetchSequences(ctx context.Context) ([]Sequence, error) 
 }
 
 func (s *schemaFetcher) fetchFunctions(ctx context.Context) ([]Function, error) {
-	rawFunctions, err := s.q.GetFunctions(ctx)
+	rawFunctions, err := s.q.GetProcs(ctx, 'f')
 	if err != nil {
-		return nil, fmt.Errorf("GetFunctions: %w", err)
+		return nil, fmt.Errorf("GetProcs: %w", err)
 	}
 
 	goroutineRunner := s.goroutineRunnerFactory()
@@ -1143,14 +1166,14 @@ func (s *schemaFetcher) fetchFunctions(ctx context.Context) ([]Function, error) 
 	return functions, nil
 }
 
-func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.GetFunctionsRow) (Function, error) {
+func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.GetProcsRow) (Function, error) {
 	dependsOnFunctions, err := s.fetchDependsOnFunctions(ctx, "pg_proc", rawFunction.Oid)
 	if err != nil {
 		return Function{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
 	}
 
 	return Function{
-		SchemaQualifiedName: buildFuncName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
+		SchemaQualifiedName: buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
 		FunctionDef:         rawFunction.FuncDef,
 		Language:            rawFunction.FuncLang,
 		DependsOnFunctions:  dependsOnFunctions,
@@ -1168,10 +1191,36 @@ func (s *schemaFetcher) fetchDependsOnFunctions(ctx context.Context, systemCatal
 
 	var functionNames []SchemaQualifiedName
 	for _, rawFunction := range dependsOnFunctions {
-		functionNames = append(functionNames, buildFuncName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName))
+		functionNames = append(functionNames, buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName))
 	}
 
 	return functionNames, nil
+}
+
+func (s *schemaFetcher) fetchProcedures(ctx context.Context) ([]Procedure, error) {
+	rawProcedures, err := s.q.GetProcs(ctx, 'p')
+	if err != nil {
+		return nil, fmt.Errorf("GetProcs: %w", err)
+	}
+
+	var procedures []Procedure
+	for _, rawProcedure := range rawProcedures {
+		p := Procedure{
+			SchemaQualifiedName: buildProcName(rawProcedure.FuncName, rawProcedure.FuncIdentityArguments, rawProcedure.FuncSchemaName),
+			Def:                 rawProcedure.FuncDef,
+		}
+		procedures = append(procedures, p)
+	}
+
+	procedures = filterSliceByName(
+		procedures,
+		func(function Procedure) SchemaQualifiedName {
+			return function.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
+	return procedures, nil
 }
 
 type policyAndTable struct {
@@ -1226,7 +1275,7 @@ func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {
 		triggers = append(triggers, Trigger{
 			EscapedName:       EscapeIdentifier(rawTrigger.TriggerName),
 			OwningTable:       buildNameFromUnescaped(rawTrigger.OwningTableName, rawTrigger.OwningTableSchemaName),
-			Function:          buildFuncName(rawTrigger.FuncName, rawTrigger.FuncIdentityArguments, rawTrigger.FuncSchemaName),
+			Function:          buildProcName(rawTrigger.FuncName, rawTrigger.FuncIdentityArguments, rawTrigger.FuncSchemaName),
 			GetTriggerDefStmt: GetTriggerDefStatement(rawTrigger.TriggerDef),
 		})
 	}
@@ -1245,7 +1294,9 @@ func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {
 	return triggers, nil
 }
 
-func buildFuncName(name, identityArguments, schemaName string) SchemaQualifiedName {
+// buildProcName is used to build the schema qualified name for a proc (function, procedure), i.e., anything
+// identified by a name AND its arguments.
+func buildProcName(name, identityArguments, schemaName string) SchemaQualifiedName {
 	return SchemaQualifiedName{
 		SchemaName:  schemaName,
 		EscapedName: fmt.Sprintf("\"%s\"(%s)", name, identityArguments),

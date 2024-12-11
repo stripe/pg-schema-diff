@@ -142,6 +142,20 @@ var (
 				-- Reference a function in a filtered out schema. The trigger should still be included.
 				EXECUTE PROCEDURE schema_filtered_1.increment_version();
 
+			CREATE PROCEDURE schema_2.some_insert_procedure(a INTEGER, b INTEGER)
+				LANGUAGE SQL
+				BEGIN ATOMIC
+				  INSERT INTO schema_2.foo DEFAULT VALUES;
+				END;
+
+			CREATE PROCEDURE some_plpgsql_procedure(foobar NUMERIC)
+				LANGUAGE plpgsql
+				AS $$
+				BEGIN
+					RAISE NOTICE 'some notice';
+				END
+				$$;
+
 			-- Create table with conflicting name that has check constraints
 			CREATE TABLE schema_1.foo(
 				id INT NOT NULL,
@@ -177,6 +191,12 @@ var (
 				ON UPDATE CASCADE
 				ON DELETE CASCADE
 				NOT VALID;
+			-- Validate procedures are filtered out
+			CREATE PROCEDURE schema_filtered_1.some_filtered_procedure(a INTEGER)
+				LANGUAGE SQL
+				BEGIN ATOMIC
+				  INSERT INTO schema_2.foo DEFAULT VALUES;
+				END;
 			-- Validate triggers are filtered out
 			CREATE TRIGGER some_trigger
 				BEFORE UPDATE ON schema_filtered_1.foo_fk
@@ -191,7 +211,7 @@ var (
 				TO PUBLIC
 				USING (version > 0);
 		`},
-			expectedHash: "4f6a01ac1a078624",
+			expectedHash: "500097cd4fa6f068",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -420,6 +440,16 @@ var (
 						Language:            "plpgsql",
 					},
 				},
+				Procedures: []Procedure{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_plpgsql_procedure\"(IN foobar numeric)"},
+						Def:                 "CREATE OR REPLACE PROCEDURE public.some_plpgsql_procedure(IN foobar numeric)\n LANGUAGE plpgsql\nAS $procedure$\n\t\t\t\tBEGIN\n\t\t\t\t\tRAISE NOTICE 'some notice';\n\t\t\t\tEND\n\t\t\t\t$procedure$\n",
+					},
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"some_insert_procedure\"(IN a integer, IN b integer)"},
+						Def:                 "CREATE OR REPLACE PROCEDURE schema_2.some_insert_procedure(IN a integer, IN b integer)\n LANGUAGE sql\nBEGIN ATOMIC\n INSERT INTO schema_2.foo DEFAULT VALUES;\nEND\n",
+					},
+				},
 				Triggers: []Trigger{
 					{
 						EscapedName:       "\"some_trigger\"",
@@ -494,7 +524,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "14fc890b05a1fa7b",
+			expectedHash: "cf473d75363e9f77",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -1056,7 +1086,7 @@ var (
 				CREATE TYPE pg_temp.color AS ENUM ('red', 'green', 'blue');
 			`},
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash: "e63f48c273376e85",
+			expectedHash: "83bae9b012ee367e",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
