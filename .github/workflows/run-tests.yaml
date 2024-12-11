@@ -10,11 +10,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pg_package: ["postgresql14", "postgresql15", "postgresql16"]
+        include:
+          - base_image: "golang:1.20.14-alpine3.19"
+            pg_package: "postgresql14"
+          - base_image: "golang:1.20.14-alpine3.19"
+            pg_package: "postgresql15"
+          - base_image: "golang:1.20.14-alpine3.19"
+            pg_package: "postgresql16"
+          - base_image: "golang:1.22.10-alpine3.21"
+            pg_package: "postgresql17"
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Build Docker image
-        run: docker build -t pg-schema-diff-test-runner -f ./build/Dockerfile.test --build-arg POSTGRES_PACKAGE=${{ matrix.pg_package }} .
+        run: docker build -t pg-schema-diff-test-runner -f ./build/Dockerfile.test --build-arg BASE_IMAGE=${{ matrix.base_image }} --build-arg POSTGRES_PACKAGE=${{ matrix.pg_package }} .
       - name: Run tests
         run: docker run pg-schema-diff-test-runner

@@ -865,7 +865,8 @@ func (s *schemaFetcher) buildTable(
 		}
 
 		var identity *ColumnIdentity
-		if len(column.IdentityType) > 0 {
+		if len(column.IdentityType) > 0 && table.ParentTableName == "" {
+			// Exclude identity columns from table partitions because they are owned by the parent.
 			identity = &ColumnIdentity{
 				Type:       ColumnIdentityType(column.IdentityType),
 				StartValue: column.StartValue.Int64,

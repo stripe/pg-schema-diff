@@ -469,7 +469,7 @@ var (
 				content TEXT DEFAULT '',
 				genre VARCHAR(256) NOT NULL,
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP CHECK (created_at > CURRENT_TIMESTAMP - interval '1 month'),
-				version INT NOT NULL DEFAULT 0,
+				version INT GENERATED ALWAYS AS IDENTITY,
 				PRIMARY KEY (author, id)
 			) PARTITION BY LIST (author);
 			ALTER TABLE foo ADD CONSTRAINT author_check CHECK (author IS NOT NULL AND LENGTH(author) > 0) NOT VALID;
@@ -524,7 +524,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "cf473d75363e9f77",
+			expectedHash: "38588fed86b25fd",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -538,7 +538,9 @@ var (
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", Default: "0", Size: 4},
+							{Name: "version", Type: "integer", Size: 4,
+								Identity: &ColumnIdentity{Type: "a", MinValue: 1, MaxValue: 2147483647, StartValue: 1, Increment: 1, CacheSize: 1, Cycle: false},
+							},
 						},
 						CheckConstraints: []CheckConstraint{
 							{Name: "author_check", Expression: "((author IS NOT NULL) AND (length(author) > 0))", IsInheritable: true, KeyColumns: []string{"author"}},
@@ -557,7 +559,7 @@ var (
 							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", Default: "0", Size: 4},
+							{Name: "version", Type: "integer", IsNullable: false, Size: 4},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityNothing,
@@ -572,7 +574,7 @@ var (
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", Default: "0", Size: 4},
+							{Name: "version", Type: "integer", IsNullable: false, Size: 4},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityDefault,
@@ -587,7 +589,7 @@ var (
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", Default: "0", Size: 4},
+							{Name: "version", Type: "integer", IsNullable: false, Size: 4},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityDefault,

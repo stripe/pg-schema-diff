@@ -171,7 +171,7 @@ for _, stmt := range plan.Statements {
 ```
 
 # Supported Postgres versions
-Supported: 14, 15, 16  
+Supported: 14, 15, 16, 17  
 Unsupported: <= 13  are not supported. Use at your own risk.
 
 # Unsupported migrations

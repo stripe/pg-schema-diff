@@ -342,7 +342,7 @@ WHERE
     AND seq_ns.nspname !~ '^pg_temp'
     -- Exclude sequences owned by identity columns.
     --  These manifest as internal dependency on the column
-    AND (depend.deptype IS NULL OR depend.deptype != 'i')
+    AND (depend.deptype IS null OR depend.deptype != 'i')
     -- Exclude sequences belonging to extensions
     AND NOT EXISTS (
         SELECT ext_depend.objid
