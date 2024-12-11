@@ -136,7 +136,7 @@ func TestCopy(t *testing.T) {
 		"shared_1", "shared_2", "shared_3", "g_1", "g_2", "g_3",
 	})
 
-	// validate overrides weren't copied over and non-overriden shared nodes are the same
+	// validate overrides weren't copied over and non-overridden shared nodes are the same
 	assert.NotEqual(t, g.GetVertex("shared_1"), gC.GetVertex("shared_1"))
 	assert.Equal(t, gC.GetVertex("shared_1"), copyOverrideShared1)
 	assert.NotEqual(t, g.GetVertex("shared_2"), gC.GetVertex("shared_2"))
@@ -425,7 +425,7 @@ func (v vertex) GetId() string {
 
 func getVertexIds(g *Graph[vertex]) []string {
 	var output []string
-	for id, _ := range g.verticesById {
+	for id := range g.verticesById {
 		output = append(output, id)
 	}
 	return output
