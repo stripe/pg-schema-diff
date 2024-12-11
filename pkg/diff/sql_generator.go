@@ -55,7 +55,7 @@ var (
 	}
 	migrationHazardExtensionDroppedCannotTrackDependencies = MigrationHazard{
 		Type:    MigrationHazardTypeHasUntrackableDependencies,
-		Message: "This extension may be in use by tables, indexes, functions, triggers, etc. Tihs statement will be ran last, so this may be OK.",
+		Message: "This extension may be in use by tables, indexes, functions, triggers, etc. This statement will be ran last, so this may be OK.",
 	}
 	migrationHazardExtensionAlteredVersionUpgraded = MigrationHazard{
 		Type:    MigrationHazardTypeExtensionVersionUpgrade,

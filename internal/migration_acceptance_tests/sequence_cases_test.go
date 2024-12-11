@@ -200,7 +200,7 @@ var sequenceAcceptanceTests = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "And and Drop sequences (conflicing schemas)",
+		name: "And and Drop sequences (conflicting schemas)",
 		oldSchemaDDL: []string{
 			`
             CREATE SCHEMA schema_1;

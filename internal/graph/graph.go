@@ -88,7 +88,7 @@ func (g *Graph[V]) HasVertexWithId(id string) bool {
 // Reverse reverses the edges of the map. The sources become the sinks and vice versa.
 func (g *Graph[V]) Reverse() {
 	reversedEdges := make(AdjacencyMatrix)
-	for vertexId, _ := range g.verticesById {
+	for vertexId := range g.verticesById {
 		reversedEdges[vertexId] = make(map[string]bool)
 	}
 	for source, adjacentEdgesMap := range g.edges {

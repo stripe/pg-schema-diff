@@ -14,7 +14,7 @@ import (
 // original SchemaDiff struct
 func dataPackNewTables(s schemaDiff) schemaDiff {
 	copiedNewTables := append([]schema.Table(nil), s.tableDiffs.adds...)
-	for i, _ := range copiedNewTables {
+	for i := range copiedNewTables {
 		copiedColumns := append([]schema.Column(nil), copiedNewTables[i].Columns...)
 		copiedNewTables[i].Columns = copiedColumns
 		sort.Slice(copiedColumns, func(i, j int) bool {
@@ -31,9 +31,9 @@ func dataPackNewTables(s schemaDiff) schemaDiff {
 // generator to ignore changes to column ordering
 func removeChangesToColumnOrdering(s schemaDiff) schemaDiff {
 	copiedTableDiffs := append([]tableDiff(nil), s.tableDiffs.alters...)
-	for i, _ := range copiedTableDiffs {
+	for i := range copiedTableDiffs {
 		copiedColDiffs := append([]columnDiff(nil), copiedTableDiffs[i].columnsDiff.alters...)
-		for i, _ := range copiedColDiffs {
+		for i := range copiedColDiffs {
 			copiedColDiffs[i].oldOrdering = copiedColDiffs[i].newOrdering
 		}
 		copiedTableDiffs[i].columnsDiff.alters = copiedColDiffs
