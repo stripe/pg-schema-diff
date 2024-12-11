@@ -17,7 +17,7 @@ WHERE
 
 -- name: GetTables :many
 SELECT
-    c.oid AS oid,
+    c.oid,
     c.relname::TEXT AS table_name,
     table_namespace.nspname::TEXT AS table_schema_name,
     c.relreplident::TEXT AS replica_identity,
@@ -40,7 +40,7 @@ INNER JOIN
     ON c.relnamespace = table_namespace.oid
 LEFT JOIN
     pg_catalog.pg_inherits AS table_inherits
-    ON table_inherits.inhrelid = c.oid
+    ON c.oid = table_inherits.inhrelid
 LEFT JOIN
     pg_catalog.pg_class AS parent_c
     ON table_inherits.inhparent = parent_c.oid
@@ -98,16 +98,16 @@ SELECT
 FROM pg_catalog.pg_attribute AS a
 LEFT JOIN
     pg_catalog.pg_attrdef AS d
-    ON (d.adrelid = a.attrelid AND d.adnum = a.attnum)
-LEFT JOIN pg_catalog.pg_collation AS coll ON coll.oid = a.attcollation
+    ON (a.attrelid = d.adrelid AND a.attnum = d.adnum)
+LEFT JOIN pg_catalog.pg_collation AS coll ON a.attcollation = coll.oid
 LEFT JOIN
     pg_catalog.pg_namespace AS collation_namespace
-    ON collation_namespace.oid = coll.collnamespace
+    ON coll.collnamespace = collation_namespace.oid
 LEFT JOIN
     identity_col_seq
     ON
-        identity_col_seq.owner_relid = a.attrelid
-        AND identity_col_seq.owner_attnum = a.attnum
+        a.attrelid = identity_col_seq.owner_relid
+        AND a.attnum = identity_col_seq.owner_attnum
 WHERE
     a.attrelid = $1
     AND a.attnum > 0
@@ -116,7 +116,7 @@ ORDER BY a.attnum;
 
 -- name: GetIndexes :many
 SELECT
-    c.oid AS oid,
+    c.oid,
     c.relname::TEXT AS index_name,
     table_c.relname::TEXT AS table_name,
     table_namespace.nspname::TEXT AS table_schema_name,
@@ -132,21 +132,25 @@ SELECT
     COALESCE(parent_c.relname, '')::TEXT AS parent_index_name,
     COALESCE(parent_namespace.nspname, '')::TEXT AS parent_index_schema_name,
     (
-        SELECT ARRAY_AGG(att.attname ORDER BY indkey_ord.ord)
+        SELECT
+            ARRAY_AGG(
+                att.attname
+                ORDER BY indkey_ord.ord
+            )
         FROM UNNEST(i.indkey) WITH ORDINALITY AS indkey_ord (attnum, ord)
         INNER JOIN
             pg_catalog.pg_attribute AS att
-            ON att.attrelid = table_c.oid AND att.attnum = indkey_ord.attnum
+            ON att.attrelid = table_c.oid AND indkey_ord.attnum = att.attnum
     )::TEXT [] AS column_names,
     COALESCE(con.conislocal, false) AS constraint_is_local
 FROM pg_catalog.pg_class AS c
-INNER JOIN pg_catalog.pg_index AS i ON (i.indexrelid = c.oid)
-INNER JOIN pg_catalog.pg_class AS table_c ON (table_c.oid = i.indrelid)
+INNER JOIN pg_catalog.pg_index AS i ON (c.oid = i.indexrelid)
+INNER JOIN pg_catalog.pg_class AS table_c ON (i.indrelid = table_c.oid)
 INNER JOIN pg_catalog.pg_namespace AS table_namespace
     ON table_c.relnamespace = table_namespace.oid
 LEFT JOIN
     pg_catalog.pg_constraint AS con
-    ON (con.conindid = c.oid AND con.contype IN ('p', 'u', null))
+    ON (c.oid = con.conindid AND con.contype IN ('p', 'u', null))
 LEFT JOIN
     pg_catalog.pg_inherits AS idx_inherits
     ON (c.oid = idx_inherits.inhrelid)
@@ -222,7 +226,7 @@ WHERE
     AND pg_constraint.contype = 'f'
     AND pg_constraint.conislocal;
 
--- name: GetFunctions :many
+-- name: GetProcs :many
 SELECT
     pg_proc.oid,
     pg_proc.proname::TEXT AS func_name,
@@ -238,12 +242,12 @@ INNER JOIN
     ON pg_proc.pronamespace = proc_namespace.oid
 INNER JOIN
     pg_catalog.pg_language AS proc_lang
-    ON proc_lang.oid = pg_proc.prolang
+    ON pg_proc.prolang = proc_lang.oid
 WHERE
     proc_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND proc_namespace.nspname !~ '^pg_toast'
     AND proc_namespace.nspname !~ '^pg_temp'
-    AND pg_proc.prokind = 'f'
+    AND pg_proc.prokind = $1
     -- Exclude functions belonging to extensions
     AND NOT EXISTS (
         SELECT depend.objid
@@ -358,7 +362,7 @@ SELECT
 FROM pg_catalog.pg_namespace AS extension_namespace
 INNER JOIN
     pg_catalog.pg_extension AS ext
-    ON ext.extnamespace = extension_namespace.oid
+    ON extension_namespace.oid = ext.extnamespace
 WHERE
     extension_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND extension_namespace.nspname !~ '^pg_toast'
@@ -370,14 +374,18 @@ SELECT
     pg_type.typname::TEXT AS enum_name,
     type_namespace.nspname::TEXT AS enum_schema_name,
     (
-        SELECT ARRAY_AGG(pg_enum.enumlabel ORDER BY pg_enum.enumsortorder)
+        SELECT
+            ARRAY_AGG(
+                pg_enum.enumlabel
+                ORDER BY pg_enum.enumsortorder
+            )
         FROM pg_catalog.pg_enum
         WHERE pg_enum.enumtypid = pg_type.oid
     )::TEXT [] AS enum_labels
 FROM pg_catalog.pg_type AS pg_type
 INNER JOIN
     pg_catalog.pg_namespace AS type_namespace
-    ON type_namespace.oid = pg_type.typnamespace
+    ON pg_type.typnamespace = type_namespace.oid
 WHERE
     pg_type.typtype = 'e'
     AND type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
@@ -414,7 +422,7 @@ SELECT
     table_namespace.nspname::TEXT AS owning_table_schema_name,
     pol.polpermissive AS is_permissive,
     (
-        SELECT ARRAY_AGG(rolname)
+        SELECT ARRAY_AGG(roles.rolname)
         FROM roles
         WHERE roles.oid = ANY(pol.polroles)
     )::TEXT [] AS applies_to,
