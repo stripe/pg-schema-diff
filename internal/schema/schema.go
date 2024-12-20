@@ -228,8 +228,11 @@ type (
 		//   ''::text
 		//   CURRENT_TIMESTAMP
 		// If empty, indicates that there is no default value.
-		Default    string
-		IsNullable bool
+		Default string
+		// If the column is generated, this will be a SQL string representing the generated expression.
+		// If empty, indicates that there is no default value.
+		GeneratedExpr string
+		IsNullable    bool
 		// Size is the number of bytes required to store the value.
 		// It is used for data-packing purposes
 		Size     int
@@ -878,6 +881,13 @@ func (s *schemaFetcher) buildTable(
 			}
 		}
 
+		defaultExpr := column.AttrDef
+		generatedExpr := ""
+		if column.IsGenerated {
+			defaultExpr = ""
+			generatedExpr = column.AttrDef
+		}
+
 		columns = append(columns, Column{
 			Name:       column.ColumnName,
 			Type:       column.ColumnType,
@@ -888,9 +898,10 @@ func (s *schemaFetcher) buildTable(
 			//   ''::text
 			//   CURRENT_TIMESTAMP
 			// If empty, indicates that there is no default value.
-			Default:  column.DefaultValue,
-			Size:     int(column.ColumnSize),
-			Identity: identity,
+			Default:       defaultExpr,
+			GeneratedExpr: generatedExpr,
+			Size:          int(column.ColumnSize),
+			Identity:      identity,
 		})
 	}
 

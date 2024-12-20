@@ -119,8 +119,9 @@ SELECT
     COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
     COALESCE(
         pg_catalog.pg_get_expr(d.adbin, d.adrelid), ''
-    )::TEXT AS default_value,
+    )::TEXT AS attr_def,
     a.attnotnull AS is_not_null,
+    a.attgenerated = 's' AS is_generated,
     a.attlen AS column_size,
     a.attidentity::TEXT AS identity_type,
     identity_col_seq.seqstart AS start_value,
@@ -154,8 +155,9 @@ type GetColumnsForTableRow struct {
 	ColumnName          string
 	CollationName       string
 	CollationSchemaName string
-	DefaultValue        string
+	AttrDef             string
 	IsNotNull           bool
+	IsGenerated         bool
 	ColumnSize          int16
 	IdentityType        string
 	StartValue          sql.NullInt64
@@ -180,8 +182,9 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) 
 			&i.ColumnName,
 			&i.CollationName,
 			&i.CollationSchemaName,
-			&i.DefaultValue,
+			&i.AttrDef,
 			&i.IsNotNull,
+			&i.IsGenerated,
 			&i.ColumnSize,
 			&i.IdentityType,
 			&i.StartValue,

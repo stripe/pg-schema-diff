@@ -76,16 +76,27 @@ WITH identity_col_seq AS (
             depend.refobjid = owner_attr.attrelid
             AND depend.refobjsubid = owner_attr.attnum
     WHERE owner_attr.attidentity != ''
+), dep_column AS (
+    SELECT
+        a.attrelid as src_relid,
+        a.attnum as src_attnum,
+        dep_a.attname as tgt_name
+    FROM pg_catalog.pg_attribute AS a
+             JOIN pg_catalog.pg_depend dep ON dep.objid = a.attrelid AND dep.objsubid = a.attnum AND dep.classid = 'pg_class'::REGCLASS
+             JOIN pg_catalog.pg_attribute dep_a ON dep.refobjid = dep_a.attrelid AND dep.refobjsubid = dep_a.attnum
 )
-
 SELECT
     a.attname::TEXT AS column_name,
     COALESCE(coll.collname, '')::TEXT AS collation_name,
     COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
     COALESCE(
         pg_catalog.pg_get_expr(d.adbin, d.adrelid), ''
-    )::TEXT AS default_value,
+    )::TEXT AS attr_def,
     a.attnotnull AS is_not_null,
+    a.attgenerated = 's' AS is_generated,
+    (
+        SELECT ARRAY_AGG(dep_column.tgt_name) FROM dep_column WHERE a.attrelid = dep_column.src_relid AND a.attnum = dep_column.src_attnum
+    )::TEXT [] AS dep_column_names,
     a.attlen AS column_size,
     a.attidentity::TEXT AS identity_type,
     identity_col_seq.seqstart AS start_value,
