@@ -35,7 +35,7 @@ func databaseSchemaSourcePlan(ctx context.Context, connPool sqldb.Queryable, tem
 		opts = append(opts, diff.WithGetSchemaOpts(o))
 	}
 
-	return diff.Generate(ctx, connPool, diff.DBSchemaSource(newSchemaDb.ConnPool), opts...)
+	return diff.Generate(ctx, diff.DBSchemaSource(connPool), diff.DBSchemaSource(newSchemaDb.ConnPool), opts...)
 }
 
 func dirSchemaSourcePlanFactory(schemaDirs []string) planFactory {
@@ -53,7 +53,9 @@ func dirSchemaSourcePlanFactory(schemaDirs []string) planFactory {
 			return diff.Plan{}, fmt.Errorf("creating schema source: %w", err)
 		}
 
-		return diff.Generate(ctx, connPool, schemaSource, opts...)
+		connSource := diff.DBSchemaSource(connPool)
+
+		return diff.Generate(ctx, connSource, schemaSource, opts...)
 	}
 }
 
@@ -65,7 +67,7 @@ var databaseSchemaSourceTestCases = []acceptanceTestCase{
 		oldSchemaDDL: []string{
 			`
             CREATE TABLE fizz();
-        
+
             CREATE TABLE foobar(
                 id INT,
                 bar SERIAL NOT NULL,
@@ -134,7 +136,7 @@ var databaseSchemaSourceTestCases = []acceptanceTestCase{
             CREATE INDEX bar_normal_idx ON bar(bar);
             CREATE INDEX bar_another_normal_id ON bar(bar, fizz);
             CREATE UNIQUE INDEX bar_unique_idx on bar(fizz, buzz);
-            
+
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{

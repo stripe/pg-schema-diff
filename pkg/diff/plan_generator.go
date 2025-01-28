@@ -106,20 +106,22 @@ func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
 // newDDL:  		DDL encoding the new schema
 // opts:  			Additional options to configure the plan generation
 func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempdbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
-	return Generate(ctx, queryable, DDLSchemaSource(newDDL), append(opts, WithTempDbFactory(tempdbFactory), WithIncludeSchemas("public"))...)
+
+	schemaSource := DBSchemaSource(queryable)
+
+	return Generate(ctx, schemaSource, DDLSchemaSource(newDDL), append(opts, WithTempDbFactory(tempdbFactory), WithIncludeSchemas("public"))...)
 }
 
 // Generate generates a migration plan to migrate the database to the target schema
 //
 // Parameters:
-// fromDB:			The target database to generate the diff for. It is recommended to pass in *sql.DB of the db you
-// wish to migrate. If using a connection pool, it is RECOMMENDED to set a maximum number of connections.
+// fromSchema:		The target schema to generate the diff for.
 // targetSchema:	The (source of the) schema you want to migrate the database to. Use DDLSchemaSource if the new
 // schema is encoded in DDL.
 // opts: 			Additional options to configure the plan generation
 func Generate(
 	ctx context.Context,
-	fromDB sqldb.Queryable,
+	fromSchema SchemaSource,
 	targetSchema SchemaSource,
 	opts ...PlanOpt,
 ) (Plan, error) {
@@ -132,7 +134,11 @@ func Generate(
 		opt(planOptions)
 	}
 
-	currentSchema, err := schema.GetSchema(ctx, fromDB, planOptions.getSchemaOpts...)
+	currentSchema, err := fromSchema.GetSchema(ctx, schemaSourcePlanDeps{
+		tempDBFactory: planOptions.tempDbFactory,
+		logger:        planOptions.logger,
+		getSchemaOpts: planOptions.getSchemaOpts,
+	})
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting current schema: %w", err)
 	}
