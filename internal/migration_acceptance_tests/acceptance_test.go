@@ -96,7 +96,10 @@ func (suite *acceptanceTestSuite) runTest(tc acceptanceTestCase) {
 	}
 	if tc.planFactory == nil {
 		tc.planFactory = func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error) {
-			return diff.Generate(ctx, connPool, diff.DDLSchemaSource(newSchemaDDL),
+
+			connSource := diff.DBSchemaSource(connPool)
+
+			return diff.Generate(ctx, connSource, diff.DDLSchemaSource(newSchemaDDL),
 				append(tc.planOpts,
 					diff.WithTempDbFactory(tempDbFactory),
 				)...)

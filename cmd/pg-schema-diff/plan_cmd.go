@@ -410,7 +410,9 @@ func generatePlan(ctx context.Context, logger log.Logger, connConfig *pgx.ConnCo
 		defer schemaSourceCloser.Close()
 	}
 
-	plan, err := diff.Generate(ctx, connPool, schemaSource,
+	connSource := diff.DBSchemaSource(connPool)
+
+	plan, err := diff.Generate(ctx, connSource, schemaSource,
 		append(
 			planConfig.opts,
 			diff.WithTempDbFactory(tempDbFactory),
