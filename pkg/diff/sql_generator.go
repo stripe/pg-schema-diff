@@ -1074,6 +1074,13 @@ func (t *tableSQLVertexGenerator) GetAddAlterDependencies(table, _ schema.Table)
 			mustRun(t.GetSQLVertexId(table, diffTypeAddAlter)).after(buildTableVertexId(*table.ParentTable, diffTypeAddAlter)),
 		)
 	}
+
+	for _, col := range table.Columns {
+		for _, depFunction := range col.DependsOnFunctions {
+			deps = append(deps, mustRun(t.GetSQLVertexId(table, diffTypeDelete)).after(buildFunctionVertexId(depFunction, diffTypeDelete)))
+		}
+	}
+
 	return deps, nil
 }
 
@@ -1142,6 +1149,13 @@ func (t *tableSQLVertexGenerator) GetDeleteDependencies(table schema.Table) ([]d
 			mustRun(t.GetSQLVertexId(table, diffTypeDelete)).after(buildTableVertexId(*table.ParentTable, diffTypeDelete)),
 		)
 	}
+
+	for _, col := range table.Columns {
+		for _, depFunction := range col.DependsOnFunctions {
+			deps = append(deps, mustRun(t.GetSQLVertexId(table, diffTypeDelete)).before(buildFunctionVertexId(depFunction, diffTypeDelete)))
+		}
+	}
+
 	return deps, nil
 }
 
@@ -1407,13 +1421,26 @@ func buildColumnVertexId(columnName string, diffType diffType) sqlVertexId {
 }
 
 func (csg *columnSQLVertexGenerator) GetAddAlterDependencies(col, _ schema.Column) ([]dependency, error) {
-	return []dependency{
+
+	var deps []dependency = []dependency{
 		mustRun(csg.GetSQLVertexId(col, diffTypeDelete)).before(csg.GetSQLVertexId(col, diffTypeAddAlter)),
-	}, nil
+	}
+
+	for _, depFunction := range col.DependsOnFunctions {
+		deps = append(deps, mustRun(csg.GetSQLVertexId(col, diffTypeDelete)).after(buildFunctionVertexId(depFunction, diffTypeDelete)))
+	}
+
+	return deps, nil
+
 }
 
-func (csg *columnSQLVertexGenerator) GetDeleteDependencies(_ schema.Column) ([]dependency, error) {
-	return nil, nil
+func (csg *columnSQLVertexGenerator) GetDeleteDependencies(col schema.Column) ([]dependency, error) {
+
+	var deps []dependency
+	for _, depFunction := range col.DependsOnFunctions {
+		deps = append(deps, mustRun(csg.GetSQLVertexId(col, diffTypeDelete)).before(buildFunctionVertexId(depFunction, diffTypeDelete)))
+	}
+	return deps, nil
 }
 
 type renameConflictingIndexSQLVertexGenerator struct {
