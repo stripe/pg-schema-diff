@@ -51,7 +51,16 @@ WHERE
     table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND table_namespace.nspname !~ '^pg_toast'
     AND table_namespace.nspname !~ '^pg_temp'
-    AND (c.relkind = 'r' OR c.relkind = 'p');
+    AND (c.relkind = 'r' OR c.relkind = 'p')
+    -- Exclude tables owned by extensions
+    AND NOT EXISTS (
+        SELECT depend.objid
+        FROM pg_catalog.pg_depend AS depend
+        WHERE
+            depend.classid = 'pg_class'::REGCLASS
+            AND depend.objid = c.oid
+            AND depend.deptype = 'e'
+    );
 
 -- name: GetColumnsForTable :many
 WITH identity_col_seq AS (
@@ -164,7 +173,16 @@ WHERE
     table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND table_namespace.nspname !~ '^pg_toast'
     AND table_namespace.nspname !~ '^pg_temp'
-    AND (c.relkind = 'i' OR c.relkind = 'I');
+    AND (c.relkind = 'i' OR c.relkind = 'I')
+    -- Exclude indexes of tables's  extensions
+    AND NOT EXISTS (
+        SELECT depend.objid
+        FROM pg_catalog.pg_depend AS depend
+        WHERE
+            depend.classid = 'pg_class'::REGCLASS
+            AND depend.objid = table_c.oid
+            AND depend.deptype = 'e'
+    );
 
 -- name: GetCheckConstraints :many
 SELECT

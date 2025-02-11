@@ -494,6 +494,15 @@ WHERE
     AND table_namespace.nspname !~ '^pg_toast'
     AND table_namespace.nspname !~ '^pg_temp'
     AND (c.relkind = 'i' OR c.relkind = 'I')
+    -- Exclude indexes of tables's  extensions
+    AND NOT EXISTS (
+        SELECT depend.objid
+        FROM pg_catalog.pg_depend AS depend
+        WHERE
+            depend.classid = 'pg_class'::REGCLASS
+            AND depend.objid = table_c.oid
+            AND depend.deptype = 'e'
+    )
 `
 
 type GetIndexesRow struct {
@@ -901,6 +910,15 @@ WHERE
     AND table_namespace.nspname !~ '^pg_toast'
     AND table_namespace.nspname !~ '^pg_temp'
     AND (c.relkind = 'r' OR c.relkind = 'p')
+    -- Exclude tables owned by extensions
+    AND NOT EXISTS (
+        SELECT depend.objid
+        FROM pg_catalog.pg_depend AS depend
+        WHERE
+            depend.classid = 'pg_class'::REGCLASS
+            AND depend.objid = c.oid
+            AND depend.deptype = 'e'
+    )
 `
 
 type GetTablesRow struct {
