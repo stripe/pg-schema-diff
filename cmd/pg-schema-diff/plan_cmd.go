@@ -94,6 +94,8 @@ type (
 		lockTimeoutModifiers      []string
 		insertStatements          []string
 		outputFormat              outputFormat
+
+		templateDb string
 	}
 
 	timeoutModifier struct {
@@ -117,6 +119,8 @@ type (
 		statementTimeoutModifiers []timeoutModifier
 		lockTimeoutModifiers      []timeoutModifier
 		insertStatements          []insertStatement
+
+		templateDb string
 	}
 )
 
@@ -172,6 +176,13 @@ func createPlanFlags(cmd *cobra.Command) *planFlags {
 	)
 
 	cmd.Flags().Var(&flags.outputFormat, "output-format", "Change the output format for what is printed. Defaults to pretty-printed human-readable output. (options: pretty, json)")
+
+	cmd.Flags().StringVar(
+		&flags.templateDb,
+		"template-db",
+		"template0",
+		"Template database to use when creating temporary databases (default 'template0')",
+	)
 
 	return flags
 }
@@ -250,6 +261,7 @@ func parsePlanConfig(p planFlags) (planConfig, error) {
 		statementTimeoutModifiers: statementTimeoutModifiers,
 		lockTimeoutModifiers:      lockTimeoutModifiers,
 		insertStatements:          insertStatements,
+		templateDb:                p.templateDb,
 	}, nil
 }
 
@@ -384,7 +396,7 @@ func generatePlan(ctx context.Context, logger log.Logger, connConfig *pgx.ConnCo
 		copiedConfig := connConfig.Copy()
 		copiedConfig.Database = dbName
 		return openDbWithPgxConfig(copiedConfig)
-	}, tempdb.WithRootDatabase(connConfig.Database))
+	}, tempdb.WithRootDatabase(connConfig.Database), tempdb.WithTemplateDatabase(planConfig.templateDb))
 	if err != nil {
 		return diff.Plan{}, err
 	}
