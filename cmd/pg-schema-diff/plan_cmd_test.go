@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,11 +33,11 @@ func TestParseTimeoutModifierStr(t *testing.T) {
 		},
 		{
 			opt:                 "timeout=15m",
-			expectedErrContains: "could not find key",
+			expectedErrContains: "could not find key", // "pattern" missing
 		},
 		{
 			opt:                 `pattern="some pattern"`,
-			expectedErrContains: "could not find key",
+			expectedErrContains: "could not find key", // "timeout" missing
 		},
 		{
 			opt:                 `pattern="normal" timeout=5m some-unknown-key=5m`,
@@ -80,19 +81,19 @@ func TestParseInsertStatementStr(t *testing.T) {
 		},
 		{
 			opt:                 "statement=no-index timeout=5m6s lock_timeout=1m11s",
-			expectedErrContains: "could not find key",
+			expectedErrContains: "could not find key", // "index" missing
 		},
 		{
 			opt:                 "index=0 timeout=5m6s lock_timeout=1m11s",
-			expectedErrContains: "could not find key",
+			expectedErrContains: "could not find key", // "statement" missing
 		},
 		{
 			opt:                 "index=0 statement=no-timeout lock_timeout=1m11s",
-			expectedErrContains: "could not find key",
+			expectedErrContains: "could not find key", // "timeout" missing
 		},
 		{
 			opt:                 "index=0 statement=no-lock-timeout-timeout timeout=5m6s",
-			expectedErrContains: "could not find key",
+			expectedErrContains: "could not find key", // "lock_timeout" missing
 		},
 		{
 			opt:                 "index=not-an-int statement=some-statement timeout=5m6s lock_timeout=1m11s",
@@ -117,4 +118,35 @@ func TestParseInsertStatementStr(t *testing.T) {
 			assert.Equal(t, tc.expectedInsertStmt, insertStatement)
 		})
 	}
+}
+
+func TestPlanFlagsTemplateDBDefault(t *testing.T) {
+	cmd := &cobra.Command{}
+	flags := createPlanFlags(cmd)
+
+	err := cmd.ParseFlags([]string{
+		"--schema-dir=/no/such/dir",
+	})
+	require.NoError(t, err)
+
+	planCfg, err := parsePlanConfig(*flags)
+	require.NoError(t, err, "parsePlanConfig should not fail with a dummy --schema-dir")
+
+	assert.Equal(t, "template0", planCfg.templateDb)
+}
+
+func TestPlanFlagsTemplateDBOverride(t *testing.T) {
+	cmd := &cobra.Command{}
+	flags := createPlanFlags(cmd)
+
+	err := cmd.ParseFlags([]string{
+		"--template-db=template1",
+		"--schema-dir=/no/such/dir",
+	})
+	require.NoError(t, err)
+
+	planCfg, err := parsePlanConfig(*flags)
+	require.NoError(t, err, "parsePlanConfig should not fail with dummy --schema-dir")
+
+	assert.Equal(t, "template1", planCfg.templateDb)
 }

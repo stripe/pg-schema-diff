@@ -215,3 +215,114 @@ func (suite *onInstanceTempDbFactorySuite) TestDropTempDB_CannotDropNonTempDb() 
 func TestOnInstanceFactorySuite(t *testing.T) {
 	suite.Run(t, new(onInstanceTempDbFactorySuite))
 }
+
+func (suite *onInstanceTempDbFactorySuite) TestCreate_UnknownTemplateDatabase() {
+	rootDbName := "some_other_root"
+	rootDb, err := suite.engine.CreateDatabaseWithName(rootDbName)
+	suite.Require().NoError(err, "failed to create the root DB")
+	suite.T().Cleanup(func() {
+		suite.Require().NoError(rootDb.DropDB())
+	})
+
+	factory := suite.mustBuildFactory(
+		WithRootDatabase(rootDbName),
+		WithTemplateDatabase("non_existent_template_db"),
+	)
+	defer func() {
+		suite.Require().NoError(factory.Close())
+	}()
+
+	_, err = factory.Create(context.Background())
+	suite.ErrorContains(
+		err,
+		"template database \"non_existent_template_db\" does not exist",
+		"Expected an error about non-existent template DB",
+	)
+}
+
+func (suite *onInstanceTempDbFactorySuite) TestCreate_UsesCustomTemplateDatabase() {
+	// 1) Create the template DB
+	templateDbName := "mytemplatedb"
+	templateDb, err := suite.engine.CreateDatabaseWithName(templateDbName)
+	suite.Require().NoError(err, "failed to create the custom template database")
+
+	// 2) Connect to it and create a table, then close all connections
+	templateDbPool, err := suite.getConnPoolForDb(templateDbName)
+	suite.Require().NoError(err, "could not get conn pool for template DB")
+
+	conn, err := templateDbPool.Conn(context.Background())
+	suite.Require().NoError(err, "could not get a connection from template DB pool")
+
+	_, err = conn.ExecContext(context.Background(), `
+        CREATE TABLE template_table (
+            id SERIAL PRIMARY KEY,
+            name TEXT
+        );
+    `)
+	suite.Require().NoError(err, "failed to create table in template DB")
+
+	suite.NoError(conn.Close())
+	suite.NoError(templateDbPool.Close())
+
+	// 3) Terminate any lingering sessions on "mytemplatedb"
+	rootConnPool, err := suite.getConnPoolForDb("postgres")
+	suite.Require().NoError(err, "failed to get conn pool for 'postgres'")
+
+	rootConn, err := rootConnPool.Conn(context.Background())
+	suite.Require().NoError(err, "failed to get root connection")
+
+	_, err = rootConn.ExecContext(context.Background(), `
+        SELECT pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = $1
+          AND pid <> pg_backend_pid()
+    `, templateDbName)
+	suite.Require().NoError(err, "failed to terminate leftover connections to the template DB")
+
+	suite.NoError(rootConn.Close())
+	suite.NoError(rootConnPool.Close())
+
+	// 4) Create the "root" DB for CREATE DATABASE statements
+	rootDbName := "mytemplate_root"
+	rootDb, err := suite.engine.CreateDatabaseWithName(rootDbName)
+	suite.Require().NoError(err, "failed to create the root DB for create statements")
+
+	suite.T().Cleanup(func() {
+		suite.NoError(rootDb.DropDB())
+		suite.NoError(templateDb.DropDB())
+	})
+
+	// 5) Build the factory that uses our template DB
+	factory := suite.mustBuildFactory(
+		WithRootDatabase(rootDbName),
+		WithTemplateDatabase(templateDbName),
+	)
+
+	defer func() {
+		suite.Require().NoError(factory.Close())
+	}()
+
+	// 6) Create a new DB from our template
+	newDb, err := factory.Create(context.Background())
+	suite.Require().NoError(err, "should create a DB from mytemplatedb without error")
+
+	// 7) Verify the table is inherited in the newly created DB
+	newConn, err := newDb.ConnPool.Conn(context.Background())
+	suite.Require().NoError(err, "could not get conn from newly created DB pool")
+
+	var count int
+	err = newConn.QueryRowContext(context.Background(), `
+        SELECT count(*)
+        FROM pg_class c
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE c.relkind = 'r'
+          AND c.relname = 'template_table'
+          AND n.nspname = 'public';
+    `).Scan(&count)
+
+	suite.Require().NoError(err, "failed to check existence of 'template_table'")
+	suite.Equal(1, count, "expected 'template_table' to exist in the new DB")
+
+	suite.NoError(newConn.Close())
+	suite.NoError(newDb.Close(context.Background()))
+}

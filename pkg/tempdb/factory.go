@@ -22,6 +22,7 @@ const (
 	DefaultOnInstanceMetadataSchema = "pgschemadiff_tmp_metadata"
 	DefaultOnInstanceMetadataTable  = "metadata"
 
+	DefaultTemplateDatabase = "template0"
 	DefaultStatementTimeout = 3 * time.Second
 )
 
@@ -57,11 +58,12 @@ type (
 )
 type (
 	onInstanceFactoryOptions struct {
-		dbPrefix       string
-		metadataSchema string
-		metadataTable  string
-		logger         log.Logger
-		rootDatabase   string
+		dbPrefix         string
+		metadataSchema   string
+		metadataTable    string
+		logger           log.Logger
+		rootDatabase     string
+		templateDatabase string
 	}
 
 	OnInstanceFactoryOpt func(*onInstanceFactoryOptions)
@@ -102,6 +104,13 @@ func WithRootDatabase(db string) OnInstanceFactoryOpt {
 	}
 }
 
+// WithTemplateDatabase sets the template DB that CREATE DATABASE will use.
+func WithTemplateDatabase(templateDB string) OnInstanceFactoryOpt {
+	return func(opts *onInstanceFactoryOptions) {
+		opts.templateDatabase = templateDB
+	}
+}
+
 type (
 	CreateConnPoolForDbFn func(ctx context.Context, dbName string) (*sql.DB, error)
 
@@ -126,11 +135,12 @@ type (
 // when the temporary database was created, e.g., to create a TTL
 func NewOnInstanceFactory(ctx context.Context, createConnPoolForDb CreateConnPoolForDbFn, opts ...OnInstanceFactoryOpt) (_ Factory, _retErr error) {
 	options := onInstanceFactoryOptions{
-		dbPrefix:       DefaultOnInstanceDbPrefix,
-		metadataSchema: DefaultOnInstanceMetadataSchema,
-		metadataTable:  DefaultOnInstanceMetadataTable,
-		rootDatabase:   "postgres",
-		logger:         log.SimpleLogger(),
+		dbPrefix:         DefaultOnInstanceDbPrefix,
+		metadataSchema:   DefaultOnInstanceMetadataSchema,
+		metadataTable:    DefaultOnInstanceMetadataTable,
+		rootDatabase:     "postgres",
+		logger:           log.SimpleLogger(),
+		templateDatabase: DefaultTemplateDatabase,
 	}
 	for _, opt := range opts {
 		opt(&options)
@@ -175,8 +185,15 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 	defer rootConn.Close()
 
 	tempDbName := o.options.dbPrefix + strings.ReplaceAll(dbUUID.String(), "-", "_")
+
+	createDbSql := fmt.Sprintf(
+		"CREATE DATABASE %s TEMPLATE %s;",
+		tempDbName,
+		pgx.Identifier{o.options.templateDatabase}.Sanitize(),
+	)
+
 	// Create the temporary database using template0, the default Postgres template with no user-defined objects.
-	if _, err = rootConn.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE template0;", tempDbName)); err != nil {
+	if _, err = rootConn.ExecContext(ctx, createDbSql); err != nil {
 		return nil, fmt.Errorf("creating temporary database: %w", err)
 	}
 	defer util.DoOnErrOrPanic(&_retErr, func() {
