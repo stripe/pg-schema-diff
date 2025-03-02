@@ -181,7 +181,7 @@ func createPlanFlags(cmd *cobra.Command) *planFlags {
 		&flags.templateDb,
 		"template-db",
 		"template0",
-		"Template database to use when creating temporary databases (default 'template0')",
+		"Template database to use when creating temporary databases",
 	)
 
 	return flags
