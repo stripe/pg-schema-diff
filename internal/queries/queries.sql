@@ -78,7 +78,7 @@ WITH identity_col_seq AS (
     WHERE owner_attr.attidentity != ''
 ),
 
-dep_column AS (
+dep_on_column AS (
     SELECT
         a.attrelid AS src_relid,
         a.attnum AS src_attnum,
@@ -104,12 +104,12 @@ SELECT
     )::TEXT AS attr_def,
     a.attnotnull AS is_not_null,
     (
-        SELECT ARRAY_AGG(dep_column.tgt_name)
-        FROM dep_column
+        SELECT ARRAY_AGG(dep_on_column.tgt_name)
+        FROM dep_on_column
         WHERE
-            a.attrelid = dep_column.src_relid
-            AND a.attnum = dep_column.src_attnum
-    )::TEXT [] AS dep_column_names,
+            a.attrelid = dep_on_column.src_relid
+            AND a.attnum = dep_on_column.src_attnum
+    )::TEXT [] AS dep_on_column_names,
     a.attlen AS column_size,
     a.attidentity::TEXT AS identity_type,
     identity_col_seq.seqstart AS start_value,
