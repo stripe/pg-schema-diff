@@ -20,8 +20,9 @@ func buildApplyCmd() *cobra.Command {
 		Short: "Migrate your database to the match the inputted schema (apply the schema to the database)",
 	}
 
-	connFlags := createConnFlags(cmd)
-	planFlags := createPlanFlags(cmd)
+	connFlags := createConnectionFlags(cmd, "", " The database to migrate")
+	toSchemaFlags := createSchemaSourceFlags(cmd, "to-")
+	planOptsFlags := createPlanOptionsFlags(cmd)
 	allowedHazardsTypesStrs := cmd.Flags().StringSlice("allow-hazards", nil,
 		"Specify the hazards that are allowed. Order does not matter, and duplicates are ignored. If the"+
 			" migration plan contains unwanted hazards (hazards not in this list), then the migration will fail to run"+
@@ -29,19 +30,32 @@ func buildApplyCmd() *cobra.Command {
 	skipConfirmPrompt := cmd.Flags().Bool("skip-confirm-prompt", false, "Skips prompt asking for user to confirm before applying")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		logger := log.SimpleLogger()
-		connConfig, err := parseConnConfig(*connFlags, logger)
+
+		connConfig, err := parseConnectionFlags(connFlags)
+		if err != nil {
+			return err
+		}
+		fromSchema := dsnSchemaSource(connConfig)
+
+		toSchema, err := parseSchemaSource(*toSchemaFlags)
 		if err != nil {
 			return err
 		}
 
-		planConfig, err := parsePlanConfig(*planFlags)
+		planOptions, err := parsePlanOptions(*planOptsFlags)
 		if err != nil {
 			return err
 		}
 
 		cmd.SilenceUsage = true
 
-		plan, err := generatePlan(context.Background(), logger, connConfig, planConfig)
+		plan, err := generatePlan(context.Background(), generatePlanParameters{
+			fromSchema:       fromSchema,
+			toSchema:         toSchema,
+			tempDbConnConfig: connConfig,
+			planOptions:      planOptions,
+			logger:           logger,
+		})
 		if err != nil {
 			return err
 		} else if len(plan.Statements) == 0 {

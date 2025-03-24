@@ -1,5 +1,16 @@
 package util
 
+import "io"
+
+type noOpCloser struct{}
+
+func (noOpCloser) Close() error { return nil }
+
+// NoOpCloser returns a Closer that does nothing.
+func NoOpCloser() io.Closer {
+	return noOpCloser{}
+}
+
 // DoOnErrOrPanic calls f if the value of err is not nil or if the goroutine is
 // panicking. If there is a panic, it is rethrown.
 //

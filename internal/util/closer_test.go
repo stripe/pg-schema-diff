@@ -8,7 +8,11 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/util"
 )
 
-func Test_DoOnErrOrPanicIsCalledOnError(t *testing.T) {
+func TestNoOpCloser(t *testing.T) {
+	require.NoError(t, util.NoOpCloser().Close())
+}
+
+func TestDoOnErrOrPanicIsCalledOnError(t *testing.T) {
 	var err error
 	wasCalled := false
 	defer func() {
@@ -22,7 +26,7 @@ func Test_DoOnErrOrPanicIsCalledOnError(t *testing.T) {
 	return
 }
 
-func Test_DoOnErrOrPanicIsNotCalledOnNoError(t *testing.T) {
+func TestDoOnErrOrPanicIsNotCalledOnNoError(t *testing.T) {
 	var err error
 	wasCalled := false
 	defer func() {
@@ -35,7 +39,7 @@ func Test_DoOnErrOrPanicIsNotCalledOnNoError(t *testing.T) {
 	return
 }
 
-func Test_DoOnErrOrPanicIsCalledOnPanic(t *testing.T) {
+func TestDoOnErrOrPanicIsCalledOnPanic(t *testing.T) {
 	var err error
 	wasCalled := false
 	defer func() {
