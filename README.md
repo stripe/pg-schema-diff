@@ -110,7 +110,7 @@ echo "CREATE TABLE bar (id varchar(255), message TEXT NOT NULL);" > schema/bar.s
 Apply the schema to a fresh database. [The connection string spec can be found here](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
 Setting the `PGPASSWORD` env var will override any password set in the connection string and is recommended.
 ```bash
-pg-schema-diff apply --dsn "postgres://postgres:postgres@localhost:5432/postgres" --schema-dir schema 
+pg-schema-diff apply --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir schema 
 ```
 
 ## 2. Updating schema
@@ -121,7 +121,7 @@ echo "CREATE INDEX message_idx ON bar(message)" >> schema/bar.sql
 
 Apply the schema. Any hazards in the generated plan must be approved
 ```bash
-pg-schema-diff apply --dsn "postgres://postgres:postgres@localhost:5432/postgres" --schema-dir schema --allow-hazards INDEX_BUILD
+pg-schema-diff apply --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir schema --allow-hazards INDEX_BUILD
 ```
 
 # Using Library

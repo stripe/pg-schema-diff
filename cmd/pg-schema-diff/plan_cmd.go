@@ -40,6 +40,7 @@ func buildPlanCmd() *cobra.Command {
 
 	fromSchemaFlags := createSchemaSourceFlags(cmd, "from-")
 	toSchemaFlags := createSchemaSourceFlags(cmd, "to-")
+	tempDbConnFlags := createConnectionFlags(cmd, "temp-db-", "The temporary database to use for schema extraction. This is optional if diffing to/from a Postgres instance")
 	planOptsFlags := createPlanOptionsFlags(cmd)
 	outputFmt := outputFormatPretty
 	cmd.Flags().Var(
@@ -60,26 +61,27 @@ func buildPlanCmd() *cobra.Command {
 			return err
 		}
 
-		// A temporary database must be provided. Attempt to pull it from the from or to schema source.
-		var tempDbConnFlags *connectionFlags
-		if fromSchemaFlags.connFlags.dsn != "" {
-			tempDbConnFlags = fromSchemaFlags.connFlags
-		} else if toSchemaFlags.connFlags.dsn != "" {
-			tempDbConnFlags = toSchemaFlags.connFlags
-		} else {
-			// In the future, we may allow folks to plumb in a postgres binary that we start for them OR a separate
-			// flag that allows them to specify a temporary database DSN>
-			//
-			// Notably, a temporary database is NOT required if both databases are DSNs..., but inherently that means
-			// we can derive a tempdDbDsn (this case is never hit).
-			return fmt.Errorf("at least one database must be provided to generate a plan. either --%s or --%s must be set. Without a temporary Postgres database, pg-schema-diff cannot extract the schema from DDL", fromSchemaFlags.connFlags.dsnFlagName, toSchemaFlags.connFlags.dsn)
+		if !tempDbConnFlags.IsSet() {
+			// A temporary database must be provided. Attempt to pull it from the from or to schema source.
+			if fromSchemaFlags.connFlags.IsSet() {
+				tempDbConnFlags = fromSchemaFlags.connFlags
+			} else if toSchemaFlags.connFlags.IsSet() {
+				tempDbConnFlags = toSchemaFlags.connFlags
+			} else {
+				// In the future, we may allow folks to plumb in a postgres binary that we start for them OR a separate
+				// flag that allows them to specify a temporary database DSN>
+				//
+				// Notably, a temporary database is NOT required if both databases are DSNs..., but inherently that means
+				// we can derive a tempdDbDsn (this case is never hit).
+				return fmt.Errorf("at least one database must be provided to generate a plan. either --%s, --%s or --%s must be set. Without a temporary Postgres database, pg-schema-diff cannot extract the schema from DDL", tempDbConnFlags.dsnFlagName, fromSchemaFlags.connFlags.dsnFlagName, toSchemaFlags.connFlags.dsnFlagName)
+			}
 		}
 		tempDbConnConfig, err := parseConnectionFlags(tempDbConnFlags)
 		if err != nil {
 			return err
 		}
 
-		planOptions, err := parsePlanOptions(*planOptsFlags)
+		planOpts, err := parsePlanOptions(*planOptsFlags)
 		if err != nil {
 			return err
 		}
@@ -90,7 +92,7 @@ func buildPlanCmd() *cobra.Command {
 			fromSchema:       fromSchema,
 			toSchema:         toSchema,
 			tempDbConnConfig: tempDbConnConfig,
-			planOptions:      planOptions,
+			planOptions:      planOpts,
 			logger:           logger,
 		})
 		if err != nil {
@@ -234,13 +236,13 @@ func createPlanOptionsFlags(cmd *cobra.Command) *planOptionsFlags {
 func createSchemaSourceFlags(cmd *cobra.Command, prefix string) *schemaSourceFactoryFlags {
 	var p schemaSourceFactoryFlags
 
-	p.schemaDirFlagName = prefix + "schema-dir"
+	p.schemaDirFlagName = prefix + "dir"
 	cmd.Flags().StringArrayVar(&p.schemaDirs, p.schemaDirFlagName, nil, "Directory of .SQL files to use as the schema source (can be multiple).")
 	if err := cmd.MarkFlagDirname(p.schemaDirFlagName); err != nil {
 		panic(err)
 	}
 
-	p.connFlags = createConnectionFlags(cmd, prefix+"schema-", " The database to use as the schema source")
+	p.connFlags = createConnectionFlags(cmd, prefix, " The database to use as the schema source")
 
 	return &p
 }
@@ -258,7 +260,7 @@ func timeoutModifierFlagVar(cmd *cobra.Command, p *[]string, timeoutType string,
 }
 
 func parseSchemaSource(p schemaSourceFactoryFlags) (schemaSourceFactory, error) {
-	if len(p.schemaDirs) > 0 && p.connFlags.dsn != "" {
+	if len(p.schemaDirs) > 0 && p.connFlags.IsSet() {
 		return nil, fmt.Errorf("only one of --%s or --%s can be set", p.schemaDirFlagName, p.connFlags.dsnFlagName)
 	}
 
@@ -272,7 +274,7 @@ func parseSchemaSource(p schemaSourceFactoryFlags) (schemaSourceFactory, error) 
 		}, nil
 	}
 
-	if p.connFlags.dsn != "" {
+	if p.connFlags.IsSet() {
 		connConfig, err := parseConnectionFlags(p.connFlags)
 		if err != nil {
 			return nil, err

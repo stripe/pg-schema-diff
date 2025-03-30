@@ -20,7 +20,7 @@ func buildApplyCmd() *cobra.Command {
 		Short: "Migrate your database to the match the inputted schema (apply the schema to the database)",
 	}
 
-	connFlags := createConnectionFlags(cmd, "", " The database to migrate")
+	connFlags := createConnectionFlags(cmd, "from-", " The database to migrate")
 	toSchemaFlags := createSchemaSourceFlags(cmd, "to-")
 	planOptsFlags := createPlanOptionsFlags(cmd)
 	allowedHazardsTypesStrs := cmd.Flags().StringSlice("allow-hazards", nil,
