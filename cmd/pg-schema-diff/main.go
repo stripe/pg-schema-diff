@@ -6,21 +6,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:   "pg-schema-diff",
-	Short: "Diff two Postgres schemas and generate the SQL to get from one to the other",
-}
-
-func init() {
+func buildRootCmd() *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:   "pg-schema-diff",
+		Short: "Diff two Postgres schemas and generate the SQL to get from one to the other",
+	}
 	rootCmd.AddCommand(buildPlanCmd())
 	rootCmd.AddCommand(buildApplyCmd())
 	rootCmd.AddCommand(buildVersionCmd())
+	return rootCmd
 }
 
 func main() {
-	err := rootCmd.Execute()
-	if err != nil {
+	if err := buildRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
 }

@@ -73,7 +73,7 @@ func buildPlanCmd() *cobra.Command {
 				//
 				// Notably, a temporary database is NOT required if both databases are DSNs..., but inherently that means
 				// we can derive a tempdDbDsn (this case is never hit).
-				return fmt.Errorf("at least one database must be provided to generate a plan. either --%s, --%s or --%s must be set. Without a temporary Postgres database, pg-schema-diff cannot extract the schema from DDL", tempDbConnFlags.dsnFlagName, fromSchemaFlags.connFlags.dsnFlagName, toSchemaFlags.connFlags.dsnFlagName)
+				return fmt.Errorf("at least one Postgres server must be provided to generate a plan. either --%s, --%s or --%s must be set. Without a temporary Postgres database, pg-schema-diff cannot extract the schema from DDL", tempDbConnFlags.dsnFlagName, fromSchemaFlags.connFlags.dsnFlagName, toSchemaFlags.connFlags.dsnFlagName)
 			}
 		}
 		tempDbConnConfig, err := parseConnectionFlags(tempDbConnFlags)
@@ -88,7 +88,7 @@ func buildPlanCmd() *cobra.Command {
 
 		cmd.SilenceUsage = true
 
-		plan, err := generatePlan(context.Background(), generatePlanParameters{
+		plan, err := generatePlan(cmd.Context(), generatePlanParameters{
 			fromSchema:       fromSchema,
 			toSchema:         toSchema,
 			tempDbConnConfig: tempDbConnConfig,
@@ -99,7 +99,7 @@ func buildPlanCmd() *cobra.Command {
 			return err
 		}
 
-		fmt.Println(outputFmt.convertToOutputString(plan))
+		cmd.Println(outputFmt.convertToOutputString(plan))
 		return nil
 	}
 
@@ -260,29 +260,34 @@ func timeoutModifierFlagVar(cmd *cobra.Command, p *[]string, timeoutType string,
 }
 
 func parseSchemaSource(p schemaSourceFactoryFlags) (schemaSourceFactory, error) {
-	if len(p.schemaDirs) > 0 && p.connFlags.IsSet() {
-		return nil, fmt.Errorf("only one of --%s or --%s can be set", p.schemaDirFlagName, p.connFlags.dsnFlagName)
-	}
+	// Store result in a var instead of returning early to ensure only one option is set.
+	var ssf schemaSourceFactory
 
 	if len(p.schemaDirs) > 0 {
-		return func() (diff.SchemaSource, io.Closer, error) {
+		ssf = func() (diff.SchemaSource, io.Closer, error) {
 			schemaSource, err := diff.DirSchemaSource(p.schemaDirs)
 			if err != nil {
 				return nil, nil, err
 			}
 			return schemaSource, util.NoOpCloser(), nil
-		}, nil
+		}
 	}
 
 	if p.connFlags.IsSet() {
+		if ssf != nil {
+			return nil, fmt.Errorf("only one of --%s or --%s can be set", p.schemaDirFlagName, p.connFlags.dsnFlagName)
+		}
 		connConfig, err := parseConnectionFlags(p.connFlags)
 		if err != nil {
 			return nil, err
 		}
-		return dsnSchemaSource(connConfig), nil
+		ssf = dsnSchemaSource(connConfig)
 	}
 
-	return nil, fmt.Errorf("either --%s or --%s must be set", p.schemaDirFlagName, p.connFlags.dsnFlagName)
+	if ssf == nil {
+		return nil, fmt.Errorf("either --%s or --%s must be set", p.schemaDirFlagName, p.connFlags.dsnFlagName)
+	}
+	return ssf, nil
 }
 
 // dsnSchemaSource returns a schema source factory that connects to a database using the provided DSN.

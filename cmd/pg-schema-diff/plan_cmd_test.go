@@ -4,15 +4,108 @@ import (
 	"regexp"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestParseTimeoutModifierStr(t *testing.T) {
-	for _, tc := range []struct {
-		opt string `explicit:"always"`
+func (suite *cmdTestSuite) TestPlanCmd() {
+	type testCase struct {
+		name        string
+		args        []string
+		dynamicArgs []dArgGenerator
 
+		// outputContains is a list of substrings that are expected to be contained in the stdout output of the command.
+		outputContains []string
+		// expectErrContains is a list of substrings that are expected to be contained in the error returned by
+		// cmd.RunE. This is DISTINCT from stdErr.
+		expectErrContains []string
+	}
+	// Non-comprehensive set of tests for the plan command. Not totally comprehensive to avoid needing to avoid
+	// hindering developer velocity when updating the command.
+	for _, tc := range []testCase{
+		{
+			name: "from dsn to dsn",
+			dynamicArgs: []dArgGenerator{
+				tempDsnDArg(suite.pgEngine, "from-dsn", nil),
+				tempDsnDArg(suite.pgEngine, "to-dsn", []string{"CREATE TABLE foobar()"}),
+			},
+			outputContains: []string{"CREATE TABLE"},
+		},
+		{
+			name: "from dsn to dir",
+			dynamicArgs: []dArgGenerator{
+				tempDsnDArg(suite.pgEngine, "from-dsn", []string{""}),
+				tempSchemaDirDArg("to-dir", []string{"CREATE TABLE foobar()"}),
+			},
+			outputContains: []string{"CREATE TABLE"},
+		},
+		{
+			name: "from dir to dsn",
+			dynamicArgs: []dArgGenerator{
+				tempSchemaDirDArg("from-dir", nil),
+				tempDsnDArg(suite.pgEngine, "to-dsn", []string{"CREATE TABLE foobar()"}),
+			},
+			outputContains: []string{"CREATE TABLE"},
+		},
+		{
+			name: "from dir to dir",
+			dynamicArgs: []dArgGenerator{
+				tempSchemaDirDArg("from-dir", nil),
+				tempSchemaDirDArg("to-dir", []string{"CREATE TABLE foobar()"}),
+				tempDsnDArg(suite.pgEngine, "temp-db-dsn", []string{""}),
+			},
+			outputContains: []string{"CREATE TABLE"},
+		},
+		{
+			name: "from empty dsn to dir",
+			dynamicArgs: []dArgGenerator{
+				func(t *testing.T) []string {
+					db := tempDbWithSchema(t, suite.pgEngine, []string{""})
+					tempSetPqEnvVarsForDb(t, db)
+					return []string{"--from-empty-dsn"}
+				},
+				tempSchemaDirDArg("to-dir", []string{"CREATE TABLE foobar()"}),
+			},
+			outputContains: []string{"CREATE TABLE"},
+		},
+		{
+			name:              "no from schema provided",
+			args:              []string{"--to-dir", "some-other-dir"},
+			expectErrContains: []string{"must be set"},
+		},
+		{
+			name:              "no to schema provided",
+			args:              []string{"--from-dir", "some-other-dir"},
+			expectErrContains: []string{"must be set"},
+		},
+		{
+			name:              "two from schemas provided",
+			args:              []string{"--from-dir", "some-dir", "--from-dsn", "some-dsn", "--to-dir", "some-other-dir"},
+			expectErrContains: []string{"only one of"},
+		},
+		{
+			name:              "two to schemas provided",
+			args:              []string{"--from-dir", "some-dir", "--to-dir", "some-other-dir", "--to-dsn", "some-dsn"},
+			expectErrContains: []string{"only one of"},
+		},
+		{
+			name:              "no postgres server provided",
+			args:              []string{"--from-dir", "some-dir", "--to-dir", "some-other-dir"},
+			expectErrContains: []string{"at least one Postgres server"},
+		},
+	} {
+		suite.Run(tc.name, func() {
+			suite.runCmdWithAssertions(runCmdWithAssertionsParams{
+				args:              append([]string{"plan"}, tc.args...),
+				dynamicArgs:       tc.dynamicArgs,
+				outputContains:    tc.outputContains,
+				expectErrContains: tc.expectErrContains,
+			})
+		})
+	}
+}
+
+func (suite *cmdTestSuite) TestParseTimeoutModifierStr() {
+	for _, tc := range []struct {
+		opt                 string `explicit:"always"`
 		expected            timeoutModifier
 		expectedErrContains string
 	}{
@@ -51,19 +144,19 @@ func TestParseTimeoutModifierStr(t *testing.T) {
 			expectedErrContains: "pattern regex could not be compiled",
 		},
 	} {
-		t.Run(tc.opt, func(t *testing.T) {
+		suite.Run(tc.opt, func() {
 			modifier, err := parseTimeoutModifier(tc.opt)
 			if len(tc.expectedErrContains) > 0 {
-				assert.ErrorContains(t, err, tc.expectedErrContains)
+				suite.ErrorContains(err, tc.expectedErrContains)
 				return
 			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.expected, modifier)
+			suite.Require().NoError(err)
+			suite.Equal(tc.expected, modifier)
 		})
 	}
 }
 
-func TestParseInsertStatementStr(t *testing.T) {
+func (suite *cmdTestSuite) TestParseInsertStatementStr() {
 	for _, tc := range []struct {
 		opt                 string `explicit:"always"`
 		expectedInsertStmt  insertStatement
@@ -107,14 +200,14 @@ func TestParseInsertStatementStr(t *testing.T) {
 			expectedErrContains: "lock timeout duration could not be parsed",
 		},
 	} {
-		t.Run(tc.opt, func(t *testing.T) {
+		suite.Run(tc.opt, func() {
 			insertStatement, err := parseInsertStatementStr(tc.opt)
 			if len(tc.expectedErrContains) > 0 {
-				assert.ErrorContains(t, err, tc.expectedErrContains)
+				suite.ErrorContains(err, tc.expectedErrContains)
 				return
 			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.expectedInsertStmt, insertStatement)
+			suite.Require().NoError(err)
+			suite.Equal(tc.expectedInsertStmt, insertStatement)
 		})
 	}
 }
