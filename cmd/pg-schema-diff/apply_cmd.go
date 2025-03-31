@@ -20,8 +20,9 @@ func buildApplyCmd() *cobra.Command {
 		Short: "Migrate your database to the match the inputted schema (apply the schema to the database)",
 	}
 
-	connFlags := createConnFlags(cmd)
-	planFlags := createPlanFlags(cmd)
+	connFlags := createConnectionFlags(cmd, "from-", " The database to migrate")
+	toSchemaFlags := createSchemaSourceFlags(cmd, "to-")
+	planOptsFlags := createPlanOptionsFlags(cmd)
 	allowedHazardsTypesStrs := cmd.Flags().StringSlice("allow-hazards", nil,
 		"Specify the hazards that are allowed. Order does not matter, and duplicates are ignored. If the"+
 			" migration plan contains unwanted hazards (hazards not in this list), then the migration will fail to run"+
@@ -29,28 +30,41 @@ func buildApplyCmd() *cobra.Command {
 	skipConfirmPrompt := cmd.Flags().Bool("skip-confirm-prompt", false, "Skips prompt asking for user to confirm before applying")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		logger := log.SimpleLogger()
-		connConfig, err := parseConnConfig(*connFlags, logger)
+
+		connConfig, err := parseConnectionFlags(connFlags)
+		if err != nil {
+			return err
+		}
+		fromSchema := dsnSchemaSource(connConfig)
+
+		toSchema, err := parseSchemaSource(*toSchemaFlags)
 		if err != nil {
 			return err
 		}
 
-		planConfig, err := parsePlanConfig(*planFlags)
+		planOptions, err := parsePlanOptions(*planOptsFlags)
 		if err != nil {
 			return err
 		}
 
 		cmd.SilenceUsage = true
 
-		plan, err := generatePlan(context.Background(), logger, connConfig, planConfig)
+		plan, err := generatePlan(cmd.Context(), generatePlanParameters{
+			fromSchema:       fromSchema,
+			toSchema:         toSchema,
+			tempDbConnConfig: connConfig,
+			planOptions:      planOptions,
+			logger:           logger,
+		})
 		if err != nil {
 			return err
 		} else if len(plan.Statements) == 0 {
-			fmt.Println("Schema matches expected. No plan generated")
+			cmd.Println("Schema matches expected. No plan generated")
 			return nil
 		}
 
-		fmt.Println(header("Review plan"))
-		fmt.Print(planToPrettyS(plan), "\n\n")
+		cmd.Println(header("Review plan"))
+		cmd.Print(planToPrettyS(plan), "\n\n")
 
 		if err := failIfHazardsNotAllowed(plan, *allowedHazardsTypesStrs); err != nil {
 			return err
@@ -67,10 +81,10 @@ func buildApplyCmd() *cobra.Command {
 			}
 		}
 
-		if err := runPlan(context.Background(), connConfig, plan); err != nil {
+		if err := runPlan(cmd.Context(), cmd, connConfig, plan); err != nil {
 			return err
 		}
-		fmt.Println("Schema applied successfully")
+		cmd.Println("Schema applied successfully")
 		return nil
 	}
 
@@ -109,7 +123,7 @@ func failIfHazardsNotAllowed(plan diff.Plan, allowedHazardsTypesStrs []string) e
 	return nil
 }
 
-func runPlan(ctx context.Context, connConfig *pgx.ConnConfig, plan diff.Plan) error {
+func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig, plan diff.Plan) error {
 	connPool, err := openDbWithPgxConfig(connConfig)
 	if err != nil {
 		return err
@@ -129,8 +143,8 @@ func runPlan(ctx context.Context, connConfig *pgx.ConnConfig, plan diff.Plan) er
 	// must be executed within its own transaction block. Postgres will error if you try to set a TRANSACTION-level
 	// timeout for it. SESSION-level statement_timeouts are respected by `ADD INDEX CONCURRENTLY`
 	for i, stmt := range plan.Statements {
-		fmt.Println(header(fmt.Sprintf("Executing statement %d", getDisplayableStmtIdx(i))))
-		fmt.Printf("%s\n\n", statementToPrettyS(stmt))
+		cmd.Println(header(fmt.Sprintf("Executing statement %d", getDisplayableStmtIdx(i))))
+		cmd.Printf("%s\n\n", statementToPrettyS(stmt))
 		start := time.Now()
 		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
 			return fmt.Errorf("setting statement timeout: %w", err)
@@ -141,9 +155,9 @@ func runPlan(ctx context.Context, connConfig *pgx.ConnConfig, plan diff.Plan) er
 		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
 			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt, err)
 		}
-		fmt.Printf("Finished executing statement. Duration: %s\n", time.Since(start))
+		cmd.Printf("Finished executing statement. Duration: %s\n", time.Since(start))
 	}
-	fmt.Println(header("Complete"))
+	cmd.Println(header("Complete"))
 
 	return nil
 }

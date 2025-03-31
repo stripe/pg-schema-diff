@@ -18,7 +18,10 @@ import (
 type ConnectionOption string
 
 const (
+	ConnectionOptionHost     ConnectionOption = "host"
+	ConnectionOptionUser     ConnectionOption = "user"
 	ConnectionOptionDatabase ConnectionOption = "dbname"
+	ConnectionOptionPort     ConnectionOption = "port"
 )
 
 type ConnectionOptions map[ConnectionOption]string
@@ -190,9 +193,9 @@ func (e *Engine) testIfInstanceServingTraffic() error {
 func (e *Engine) GetPostgresDatabaseConnOpts() ConnectionOptions {
 	result := make(map[ConnectionOption]string)
 	result[ConnectionOptionDatabase] = "postgres"
-	result["host"] = e.sockPath
-	result["user"] = e.superuser
-	result["port"] = strconv.Itoa(defaultPort)
+	result[ConnectionOptionHost] = e.sockPath
+	result[ConnectionOptionUser] = e.superuser
+	result[ConnectionOptionPort] = strconv.Itoa(defaultPort)
 	result["sslmode"] = "disable"
 
 	return result

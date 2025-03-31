@@ -17,7 +17,7 @@ func buildVersionCmd() *cobra.Command {
 		if !ok {
 			return fmt.Errorf("build information not available")
 		}
-		fmt.Printf("version=%s\n", buildInfo.Main.Version)
+		cmd.Printf("version=%s\n", buildInfo.Main.Version)
 
 		return nil
 	}
