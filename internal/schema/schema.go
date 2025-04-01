@@ -234,6 +234,8 @@ type (
 		// It is used for data-packing purposes
 		Size     int
 		Identity *ColumnIdentity
+
+		DependsOnFunctions []SchemaQualifiedName
 	}
 )
 
@@ -878,6 +880,11 @@ func (s *schemaFetcher) buildTable(
 			}
 		}
 
+		dependsOnFunctions, _ := s.fetchDependsOnFunctions(ctx, "pg_attrdef", column.DefaultValueOid)
+		if err != nil {
+			return Table{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", column.DefaultValueOid, err)
+		}
+
 		columns = append(columns, Column{
 			Name:       column.ColumnName,
 			Type:       column.ColumnType,
@@ -888,9 +895,10 @@ func (s *schemaFetcher) buildTable(
 			//   ''::text
 			//   CURRENT_TIMESTAMP
 			// If empty, indicates that there is no default value.
-			Default:  column.DefaultValue,
-			Size:     int(column.ColumnSize),
-			Identity: identity,
+			Default:            column.DefaultValue,
+			Size:               int(column.ColumnSize),
+			Identity:           identity,
+			DependsOnFunctions: dependsOnFunctions,
 		})
 	}
 
@@ -905,6 +913,7 @@ func (s *schemaFetcher) buildTable(
 		SchemaName:  table.TableSchemaName,
 		EscapedName: EscapeIdentifier(table.TableName),
 	}
+
 	return Table{
 		SchemaQualifiedName: schemaQualifiedName,
 		Columns:             columns,
