@@ -1,4 +1,4 @@
-.PHONY: code_gen format go_lint go_lint_fix go_mod_tidy lint sqlc sql_lint sql_lint_fix vendor sql_whitespace_fix
+.PHONY: code_gen format go_lint go_lint_fix go_mod_tidy lint sqlc sql_lint sql_lint_fix vendor sql_whitespace_dry_run sql_whitespace_fix
 
 code_gen: go_mod_tidy sqlc
 
