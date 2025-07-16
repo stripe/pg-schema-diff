@@ -26,7 +26,7 @@ func buildApplyCmd() *cobra.Command {
 	allowedHazardsTypesStrs := cmd.Flags().StringSlice("allow-hazards", nil,
 		"Specify the hazards that are allowed. Order does not matter, and duplicates are ignored. If the"+
 			" migration plan contains unwanted hazards (hazards not in this list), then the migration will fail to run"+
-			" (example: --allowed-hazards DELETES_DATA,INDEX_BUILD)")
+			" (example: --allow-hazards DELETES_DATA,INDEX_BUILD)")
 	skipConfirmPrompt := cmd.Flags().Bool("skip-confirm-prompt", false, "Skips prompt asking for user to confirm before applying")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		logger := log.SimpleLogger()
