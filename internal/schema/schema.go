@@ -94,6 +94,15 @@ func (s Schema) Normalize() Schema {
 func normalizeTable(t Table) Table {
 	// Don't normalize columns order. their order is derived from the postgres catalogs
 	// (relevant to data packing)
+	var normColumns []Column
+	for _, c := range t.Columns {
+		c.DependsOnColumns = sortByKey(c.DependsOnColumns, func(s string) string {
+			return s
+		})
+		normColumns = append(normColumns, c)
+	}
+	t.Columns = normColumns
+
 	var normCheckConstraints []CheckConstraint
 	for _, checkConstraint := range sortSchemaObjectsByName(t.CheckConstraints) {
 		checkConstraint.DependsOnFunctions = sortSchemaObjectsByName(checkConstraint.DependsOnFunctions)
@@ -115,6 +124,7 @@ func normalizeTable(t Table) Table {
 		normPolicies = append(normPolicies, p)
 	}
 	t.Policies = normPolicies
+
 	return t
 }
 
@@ -228,8 +238,13 @@ type (
 		//   ''::text
 		//   CURRENT_TIMESTAMP
 		// If empty, indicates that there is no default value.
-		Default    string
-		IsNullable bool
+		Default string
+		// If the column is generated, this will be a SQL string representing the generated expression.
+		// If empty, indicates that there is no default value.
+		GeneratedExpr string
+		IsNullable    bool
+		// DependsOnColumns is a list of (unescaped) column names that this column depends on.
+		DependsOnColumns []string
 		// Size is the number of bytes required to store the value.
 		// It is used for data-packing purposes
 		Size     int
@@ -878,6 +893,13 @@ func (s *schemaFetcher) buildTable(
 			}
 		}
 
+		defaultExpr := column.AttrDef
+		generatedExpr := ""
+		if column.IsGenerated {
+			defaultExpr = ""
+			generatedExpr = column.AttrDef
+		}
+
 		columns = append(columns, Column{
 			Name:       column.ColumnName,
 			Type:       column.ColumnType,
@@ -888,9 +910,11 @@ func (s *schemaFetcher) buildTable(
 			//   ''::text
 			//   CURRENT_TIMESTAMP
 			// If empty, indicates that there is no default value.
-			Default:  column.DefaultValue,
-			Size:     int(column.ColumnSize),
-			Identity: identity,
+			Default:          defaultExpr,
+			GeneratedExpr:    generatedExpr,
+			DependsOnColumns: column.DepOnColumnNames,
+			Size:             int(column.ColumnSize),
+			Identity:         identity,
 		})
 	}
 

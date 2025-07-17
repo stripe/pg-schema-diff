@@ -85,6 +85,23 @@ WITH identity_col_seq AS (
             depend.refobjid = owner_attr.attrelid
             AND depend.refobjsubid = owner_attr.attnum
     WHERE owner_attr.attidentity != ''
+),
+
+dep_on_column AS (
+    SELECT
+        a.attrelid AS src_relid,
+        a.attnum AS src_attnum,
+        dep_a.attname AS tgt_name
+    FROM pg_catalog.pg_attribute AS a
+    INNER JOIN
+        pg_catalog.pg_depend AS dep
+        ON
+            a.attrelid = dep.objid
+            AND a.attnum = dep.objsubid
+            AND dep.classid = 'pg_class'::REGCLASS
+    INNER JOIN
+        pg_catalog.pg_attribute AS dep_a
+        ON dep.refobjid = dep_a.attrelid AND dep.refobjsubid = dep_a.attnum
 )
 
 SELECT
@@ -93,8 +110,15 @@ SELECT
     COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
     COALESCE(
         pg_catalog.pg_get_expr(d.adbin, d.adrelid), ''
-    )::TEXT AS default_value,
+    )::TEXT AS attr_def,
     a.attnotnull AS is_not_null,
+    (
+        SELECT ARRAY_AGG(dep_on_column.tgt_name)
+        FROM dep_on_column
+        WHERE
+            a.attrelid = dep_on_column.src_relid
+            AND a.attnum = dep_on_column.src_attnum
+    )::TEXT [] AS dep_on_column_names,
     a.attlen AS column_size,
     a.attidentity::TEXT AS identity_type,
     identity_col_seq.seqstart AS start_value,
@@ -103,6 +127,7 @@ SELECT
     identity_col_seq.seqmin AS min_value,
     identity_col_seq.seqcache AS cache_size,
     identity_col_seq.seqcycle AS is_cycle,
+    a.attgenerated = 's' AS is_generated,
     pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type
 FROM pg_catalog.pg_attribute AS a
 LEFT JOIN
