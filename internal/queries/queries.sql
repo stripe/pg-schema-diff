@@ -306,7 +306,8 @@ SELECT
     pg_catalog.pg_get_function_identity_arguments(
         pg_proc.oid
     ) AS func_identity_arguments,
-    pg_catalog.pg_get_triggerdef(trig.oid) AS trigger_def
+    pg_catalog.pg_get_triggerdef(trig.oid) AS trigger_def,
+    trig.tgconstraint != 0 AS is_constraint
 FROM pg_catalog.pg_trigger AS trig
 INNER JOIN pg_catalog.pg_class AS owning_c ON trig.tgrelid = owning_c.oid
 INNER JOIN
