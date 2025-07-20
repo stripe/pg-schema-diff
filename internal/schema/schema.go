@@ -432,6 +432,7 @@ type Trigger struct {
 	// GetTriggerDefStmt is the statement required to completely (re)create the trigger, as returned
 	// by pg_get_triggerdef
 	GetTriggerDefStmt GetTriggerDefStatement
+	IsConstraint      bool
 }
 
 func (t Trigger) GetName() string {
@@ -1278,6 +1279,7 @@ func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {
 			OwningTable:       buildNameFromUnescaped(rawTrigger.OwningTableName, rawTrigger.OwningTableSchemaName),
 			Function:          buildProcName(rawTrigger.FuncName, rawTrigger.FuncIdentityArguments, rawTrigger.FuncSchemaName),
 			GetTriggerDefStmt: GetTriggerDefStatement(rawTrigger.TriggerDef),
+			IsConstraint:      rawTrigger.IsConstraint,
 		})
 	}
 

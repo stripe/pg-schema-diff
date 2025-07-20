@@ -142,6 +142,14 @@ var (
 				-- Reference a function in a filtered out schema. The trigger should still be included.
 				EXECUTE PROCEDURE schema_filtered_1.increment_version();
 
+			CREATE CONSTRAINT TRIGGER some_constraint_trigger
+				AFTER UPDATE ON schema_2.foo
+				DEFERRABLE INITIALLY DEFERRED
+				FOR EACH ROW
+				WHEN (OLD.* IS DISTINCT FROM NEW.*)
+				-- Reference a function in a filtered out schema. The trigger should still be included.
+				EXECUTE PROCEDURE schema_filtered_1.increment_version();
+
 			CREATE PROCEDURE schema_2.some_insert_procedure(a INTEGER, b INTEGER)
 				LANGUAGE SQL
 				BEGIN ATOMIC
@@ -211,7 +219,7 @@ var (
 				TO PUBLIC
 				USING (version > 0);
 		`},
-			expectedHash: "500097cd4fa6f068",
+			expectedHash: "eb6b7f4b7427a1a7",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -457,6 +465,13 @@ var (
 						Function:          SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "schema_filtered_1"},
 						GetTriggerDefStmt: "CREATE TRIGGER some_trigger BEFORE UPDATE ON schema_2.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION schema_filtered_1.increment_version()",
 					},
+					{
+						EscapedName:       "\"some_constraint_trigger\"",
+						OwningTable:       SchemaQualifiedName{EscapedName: "\"foo\"", SchemaName: "schema_2"},
+						Function:          SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "schema_filtered_1"},
+						GetTriggerDefStmt: "CREATE CONSTRAINT TRIGGER some_constraint_trigger AFTER UPDATE ON schema_2.foo DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION schema_filtered_1.increment_version()",
+						IsConstraint:      true,
+					},
 				},
 			},
 		},
@@ -524,7 +539,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "38588fed86b25fd",
+			expectedHash: "3a3997bec3f1b981",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
