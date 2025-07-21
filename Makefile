@@ -1,4 +1,4 @@
-.PHONY: code_gen format go_lint go_lint_fix go_mod_tidy lint sqlc sql_lint sql_lint_fix vendor
+.PHONY: code_gen format go_lint go_lint_fix go_mod_tidy lint sqlc sql_lint sql_lint_fix vendor sql_whitespace_dry_run sql_whitespace_fix
 
 code_gen: go_mod_tidy sqlc
 
@@ -26,4 +26,10 @@ sql_lint_fix:
 
 vendor:
 	go mod vendor
+
+sql_whitespace_dry_run:
+	go run ./scripts/acceptance_test_sql_linter/main.go
+
+sql_whitespace_fix:
+	go run ./scripts/acceptance_test_sql_linter/main.go --fix
 
