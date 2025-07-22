@@ -2,6 +2,7 @@ package tempdb
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"io"
@@ -63,6 +64,7 @@ type (
 		logger         log.Logger
 		rootDatabase   string
 		dropTimeout    time.Duration
+		randReader     io.Reader
 	}
 
 	OnInstanceFactoryOpt func(*onInstanceFactoryOptions)
@@ -110,6 +112,13 @@ func WithDropTimeout(d time.Duration) OnInstanceFactoryOpt {
 	}
 }
 
+// WithRandReader seeds the random used to generate random SQL identifiers.
+func WithRandReader(randReader io.Reader) OnInstanceFactoryOpt {
+	return func(options *onInstanceFactoryOptions) {
+		options.randReader = randReader
+	}
+}
+
 type (
 	CreateConnPoolForDbFn func(ctx context.Context, dbName string) (*sql.DB, error)
 
@@ -140,6 +149,7 @@ func NewOnInstanceFactory(ctx context.Context, createConnPoolForDb CreateConnPoo
 		dropTimeout:    DefaultStatementTimeout,
 		rootDatabase:   "postgres",
 		logger:         log.SimpleLogger(),
+		randReader:     rand.Reader,
 	}
 	for _, opt := range opts {
 		opt(&options)

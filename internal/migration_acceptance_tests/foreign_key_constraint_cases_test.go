@@ -1,6 +1,10 @@
 package migration_acceptance_tests
 
-import "github.com/stripe/pg-schema-diff/pkg/diff"
+import (
+	"testing"
+
+	"github.com/stripe/pg-schema-diff/pkg/diff"
+)
 
 var foreignKeyConstraintCases = []acceptanceTestCase{
 	{
@@ -923,6 +927,6 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestForeignKeyConstraintTestCases() {
-	suite.runTestCases(foreignKeyConstraintCases)
+func TestForeignKeyConstraintTestCases(t *testing.T) {
+	runTestCases(t, foreignKeyConstraintCases)
 }

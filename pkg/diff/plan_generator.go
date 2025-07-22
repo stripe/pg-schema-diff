@@ -2,8 +2,10 @@ package diff
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -33,6 +35,7 @@ type (
 		logger                  log.Logger
 		validatePlan            bool
 		getSchemaOpts           []schema.GetSchemaOpt
+		randReader              io.Reader
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -93,6 +96,13 @@ func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
 	}
 }
 
+// WithRandReader seeds the random used to generate random SQL identifiers, e.g., temporary not-null check constraints.
+func WithRandReader(randReader io.Reader) PlanOpt {
+	return func(opts *planOptions) {
+		opts.randReader = randReader
+	}
+}
+
 // deprecated: GeneratePlan generates a migration plan to migrate the database to the target schema. This function only
 // diffs the public schemas.
 //
@@ -106,7 +116,6 @@ func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
 // newDDL:  		DDL encoding the new schema
 // opts:  			Additional options to configure the plan generation
 func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempdbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
-
 	schemaSource := DBSchemaSource(queryable)
 
 	return Generate(ctx, schemaSource, DDLSchemaSource(newDDL), append(opts, WithTempDbFactory(tempdbFactory), WithIncludeSchemas("public"))...)
@@ -129,6 +138,7 @@ func Generate(
 		validatePlan:            true,
 		ignoreChangesToColOrder: true,
 		logger:                  log.SimpleLogger(),
+		randReader:              rand.Reader,
 	}
 	for _, opt := range opts {
 		opt(planOptions)
@@ -196,7 +206,7 @@ func generateMigrationStatements(oldSchema, newSchema schema.Schema, planOptions
 		diff = removeChangesToColumnOrdering(diff)
 	}
 
-	statements, err := diff.resolveToSQL()
+	statements, err := newSchemaSQLGenerator(planOptions.randReader).Alter(diff)
 	if err != nil {
 		return nil, fmt.Errorf("generating migration statements: %w", err)
 	}

@@ -1,5 +1,7 @@
 package migration_acceptance_tests
 
+import "testing"
+
 var namedSchemaAcceptanceTestCases = []acceptanceTestCase{
 	{
 		name: "no op",
@@ -35,6 +37,6 @@ var namedSchemaAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestNamedSchemaTestCases() {
-	suite.runTestCases(namedSchemaAcceptanceTestCases)
+func TestNamedSchemaTestCases(t *testing.T) {
+	runTestCases(t, namedSchemaAcceptanceTestCases)
 }

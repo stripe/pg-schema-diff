@@ -3,6 +3,7 @@ package diff
 import (
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -139,10 +140,6 @@ type schemaDiff struct {
 	functionDiffs             listDiff[schema.Function, functionDiff]
 	proceduresDiffs           listDiff[schema.Procedure, procedureDiff]
 	triggerDiffs              listDiff[schema.Trigger, triggerDiff]
-}
-
-func (sd schemaDiff) resolveToSQL() ([]Statement, error) {
-	return schemaSQLGenerator{}.Alter(sd)
 }
 
 // The procedure for DIFFING schemas and GENERATING/RESOLVING the SQL required to migrate the old schema to the new schema is
@@ -500,9 +497,17 @@ func buildIndexDiff(deps indexDiffConfig, old, new schema.Index) (diff indexDiff
 	}, recreateIndex, nil
 }
 
-type schemaSQLGenerator struct{}
+type schemaSQLGenerator struct {
+	randReader io.Reader
+}
 
-func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
+func newSchemaSQLGenerator(randReader io.Reader) *schemaSQLGenerator {
+	return &schemaSQLGenerator{
+		randReader: randReader,
+	}
+}
+
+func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	tablesInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Tables)
 	deletedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.deletes)
 	addedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.adds)
@@ -516,6 +521,7 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	var partialGraph partialSQLGraph
 
 	tablePartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Table, tableDiff](&tableSQLVertexGenerator{
+		randReader:              s.randReader,
 		deletedTablesByName:     deletedTablesByName,
 		tablesInNewSchemaByName: tablesInNewSchemaByName,
 		tableDiffsByName:        buildDiffByNameMap[schema.Table, tableDiff](diff.tableDiffs.alters),
@@ -542,7 +548,7 @@ func (schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	}
 	partialGraph = concatPartialGraphs(partialGraph, attachPartitionsPartialGraph)
 
-	renameConflictingIndexesGenerator := newRenameConflictingIndexSQLVertexGenerator(buildSchemaObjByNameMap(diff.old.Indexes))
+	renameConflictingIndexesGenerator := newRenameConflictingIndexSQLVertexGenerator(s.randReader, buildSchemaObjByNameMap(diff.old.Indexes))
 	renameConflictingIndexesPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Index, indexDiff](renameConflictingIndexesGenerator), diff.indexDiffs)
 	if err != nil {
 		return nil, fmt.Errorf("resolving renaming conflicting indexes diff: %w", err)
@@ -711,6 +717,7 @@ func buildMap[K comparable, V any](v []V, getKey func(V) K) map[K]V {
 }
 
 type tableSQLVertexGenerator struct {
+	randReader              io.Reader
 	deletedTablesByName     map[string]schema.Table
 	tablesInNewSchemaByName map[string]schema.Table
 	tableDiffsByName        map[string]tableDiff
@@ -886,7 +893,7 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 
 	var tempCCs []schema.CheckConstraint
 	for _, colDiff := range getDangerousNotNullAlters(diff.columnsDiff.alters, diff.new.CheckConstraints, diff.old.CheckConstraints) {
-		tempCC, err := buildTempNotNullConstraint(colDiff)
+		tempCC, err := buildTempNotNullConstraint(t.randReader, colDiff)
 		if err != nil {
 			return nil, fmt.Errorf("building temp check constraint: %w", err)
 		}
@@ -1114,8 +1121,8 @@ func isValidNotNullCC(cc schema.CheckConstraint) bool {
 	return isNotNullCCRegex.MatchString(cc.Expression)
 }
 
-func buildTempNotNullConstraint(colDiff columnDiff) (schema.CheckConstraint, error) {
-	uuid, err := pgidentifier.RandomUUID()
+func buildTempNotNullConstraint(randReader io.Reader, colDiff columnDiff) (schema.CheckConstraint, error) {
+	uuid, err := pgidentifier.RandomUUID(randReader)
 	if err != nil {
 		return schema.CheckConstraint{}, fmt.Errorf("generating uuid: %w", err)
 	}
@@ -1411,17 +1418,18 @@ func (csg *columnSQLVertexGenerator) GetDeleteDependencies(_ schema.Column) ([]d
 }
 
 type renameConflictingIndexSQLVertexGenerator struct {
+	// randReader is used to seed randomly generated identifiers.
+	randReader io.Reader
 	// indexesInOldSchemaByName is a map of index name to the index in the old schema
 	// It is used to identify if an index has been re-created
 	oldSchemaIndexesByName map[string]schema.Index
-
-	indexRenamesByOldName map[string]schema.SchemaQualifiedName
-
+	indexRenamesByOldName  map[string]schema.SchemaQualifiedName
 	sqlVertexGenerator[schema.Index, indexDiff]
 }
 
-func newRenameConflictingIndexSQLVertexGenerator(oldSchemaIndexesByName map[string]schema.Index) *renameConflictingIndexSQLVertexGenerator {
+func newRenameConflictingIndexSQLVertexGenerator(randReader io.Reader, oldSchemaIndexesByName map[string]schema.Index) *renameConflictingIndexSQLVertexGenerator {
 	rsg := &renameConflictingIndexSQLVertexGenerator{
+		randReader:             randReader,
 		oldSchemaIndexesByName: oldSchemaIndexesByName,
 		indexRenamesByOldName:  make(map[string]schema.SchemaQualifiedName),
 	}
@@ -1462,7 +1470,7 @@ func (rsg *renameConflictingIndexSQLVertexGenerator) Add(index schema.Index) ([]
 }
 
 func (rsg *renameConflictingIndexSQLVertexGenerator) generateNonConflictingName(index schema.Index) (string, error) {
-	uuid, err := pgidentifier.RandomUUID()
+	uuid, err := pgidentifier.RandomUUID(rsg.randReader)
 	if err != nil {
 		return "", fmt.Errorf("generating RandomUUID: %w", err)
 	}

@@ -3,6 +3,7 @@ package pgidentifier
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 
@@ -24,8 +25,8 @@ var postgresIdentifierEncoding = base64.NewEncoding(encodePostgresIdentifier).Wi
 
 // RandomUUID builds a RandomUUID to be used in Postgres identifiers. This RandomUUID cannot be used directly as an identifier
 // and must be prefixed with a letter
-func RandomUUID() (string, error) {
-	uuid, err := uuid.NewRandom()
+func RandomUUID(randReader io.Reader) (string, error) {
+	uuid, err := uuid.NewRandomFromReader(randReader)
 	if err != nil {
 		return "", fmt.Errorf("generating RandomUUID: %w", err)
 	}

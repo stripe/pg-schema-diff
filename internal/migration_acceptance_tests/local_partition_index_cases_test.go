@@ -1,6 +1,8 @@
 package migration_acceptance_tests
 
 import (
+	"testing"
+
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 )
 
@@ -601,6 +603,6 @@ var localPartitionIndexAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestLocalPartitionIndexTestCases() {
-	suite.runTestCases(localPartitionIndexAcceptanceTestCases)
+func TestLocalPartitionIndexTestCases(t *testing.T) {
+	runTestCases(t, localPartitionIndexAcceptanceTestCases)
 }

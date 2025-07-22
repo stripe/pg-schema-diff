@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	stdlog "log"
+	"os"
 	"testing"
 
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/kr/pretty"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stripe/pg-schema-diff/internal/pgdump"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
@@ -60,37 +63,45 @@ type (
 		// If no expectedDBSchemaDDL is specified, the newSchemaDDL will be used
 		expectedDBSchemaDDL []string
 	}
-
-	acceptanceTestSuite struct {
-		suite.Suite
-		pgEngine *pgengine.Engine
-	}
 )
 
-func (suite *acceptanceTestSuite) SetupSuite() {
-	engine, err := pgengine.StartEngine()
-	suite.Require().NoError(err)
-	suite.pgEngine = engine
-}
+var pgEngine *pgengine.Engine
 
-func (suite *acceptanceTestSuite) TearDownSuite() {
-	suite.pgEngine.Close()
+func TestMain(m *testing.M) {
+	engine, err := pgengine.StartEngine()
+	if err != nil {
+		stdlog.Fatalf("Failed to start engine: %v", err)
+	}
+	pgEngine = engine
+	exitCode := m.Run()
+	if err := pgEngine.Close(); err != nil {
+		stdlog.Fatalf("Failed to close engine: %v", err)
+	}
+	os.Exit(exitCode)
 }
 
 // Simulates migrating a database and uses pgdump to compare the actual state to the expected state
-func (suite *acceptanceTestSuite) runTestCases(acceptanceTestCases []acceptanceTestCase) {
-	for _, tc := range acceptanceTestCases {
-		suite.Run(tc.name, func() {
-			suite.runTest(tc)
+func runTestCases(t *testing.T, acceptanceTestCases []acceptanceTestCase) {
+	t.Parallel()
+	for _, _tc := range acceptanceTestCases {
+		// Copy the test case since we are using t.Parallel (effectively spinning out a go routine).
+		tc := _tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			runTest(t, tc)
 		})
 	}
 }
 
-func (suite *acceptanceTestSuite) runTest(tc acceptanceTestCase) {
-	uuid.SetRand(&deterministicRandReader{})
-
-	// Normalize the subtest
-	tc.planOpts = append(tc.planOpts, diff.WithLogger(log.SimpleLogger()))
+func runTest(t *testing.T, tc acceptanceTestCase) {
+	deterministicRandReader := &deterministicRandReader{}
+	// We moved a call to the random  when we made tests run in parallel. This caused assertions on exact statements to fail.
+	// To keep the assertions passing, we will generate a UUID and throw it out. In the future, we should just create
+	// a more advanced system for asserting random statements that captures variables and allows them to be referenced
+	// in future assertions.
+	_, err := uuid.NewRandomFromReader(deterministicRandReader)
+	require.NoError(t, err)
+	tc.planOpts = append([]diff.PlanOpt{diff.WithLogger(log.SimpleLogger()), diff.WithRandReader(deterministicRandReader)}, tc.planOpts...)
 	if tc.expectedDBSchemaDDL == nil {
 		tc.expectedDBSchemaDDL = tc.newSchemaDDL
 	}
@@ -106,70 +117,77 @@ func (suite *acceptanceTestSuite) runTest(tc acceptanceTestCase) {
 		}
 	}
 
+	engine := pgEngine
+	if len(tc.roles) > 0 {
+		// If the test needs roles (server-wide), provide isolation by spinning out a dedicated pgengine.
+		dedicatedEngine, err := pgengine.StartEngine()
+		require.NoError(t, err)
+		defer dedicatedEngine.Close()
+		engine = dedicatedEngine
+	}
+
 	// Create roles since they are global
-	rootDb, err := sql.Open("pgx", suite.pgEngine.GetPostgresDatabaseDSN())
-	suite.Require().NoError(err)
+	rootDb, err := sql.Open("pgx", engine.GetPostgresDatabaseDSN())
+	require.NoError(t, err)
 	defer rootDb.Close()
 	for _, r := range tc.roles {
 		_, err := rootDb.Exec(fmt.Sprintf("CREATE ROLE %s", r))
-		suite.Require().NoError(err)
+		require.NoError(t, err)
 	}
-	defer func() {
-		// This will drop the roles (and attempt to reset other cluster-level state)
-		suite.Require().NoError(pgengine.ResetInstance(context.Background(), rootDb))
-	}()
 
 	// Apply old schema DDL to old DB
-	oldDb, err := suite.pgEngine.CreateDatabase()
-	suite.Require().NoError(err)
+	require.NoError(t, err)
+	oldDb, err := engine.CreateDatabaseWithName(fmt.Sprintf("pgtemp_%s", uuid.NewString()))
+	require.NoError(t, err)
 	defer oldDb.DropDB()
 	// Apply the old schema
-	suite.Require().NoError(applyDDL(oldDb, tc.oldSchemaDDL))
+	require.NoError(t, applyDDL(oldDb, tc.oldSchemaDDL))
 
 	// Migrate the old DB
 	oldDBConnPool, err := sql.Open("pgx", oldDb.GetDSN())
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 	defer oldDBConnPool.Close()
+	oldDBConnPool.SetMaxOpenConns(1)
 
 	tempDbFactory, err := tempdb.NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*sql.DB, error) {
-		return sql.Open("pgx", suite.pgEngine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
-	})
-	suite.Require().NoError(err)
+		return sql.Open("pgx", engine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
+	}, tempdb.WithRandReader(deterministicRandReader))
+	require.NoError(t, err)
 	defer func(tempDbFactory tempdb.Factory) {
 		// It's important that this closes properly (the temp database is dropped),
 		// so assert it has no error for acceptance tests
-		suite.Require().NoError(tempDbFactory.Close())
+		require.NoError(t, tempDbFactory.Close())
 	}(tempDbFactory)
 
 	plan, err := tc.planFactory(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
 	if tc.expectedPlanErrorIs != nil || len(tc.expectedPlanErrorContains) > 0 {
 		if tc.expectedPlanErrorIs != nil {
-			suite.ErrorIs(err, tc.expectedPlanErrorIs)
+			assert.ErrorIs(t, err, tc.expectedPlanErrorIs)
 		}
 		if len(tc.expectedPlanErrorContains) > 0 {
-			suite.ErrorContains(err, tc.expectedPlanErrorContains)
+			assert.ErrorContains(t, err, tc.expectedPlanErrorContains)
 		}
 		return
 	}
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 
-	suite.assertValidPlan(plan)
+	assertValidPlan(t, plan)
 	if tc.expectEmptyPlan {
 		// It shouldn't be necessary, but we'll run all checks below this point just in case rather than exiting early
-		suite.Empty(plan.Statements)
+		assert.Empty(t, plan.Statements)
 	}
-	suite.ElementsMatch(tc.expectedHazardTypes, getUniqueHazardTypesFromStatements(plan.Statements), prettySprintPlan(plan))
+	assert.ElementsMatch(t, tc.expectedHazardTypes, getUniqueHazardTypesFromStatements(plan.Statements), prettySprintPlan(plan))
 
 	// Apply the plan
-	suite.Require().NoError(applyPlan(oldDb, plan), prettySprintPlan(plan))
+	require.NoError(t, applyPlan(oldDb, plan), prettySprintPlan(plan))
 
 	// Make sure the pgdump after running the migration is the same as the
 	// pgdump from a database where we directly run the newSchemaDDL
 	oldDbDump, err := pgdump.GetDump(oldDb, pgdump.WithSchemaOnly())
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 
-	newDbDump := suite.directlyRunDDLAndGetDump(tc.expectedDBSchemaDDL)
-	suite.Equal(newDbDump, oldDbDump, prettySprintPlan(plan))
+	newDbDump := directlyRunDDLAndGetDump(t, engine, tc.expectedDBSchemaDDL)
+	assert.Equal(t, newDbDump, oldDbDump, prettySprintPlan(plan))
 
 	if tc.expectedPlanDDL != nil {
 		var generatedDDL []string
@@ -181,30 +199,30 @@ func (suite *acceptanceTestSuite) runTest(tc acceptanceTestCase) {
 		// We can also make the system more advanced by using tokens in place of the "randomly" generated UUIDs, such
 		// the test case doesn't need to be updated if the UUID generation changes. If we built this functionality, we
 		// should also integrate it with the schema_migration_plan_test.go tests.
-		suite.Equal(tc.expectedPlanDDL, generatedDDL, "data packing can change the the generated UUID and DDL")
+		assert.Equal(t, tc.expectedPlanDDL, generatedDDL, "data packing can change the the generated UUID and DDL")
 	}
 
 	// Make sure no diff is found if we try to regenerate a plan
 	plan, err = tc.planFactory(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
-	suite.Require().NoError(err)
-	suite.Empty(plan.Statements, prettySprintPlan(plan))
+	require.NoError(t, err)
+	assert.Empty(t, plan.Statements, prettySprintPlan(plan))
 }
 
-func (suite *acceptanceTestSuite) assertValidPlan(plan diff.Plan) {
+func assertValidPlan(t *testing.T, plan diff.Plan) {
 	for _, stmt := range plan.Statements {
-		suite.Greater(stmt.Timeout.Nanoseconds(), int64(0), "timeout should be greater than 0. stmt=%+v", stmt)
-		suite.Greater(stmt.LockTimeout.Nanoseconds(), int64(0), "lock timeout should be greater than 0. stmt=%+v", stmt)
+		assert.Greater(t, stmt.Timeout.Nanoseconds(), int64(0), "timeout should be greater than 0. stmt=%+v", stmt)
+		assert.Greater(t, stmt.LockTimeout.Nanoseconds(), int64(0), "lock timeout should be greater than 0. stmt=%+v", stmt)
 	}
 }
 
-func (suite *acceptanceTestSuite) directlyRunDDLAndGetDump(ddl []string) string {
-	newDb, err := suite.pgEngine.CreateDatabase()
-	suite.Require().NoError(err)
+func directlyRunDDLAndGetDump(t *testing.T, engine *pgengine.Engine, ddl []string) string {
+	newDb, err := engine.CreateDatabase()
+	require.NoError(t, err)
 	defer newDb.DropDB()
-	suite.Require().NoError(applyDDL(newDb, ddl))
+	require.NoError(t, applyDDL(newDb, ddl))
 
 	newDbDump, err := pgdump.GetDump(newDb, pgdump.WithSchemaOnly())
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 	return newDbDump
 }
 
@@ -260,8 +278,4 @@ func (r *deterministicRandReader) Read(p []byte) (int, error) {
 		r.counter++
 	}
 	return len(p), nil
-}
-
-func TestAcceptanceSuite(t *testing.T) {
-	suite.Run(t, new(acceptanceTestSuite))
 }

@@ -1,6 +1,10 @@
 package migration_acceptance_tests
 
-import "github.com/stripe/pg-schema-diff/pkg/diff"
+import (
+	"testing"
+
+	"github.com/stripe/pg-schema-diff/pkg/diff"
+)
 
 var enumAcceptanceTestCases = []acceptanceTestCase{
 	{
@@ -116,6 +120,6 @@ var enumAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestEnumTestCases() {
-	suite.runTestCases(enumAcceptanceTestCases)
+func TestEnumTestCases(t *testing.T) {
+	runTestCases(t, enumAcceptanceTestCases)
 }

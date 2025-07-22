@@ -1,6 +1,10 @@
 package migration_acceptance_tests
 
-import "github.com/stripe/pg-schema-diff/pkg/diff"
+import (
+	"testing"
+
+	"github.com/stripe/pg-schema-diff/pkg/diff"
+)
 
 var triggerAcceptanceTestCases = []acceptanceTestCase{
 	{
@@ -939,6 +943,6 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestTriggerTestCases() {
-	suite.runTestCases(triggerAcceptanceTestCases)
+func TestTriggerTestCases(t *testing.T) {
+	runTestCases(t, triggerAcceptanceTestCases)
 }

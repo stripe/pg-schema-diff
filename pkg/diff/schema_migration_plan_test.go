@@ -3,7 +3,6 @@ package diff
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -360,8 +359,7 @@ func (r *deterministicRandReader) Read(p []byte) (int, error) {
 }
 
 func TestSchemaMigrationPlanTest(t *testing.T) {
-	uuid.SetRand(&deterministicRandReader{})
-
+	randReader := &deterministicRandReader{}
 	for _, testCase := range schemaMigrationPlanTestCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			schemaDiff, _, err := buildSchemaDiff(testCase.oldSchema, testCase.newSchema)
@@ -372,7 +370,7 @@ func TestSchemaMigrationPlanTest(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
-			stmts, err := schemaSQLGenerator{}.Alter(schemaDiff)
+			stmts, err := newSchemaSQLGenerator(randReader).Alter(schemaDiff)
 			require.NoError(t, err)
 			assert.Equal(t, testCase.expectedStatements, stmts, "actual:\n %# v", pretty.Formatter(stmts))
 		})
