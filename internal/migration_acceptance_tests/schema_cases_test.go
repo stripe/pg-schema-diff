@@ -1,6 +1,8 @@
 package migration_acceptance_tests
 
 import (
+	"testing"
+
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 )
 
@@ -450,6 +452,6 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestSchemaTestCases() {
-	suite.runTestCases(schemaAcceptanceTests)
+func TestSchemaTestCases(t *testing.T) {
+	runTestCases(t, schemaAcceptanceTests)
 }

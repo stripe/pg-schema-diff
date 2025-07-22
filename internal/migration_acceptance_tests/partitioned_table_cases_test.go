@@ -1,6 +1,8 @@
 package migration_acceptance_tests
 
 import (
+	"testing"
+
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 )
 
@@ -1292,6 +1294,6 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestPartitionedTableTestCases() {
-	suite.runTestCases(partitionedTableAcceptanceTestCases)
+func TestPartitionedTableTestCases(t *testing.T) {
+	runTestCases(t, partitionedTableAcceptanceTestCases)
 }

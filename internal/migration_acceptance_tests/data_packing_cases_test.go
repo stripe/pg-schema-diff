@@ -1,6 +1,10 @@
 package migration_acceptance_tests
 
-import "github.com/stripe/pg-schema-diff/pkg/diff"
+import (
+	"testing"
+
+	"github.com/stripe/pg-schema-diff/pkg/diff"
+)
 
 var dataPackingCases = []acceptanceTestCase{
 	{
@@ -133,11 +137,11 @@ var dataPackingCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestDataPackingTestCases() {
+func TestDataPackingTestCases(t *testing.T) {
 	var tcs []acceptanceTestCase
 	for _, tc := range dataPackingCases {
 		tc.planOpts = append(tc.planOpts, diff.WithDataPackNewTables())
 		tcs = append(tcs, tc)
 	}
-	suite.runTestCases(tcs)
+	runTestCases(t, tcs)
 }

@@ -3,6 +3,7 @@ package migration_acceptance_tests
 import (
 	"context"
 	"fmt"
+	"testing"
 
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/sqldb"
@@ -187,6 +188,6 @@ var databaseSchemaSourceTestCases = []acceptanceTestCase{
 	},
 }
 
-func (suite *acceptanceTestSuite) TestDatabaseSchemaSourceTestCases() {
-	suite.runTestCases(databaseSchemaSourceTestCases)
+func TestDatabaseSchemaSourceTestCases(t *testing.T) {
+	runTestCases(t, databaseSchemaSourceTestCases)
 }
