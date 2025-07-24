@@ -129,7 +129,8 @@ SELECT
     identity_col_seq.seqmin AS min_value,
     identity_col_seq.seqcache AS cache_size,
     identity_col_seq.seqcycle AS is_cycle,
-    pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type
+    pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type,
+    default_value.oid AS default_value_oid
 FROM pg_catalog.pg_attribute AS a
 LEFT JOIN
     pg_catalog.pg_attrdef AS d
@@ -143,6 +144,11 @@ LEFT JOIN
     ON
         a.attrelid = identity_col_seq.owner_relid
         AND a.attnum = identity_col_seq.owner_attnum
+LEFT JOIN
+    pg_catalog.pg_attrdef AS default_value
+    ON
+        a.attrelid = default_value.adrelid
+        AND a.attnum = default_value.adnum
 WHERE
     a.attrelid = $1
     AND a.attnum > 0
@@ -165,6 +171,7 @@ type GetColumnsForTableRow struct {
 	CacheSize           sql.NullInt64
 	IsCycle             sql.NullBool
 	ColumnType          string
+	DefaultValueOid     interface{}
 }
 
 func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) ([]GetColumnsForTableRow, error) {
@@ -191,6 +198,7 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) 
 			&i.CacheSize,
 			&i.IsCycle,
 			&i.ColumnType,
+			&i.DefaultValueOid,
 		); err != nil {
 			return nil, err
 		}
