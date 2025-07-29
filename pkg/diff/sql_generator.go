@@ -498,12 +498,14 @@ func buildIndexDiff(deps indexDiffConfig, old, new schema.Index) (diff indexDiff
 }
 
 type schemaSQLGenerator struct {
-	randReader io.Reader
+	randReader  io.Reader
+	planOptions *planOptions
 }
 
-func newSchemaSQLGenerator(randReader io.Reader) *schemaSQLGenerator {
+func newSchemaSQLGenerator(randReader io.Reader, planOpts *planOptions) *schemaSQLGenerator {
 	return &schemaSQLGenerator{
-		randReader: randReader,
+		randReader:  randReader,
+		planOptions: planOpts,
 	}
 }
 
@@ -563,6 +565,7 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 
 		renameSQLVertexGenerator:          renameConflictingIndexesGenerator,
 		attachPartitionSQLVertexGenerator: attachPartitionGenerator,
+		planOptions:                       s.planOptions,
 	})
 	indexesPartialGraph, err := generatePartialGraph(indexGenerator, diff.indexDiffs)
 	if err != nil {
@@ -1537,6 +1540,8 @@ type indexSQLVertexGenerator struct {
 	renameSQLVertexGenerator *renameConflictingIndexSQLVertexGenerator
 	// attachPartitionSQLVertexGenerator is used to find if a partition will be attached after an index builds
 	attachPartitionSQLVertexGenerator *attachPartitionSQLVertexGenerator
+	// planOptions contains plan generation options
+	planOptions *planOptions
 }
 
 func (isg *indexSQLVertexGenerator) Add(index schema.Index) ([]Statement, error) {
@@ -1578,18 +1583,29 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		}
 	} else if !isOnPartitionedTable {
 		// Only indexes on non-partitioned tables can be created concurrently
-		concurrentCreateIdxStmt, err := index.GetIndexDefStmt.ToCreateIndexConcurrently()
-		if err != nil {
-			return nil, fmt.Errorf("modifying index def statement to concurrently: %w", err)
+		if isg.planOptions != nil && isg.planOptions.disableConcurrentIndexOps {
+			// Use regular CREATE INDEX without CONCURRENTLY
+			createIdxStmt = string(index.GetIndexDefStmt)
+			createIdxStmtHazards = append(createIdxStmtHazards, MigrationHazard{
+				Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
+				Message: "This will acquire an ACCESS EXCLUSIVE lock on the table and may cause downtime. " +
+					"Consider using concurrent index operations for minimal downtime.",
+			})
+			createIdxStmtTimeout = statementTimeoutDefault
+		} else {
+			concurrentCreateIdxStmt, err := index.GetIndexDefStmt.ToCreateIndexConcurrently()
+			if err != nil {
+				return nil, fmt.Errorf("modifying index def statement to concurrently: %w", err)
+			}
+			createIdxStmt = concurrentCreateIdxStmt
+			createIdxStmtHazards = append(createIdxStmtHazards, MigrationHazard{
+				Type: MigrationHazardTypeIndexBuild,
+				Message: "This might affect database performance. " +
+					"Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. " +
+					"They also can take a while but do not lock out writes.",
+			})
+			createIdxStmtTimeout = statementTimeoutConcurrentIndexBuild
 		}
-		createIdxStmt = concurrentCreateIdxStmt
-		createIdxStmtHazards = append(createIdxStmtHazards, MigrationHazard{
-			Type: MigrationHazardTypeIndexBuild,
-			Message: "This might affect database performance. " +
-				"Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. " +
-				"They also can take a while but do not lock out writes.",
-		})
-		createIdxStmtTimeout = statementTimeoutConcurrentIndexBuild
 	}
 
 	stmts = append(stmts, Statement{
@@ -1664,7 +1680,17 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 	var dropIndexStmtHazards []MigrationHazard
 	concurrentlyModifier := "CONCURRENTLY "
 	dropIndexStmtTimeout := statementTimeoutConcurrentIndexDrop
-	if isOnPartitionedTable, err := isg.isOnPartitionedTable(index); err != nil {
+	
+	if isg.planOptions != nil && isg.planOptions.disableConcurrentIndexOps {
+		// Use regular DROP INDEX without CONCURRENTLY
+		concurrentlyModifier = ""
+		dropIndexStmtTimeout = statementTimeoutDefault
+		dropIndexStmtHazards = append(dropIndexStmtHazards, MigrationHazard{
+			Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
+			Message: "This will acquire an ACCESS EXCLUSIVE lock on the table and may cause downtime. " +
+				"Consider using concurrent index operations for minimal downtime.",
+		})
+	} else if isOnPartitionedTable, err := isg.isOnPartitionedTable(index); err != nil {
 		return nil, err
 	} else if isOnPartitionedTable {
 		// Currently, postgres has no good way of dropping an index partition concurrently
