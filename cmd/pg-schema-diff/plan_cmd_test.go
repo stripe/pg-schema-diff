@@ -273,7 +273,7 @@ func TestPlanToSqlS(t *testing.T) {
 					{DDL: "CREATE TABLE test ()"},
 				},
 			},
-			expected: "CREATE TABLE test ();",
+			expected: "CREATE TABLE test ();\n\t-- Statement Timeout: 0s",
 		},
 		{
 			name: "multiple statements",
@@ -283,10 +283,10 @@ func TestPlanToSqlS(t *testing.T) {
 					{DDL: "CREATE TABLE test2 ()"},
 				},
 			},
-			expected: "CREATE TABLE test1 ();\nCREATE TABLE test2 ();",
+			expected: "CREATE TABLE test1 ();\n\t-- Statement Timeout: 0s\n\nCREATE TABLE test2 ();\n\t-- Statement Timeout: 0s",
 		},
 		{
-			name: "statements with comments and timeouts should be ignored",
+			name: "statements with comments and timeouts should be included",
 			plan: diff.Plan{
 				Statements: []diff.Statement{
 					{
@@ -298,7 +298,7 @@ func TestPlanToSqlS(t *testing.T) {
 					},
 				},
 			},
-			expected: "CREATE INDEX CONCURRENTLY idx_test ON test (col);",
+			expected: "CREATE INDEX CONCURRENTLY idx_test ON test (col);\n\t-- Statement Timeout: 5m0s\n\t-- Hazard SOME_HAZARD: This is dangerous",
 		},
 		{
 			name: "statements already ending with semicolon",
@@ -308,7 +308,7 @@ func TestPlanToSqlS(t *testing.T) {
 					{DDL: "ALTER TABLE test SET DATA TYPE integer;"},
 				},
 			},
-			expected: "CREATE TABLE test1 ();\nALTER TABLE test SET DATA TYPE integer;",
+			expected: "CREATE TABLE test1 ();;\n\t-- Statement Timeout: 0s\n\nALTER TABLE test SET DATA TYPE integer;;\n\t-- Statement Timeout: 0s",
 		},
 		{
 			name: "mixed statements with and without semicolons",
@@ -319,7 +319,7 @@ func TestPlanToSqlS(t *testing.T) {
 					{DDL: "DROP TABLE test2"},
 				},
 			},
-			expected: "CREATE TABLE test1 ();\nALTER TABLE test SET DATA TYPE integer;\nDROP TABLE test2;",
+			expected: "CREATE TABLE test1 ();\n\t-- Statement Timeout: 0s\n\nALTER TABLE test SET DATA TYPE integer;;\n\t-- Statement Timeout: 0s\n\nDROP TABLE test2;\n\t-- Statement Timeout: 0s",
 		},
 		{
 			name: "statements with trailing whitespace",
@@ -329,7 +329,7 @@ func TestPlanToSqlS(t *testing.T) {
 					{DDL: "ALTER TABLE test ADD COLUMN id int;  \n"},
 				},
 			},
-			expected: "CREATE TABLE test ();\nALTER TABLE test ADD COLUMN id int;",
+			expected: "CREATE TABLE test ()  ;\n\t-- Statement Timeout: 0s\n\nALTER TABLE test ADD COLUMN id int;  \n;\n\t-- Statement Timeout: 0s",
 		},
 	}
 

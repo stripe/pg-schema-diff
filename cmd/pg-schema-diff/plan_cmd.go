@@ -599,17 +599,17 @@ func planToJsonS(plan diff.Plan) string {
 }
 
 func planToSqlS(plan diff.Plan) string {
+	sb := strings.Builder{}
+
 	if len(plan.Statements) == 0 {
 		return ""
 	}
 
 	var stmtStrs []string
 	for _, stmt := range plan.Statements {
-		ddl := strings.TrimSpace(stmt.DDL)
-		if !strings.HasSuffix(ddl, ";") {
-			ddl += ";"
-		}
-		stmtStrs = append(stmtStrs, ddl)
+		stmtStrs = append(stmtStrs, statementToPrettyS(stmt))
 	}
-	return strings.Join(stmtStrs, "\n")
+	sb.WriteString(strings.Join(stmtStrs, "\n\n"))
+
+	return sb.String()
 }
