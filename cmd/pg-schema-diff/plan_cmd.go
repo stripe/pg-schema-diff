@@ -172,9 +172,15 @@ var (
 		convertToOutputString: planToJsonS,
 	}
 
+	outputFormatSql = outputFormat{
+		identifier:            "sql",
+		convertToOutputString: planToSqlS,
+	}
+
 	outputFormats = []outputFormat{
 		outputFormatPretty,
 		outputFormatJson,
+		outputFormatSql,
 	}
 
 	outputFormatStrings = func() []string {
@@ -590,4 +596,20 @@ func planToJsonS(plan diff.Plan) string {
 		panic(err)
 	}
 	return string(jsonData)
+}
+
+func planToSqlS(plan diff.Plan) string {
+	sb := strings.Builder{}
+
+	if len(plan.Statements) == 0 {
+		return ""
+	}
+
+	var stmtStrs []string
+	for _, stmt := range plan.Statements {
+		stmtStrs = append(stmtStrs, statementToPrettyS(stmt))
+	}
+	sb.WriteString(strings.Join(stmtStrs, "\n\n"))
+
+	return sb.String()
 }
