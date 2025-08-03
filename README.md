@@ -75,19 +75,47 @@ $ pg-schema-diff plan --from-dsn "postgres://postgres:postgres@localhost:5432/po
         -- Statement Timeout: 3s
 ```
 
+# Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Current DB    │    │  Target Schema  │    │  Migration Plan │
+│    Schema       │───▶│     (DDL)       │───▶│      (SQL)      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Schema Diff   │    │  Temp Database  │    │   Validation    │
+│    Engine       │    │   Validation    │    │   & Hazards     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+## How it works
+
+1. **Schema Extraction**: Analyzes your current database schema
+2. **Target Parsing**: Reads your desired schema from DDL files
+3. **Diff Generation**: Computes the minimal set of changes needed
+4. **Safety Validation**: Tests the migration plan on a temporary database
+5. **Hazard Detection**: Identifies potential risks and performance impacts
+6. **Execution**: Applies changes using PostgreSQL's safest native operations
+
 # Key features
-* Declarative schema migrations
-* The use of postgres native operations for zero-downtime migrations wherever possible:
-  * Concurrent index builds
-  * Online index replacement: If some index is changed, the new version will be built before the old version is dropped, preventing a window where no index is backing queries
-  * Online constraint builds: Constraints (check, foreign key) are added as `INVALID` before being validated, eliminating the need
-	for a long access-exclusive lock on the table
-  * Online `NOT NULL` constraint creation using check constraints to eliminate the need for an access-exclusive lock on the table
-  * Prioritized index builds: Building new indexes is always prioritized over deleting old indexes
-* A comprehensive set of features to ensure the safety of planned migrations:
-  * Operators warned of dangerous operations.
-  * Migration plans are validated first against a temporary database exactly as they would be performed against the real database.
-* Strong support of partitions
+* **Declarative schema migrations** - Define your target state, not migration steps
+* **Zero-downtime operations** using PostgreSQL native capabilities:
+  * **Concurrent index builds** - No blocking of read/write operations
+  * **Online index replacement** - New indexes built before old ones are dropped
+  * **Online constraint builds** - Constraints added as `INVALID` then validated separately
+  * **Online `NOT NULL` constraints** - Uses check constraints to avoid table locks
+  * **Prioritized operations** - New indexes built before old ones are deleted
+* **Comprehensive safety features**:
+  * **Hazard warnings** for potentially dangerous operations
+  * **Plan validation** using temporary database testing
+  * **Rollback safety** through careful operation ordering
+* **Advanced PostgreSQL support**:
+  * **Partitioned tables** with full constraint and index support
+  * **Foreign keys** with online validation
+  * **Check constraints** with deferred validation
 # Install
 ## CLI
 ```bash
@@ -170,17 +198,49 @@ for _, stmt := range plan.Statements {
 }
 ```
 
-# Supported Postgres versions
-Supported: 14, 15, 16, 17  
-Unsupported: <= 13  are not supported. Use at your own risk.
+# Supported PostgreSQL versions
 
-# Unsupported migrations
-An abridged list of unsupported migrations:
-- Views (Planned)
-- Privileges (Planned)
-- Types (Only enums are currently supported)
-- Renaming. The diffing library relies on names to identify the old and new versions of a table, index, etc. If you rename
-an object, it will be treated as a drop and an add
+| Version | Support Status | Notes |
+|---------|---------------|--------|
+| 17 | ✅ Fully Supported | Latest features supported |
+| 16 | ✅ Fully Supported | Recommended for production |
+| 15 | ✅ Fully Supported | Stable and tested |
+| 14 | ✅ Fully Supported | Minimum recommended version |
+| ≤ 13 | ❌ Not Supported | Use at your own risk |
+
+**Recommendation**: Use PostgreSQL 14 or higher for the best experience and full feature support.
+
+# Migration Support Status
+
+## ✅ Fully Supported
+- Tables (create, drop, alter columns)
+- Indexes (create, drop, concurrent builds)
+- Constraints (primary key, foreign key, check, unique)
+- NOT NULL constraints (online creation)
+- Partitioned tables and inheritance
+- Enum types
+- Sequences
+
+## 🚧 Planned / In Development
+- Views and materialized views
+- Row-level security policies
+- User privileges and permissions
+- Custom data types (beyond enums)
+
+## ❌ Current Limitations
+- **Object renaming**: Treated as drop + create operations due to name-based diffing
+- **Complex type changes**: Some data type conversions may require manual intervention
+- **Stateful migrations**: Shadow tables and other stateful techniques not yet supported
+
+## Hazard Types
+The tool identifies and warns about these potential issues:
+
+| Hazard | Description | Impact |
+|--------|-------------|---------|
+| `INDEX_BUILD` | Concurrent index creation | May affect database performance |
+| `INDEX_DROPPED` | Index removal | Queries may perform worse |
+| `ACQUIRES_ACCESS_EXCLUSIVE_LOCK` | Operations requiring exclusive locks | Blocks all table access |
+| `DELETES_DATA` | Operations that remove data | Potential data loss |
 
 # Contributing
 This project is in its early stages. We appreciate all the feature/bug requests we receive, but we have limited cycles
