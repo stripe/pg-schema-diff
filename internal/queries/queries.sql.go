@@ -264,15 +264,13 @@ const getEnums = `-- name: GetEnums :many
 SELECT
     pg_type.typname::TEXT AS enum_name,
     type_namespace.nspname::TEXT AS enum_schema_name,
-    (
-        SELECT
-            ARRAY_AGG(
-                pg_enum.enumlabel
-                ORDER BY pg_enum.enumsortorder
-            )
-        FROM pg_catalog.pg_enum
-        WHERE pg_enum.enumtypid = pg_type.oid
-    )::TEXT [] AS enum_labels
+    (SELECT
+        ARRAY_AGG(
+            pg_enum.enumlabel
+            ORDER BY pg_enum.enumsortorder
+        )
+    FROM pg_catalog.pg_enum
+    WHERE pg_enum.enumtypid = pg_type.oid)::TEXT [] AS enum_labels
 FROM pg_catalog.pg_type AS pg_type
 INNER JOIN
     pg_catalog.pg_namespace AS type_namespace
@@ -1026,6 +1024,113 @@ func (q *Queries) GetTriggers(ctx context.Context) ([]GetTriggersRow, error) {
 			&i.FuncIdentityArguments,
 			&i.TriggerDef,
 			&i.IsConstraint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getViews = `-- name: GetViews :many
+SELECT
+    n.nspname::TEXT AS schema_name,
+    c.relname::TEXT AS view_name,
+    c.reloptions::TEXT [] AS rel_options,
+    (SELECT
+        ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
+            'schema', dep_ns.nspname,
+            'name', dep_c.relname,
+            'columns', (
+                SELECT
+                    ARRAY_AGG(
+                        a.attname::TEXT
+                        ORDER BY a.attnum
+                    )
+                FROM pg_catalog.pg_attribute AS a
+                WHERE
+                    a.attrelid = dep_c.oid
+                    AND a.attnum > 0
+                    AND NOT a.attisdropped
+                    AND a.attnum IN (
+                        -- Get only columns that the view depends on
+                        SELECT DISTINCT d3.refobjsubid
+                        FROM pg_catalog.pg_depend AS d3
+                        WHERE
+                            d3.refobjid = dep_c.oid
+                            AND d3.refobjsubid > 0
+                            AND d3.classid = 'pg_rewrite'::REGCLASS
+                            AND EXISTS (
+                                SELECT 1
+                                FROM pg_catalog.pg_rewrite AS rw
+                                WHERE
+                                    rw.oid = d3.objid
+                                    AND rw.ev_class = c.oid
+                            )
+                    )
+            )
+        ))
+    FROM pg_catalog.pg_depend AS d
+    INNER JOIN pg_catalog.pg_rewrite AS r ON d.objid = r.oid
+    INNER JOIN pg_catalog.pg_depend AS d2 ON r.oid = d2.objid
+    INNER JOIN
+        pg_catalog.pg_class AS dep_c
+        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p')
+    INNER JOIN
+        pg_catalog.pg_namespace AS dep_ns
+        ON dep_c.relnamespace = dep_ns.oid
+    -- Cast to text because pgv4/pq does not support unmarshalling JSON
+    -- arrays into []json.RawMessage.
+    -- Instead, they must be unmarshalled as string arrays.
+    -- https://github.com/lib/pq/pull/466
+    WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
+    PG_GET_VIEWDEF(c.oid, true) AS view_definition
+FROM pg_catalog.pg_class AS c
+INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
+WHERE
+    c.relkind = 'v'
+    AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND n.nspname !~ '^pg_toast'
+    AND n.nspname !~ '^pg_temp'
+    AND NOT EXISTS (
+        SELECT depend.objid
+        FROM pg_catalog.pg_depend AS depend
+        WHERE
+            depend.classid = 'pg_class'::REGCLASS
+            AND depend.objid = c.oid
+            AND depend.deptype = 'e'
+    )
+`
+
+type GetViewsRow struct {
+	SchemaName        string
+	ViewName          string
+	RelOptions        []string
+	TableDependencies []string
+	ViewDefinition    string
+}
+
+func (q *Queries) GetViews(ctx context.Context) ([]GetViewsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getViews)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetViewsRow
+	for rows.Next() {
+		var i GetViewsRow
+		if err := rows.Scan(
+			&i.SchemaName,
+			&i.ViewName,
+			pq.Array(&i.RelOptions),
+			pq.Array(&i.TableDependencies),
+			&i.ViewDefinition,
 		); err != nil {
 			return nil, err
 		}

@@ -1,6 +1,7 @@
 [sqlfluff]
 dialect = postgres
 templater = placeholder
+large_file_skip_byte_limit = 0
 
 [sqlfluff:templater:placeholder]
 param_regex = sqlc.arg\(.*\)
