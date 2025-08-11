@@ -1,6 +1,6 @@
 module github.com/stripe/pg-schema-diff
 
-go 1.20
+go 1.24.6
 
 require (
 	github.com/go-logfmt/logfmt v0.6.0

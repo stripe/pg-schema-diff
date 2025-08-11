@@ -13,13 +13,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - base_image: "golang:1.20.14-alpine3.19"
-            pg_package: "postgresql14"
-          - base_image: "golang:1.20.14-alpine3.19"
+          - base_image: "golang:1.24.6-alpine"
             pg_package: "postgresql15"
-          - base_image: "golang:1.20.14-alpine3.19"
+          - base_image: "golang:1.24.6-alpine"
             pg_package: "postgresql16"
-          - base_image: "golang:1.22.10-alpine3.21"
+          - base_image: "golang:1.24.6-alpine"
             pg_package: "postgresql17"
     steps:
       - name: Checkout code
