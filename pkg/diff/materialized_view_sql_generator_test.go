@@ -3,8 +3,8 @@ package diff
 import (
 	"testing"
 
-	"github.com/stripe/pg-schema-diff/internal/schema"
 	"github.com/stretchr/testify/assert"
+	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
 func TestMaterializedViewSQLGenerator_Add_WithTablespace(t *testing.T) {
