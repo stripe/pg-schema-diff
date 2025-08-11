@@ -229,7 +229,7 @@ var (
 				SELECT id, author
 				FROM schema_2.foo;
 		`},
-			expectedHash: "7963a034855b09c4",
+			expectedHash: "f0fb3f95f68ba482",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -571,7 +571,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "f9c9df4070681684",
+			expectedHash: "bcad7c978a081c30",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -1135,7 +1135,7 @@ var (
 				CREATE TYPE pg_temp.color AS ENUM ('red', 'green', 'blue');
 			`},
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash: "564ae7220a4cd0ca",
+			expectedHash: "9c413c6ad2f4a042",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},

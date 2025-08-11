@@ -141,6 +141,7 @@ type schemaDiff struct {
 	proceduresDiffs           listDiff[schema.Procedure, procedureDiff]
 	triggerDiffs              listDiff[schema.Trigger, triggerDiff]
 	viewDiff                  listDiff[schema.View, viewDiff]
+	materializedViewDiffs     listDiff[schema.MaterializedView, materializedViewDiff]
 }
 
 // The procedure for DIFFING schemas and GENERATING/RESOLVING the SQL required to migrate the old schema to the new schema is
@@ -318,6 +319,13 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing views: %w", err)
 	}
 
+	materializedViewDiffs, err := diffLists(old.MaterializedViews, new.MaterializedViews, func(old, new schema.MaterializedView, _, _ int) (diff materializedViewDiff, requiresRecreation bool, error error) {
+		return buildMaterializedViewDiff(deletedTablesByName, tableDiffsByName, old, new)
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing materialized views: %w", err)
+	}
+
 	return schemaDiff{
 		oldAndNew: oldAndNew[schema.Schema]{
 			old: old,
@@ -334,6 +342,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		proceduresDiffs:           procedureDiffs,
 		triggerDiffs:              triggerDiffs,
 		viewDiff:                  viewDiffs,
+		materializedViewDiffs:     materializedViewDiffs,
 	}, false, nil
 }
 
@@ -632,6 +641,13 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving view diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, viewPartialGraph)
+
+	materializedViewGenerator := newMaterializedViewSQLVertexGenerator()
+	materializedViewPartialGraph, err := generatePartialGraph(materializedViewGenerator, diff.materializedViewDiffs)
+	if err != nil {
+		return nil, fmt.Errorf("resolving materialized view diff: %w", err)
+	}
+	partialGraph = concatPartialGraphs(partialGraph, materializedViewPartialGraph)
 
 	sqlGraph, err := graphFromPartials(partialGraph)
 	if err != nil {

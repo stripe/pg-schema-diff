@@ -560,6 +560,118 @@ func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
 	return items, nil
 }
 
+const getMaterializedViews = `-- name: GetMaterializedViews :many
+SELECT
+    n.nspname::TEXT AS schema_name,
+    c.relname::TEXT AS view_name,
+    c.reloptions::TEXT [] AS rel_options,
+    COALESCE(ts.spcname, '')::TEXT AS tablespace_name,
+    (SELECT
+        ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
+            'schema', dep_ns.nspname,
+            'name', dep_c.relname,
+            'columns', (
+                SELECT
+                    ARRAY_AGG(
+                        a.attname::TEXT
+                        ORDER BY a.attnum
+                    )
+                FROM pg_catalog.pg_attribute AS a
+                WHERE
+                    a.attrelid = dep_c.oid
+                    AND a.attnum > 0
+                    AND NOT a.attisdropped
+                    AND a.attnum IN (
+                        -- Get only columns that the materialized view depends
+                        -- on.
+                        SELECT DISTINCT d3.refobjsubid
+                        FROM pg_catalog.pg_depend AS d3
+                        WHERE
+                            d3.refobjid = dep_c.oid
+                            AND d3.refobjsubid > 0
+                            AND d3.classid = 'pg_rewrite'::REGCLASS
+                            AND EXISTS (
+                                SELECT 1
+                                FROM pg_catalog.pg_rewrite AS rw
+                                WHERE
+                                    rw.oid = d3.objid
+                                    AND rw.ev_class = c.oid
+                            )
+                    )
+            )
+        ))
+    FROM pg_catalog.pg_depend AS d
+    INNER JOIN pg_catalog.pg_rewrite AS r ON d.objid = r.oid
+    INNER JOIN pg_catalog.pg_depend AS d2 ON r.oid = d2.objid
+    INNER JOIN
+        pg_catalog.pg_class AS dep_c
+        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p')
+    INNER JOIN
+        pg_catalog.pg_namespace AS dep_ns
+        ON dep_c.relnamespace = dep_ns.oid
+    -- Cast to text because pgv4/pq does not support unmarshalling JSON
+    -- arrays into []json.RawMessage.
+    -- Instead, they must be unmarshalled as string arrays.
+    -- https://github.com/lib/pq/pull/466
+    WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
+    PG_GET_VIEWDEF(c.oid, true) AS view_definition
+FROM pg_catalog.pg_class AS c
+INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
+LEFT JOIN pg_catalog.pg_tablespace AS ts ON c.reltablespace = ts.oid
+WHERE
+    c.relkind = 'm'
+    AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND n.nspname !~ '^pg_toast'
+    AND n.nspname !~ '^pg_temp'
+    AND NOT EXISTS (
+        SELECT depend.objid
+        FROM pg_catalog.pg_depend AS depend
+        WHERE
+            depend.classid = 'pg_class'::REGCLASS
+            AND depend.objid = c.oid
+            AND depend.deptype = 'e'
+    )
+`
+
+type GetMaterializedViewsRow struct {
+	SchemaName        string
+	ViewName          string
+	RelOptions        []string
+	TablespaceName    string
+	TableDependencies []string
+	ViewDefinition    string
+}
+
+func (q *Queries) GetMaterializedViews(ctx context.Context) ([]GetMaterializedViewsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getMaterializedViews)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMaterializedViewsRow
+	for rows.Next() {
+		var i GetMaterializedViewsRow
+		if err := rows.Scan(
+			&i.SchemaName,
+			&i.ViewName,
+			pq.Array(&i.RelOptions),
+			&i.TablespaceName,
+			pq.Array(&i.TableDependencies),
+			&i.ViewDefinition,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPolicies = `-- name: GetPolicies :many
 WITH roles AS (
     SELECT

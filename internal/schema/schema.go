@@ -62,6 +62,7 @@ type Schema struct {
 	Procedures            []Procedure
 	Triggers              []Trigger
 	Views                 []View
+	MaterializedViews     []MaterializedView
 }
 
 // Normalize normalizes the schema (alphabetically sorts tables and columns in tables).
@@ -96,6 +97,12 @@ func (s Schema) Normalize() Schema {
 		normViews = append(normViews, normalizeView(v))
 	}
 	s.Views = normViews
+
+	var normMaterializedViews []MaterializedView
+	for _, mv := range sortSchemaObjectsByName(s.MaterializedViews) {
+		normMaterializedViews = append(normMaterializedViews, normalizeMaterializedView(mv))
+	}
+	s.MaterializedViews = normMaterializedViews
 
 	return s
 }
@@ -135,6 +142,16 @@ func normalizeView(v View) View {
 	}
 	v.TableDependencies = normTableDeps
 	return v
+}
+
+func normalizeMaterializedView(mv MaterializedView) MaterializedView {
+	var normTableDeps []TableDependency
+	for _, d := range sortSchemaObjectsByName(mv.TableDependencies) {
+		d.Columns = sortByKey(d.Columns, func(s string) string { return s })
+		normTableDeps = append(normTableDeps, d)
+	}
+	mv.TableDependencies = normTableDeps
+	return mv
 }
 
 // sortSchemaObjectsByName returns a (copied) sorted list of schema objects.
@@ -475,6 +492,19 @@ type View struct {
 	TableDependencies []TableDependency
 }
 
+type MaterializedView struct {
+	SchemaQualifiedName
+	// ViewDefinition is the select query that defines the materialized view. It is derived from pg_get_viewdef.
+	ViewDefinition string
+	// Options represents key value map of materialized view options, i.e., pg_class.reloptions.
+	Options map[string]string
+	// Tablespace is the tablespace where the materialized view is stored. Empty string means default tablespace.
+	Tablespace string
+
+	// TableDependencies is a list of tables the materialized view depends on.
+	TableDependencies []TableDependency
+}
+
 type (
 	GetSchemaOpt func(*getSchemaOptions)
 )
@@ -689,6 +719,13 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("starting views future: %w", err)
 	}
 
+	materializedViewsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]MaterializedView, error) {
+		return s.fetchMaterializedViews(ctx)
+	})
+	if err != nil {
+		return Schema{}, fmt.Errorf("starting materialized views future: %w", err)
+	}
+
 	schemas, err := namedSchemasFuture.Get(ctx)
 	if err != nil {
 		return Schema{}, fmt.Errorf("getting named schemas: %w", err)
@@ -744,6 +781,11 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("getting views: %w", err)
 	}
 
+	materializedViews, err := materializedViewsFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting materialized views: %w", err)
+	}
+
 	return Schema{
 		NamedSchemas:          schemas,
 		Extensions:            extensions,
@@ -756,6 +798,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		Procedures:            procedures,
 		Triggers:              triggers,
 		Views:                 views,
+		MaterializedViews:     materializedViews,
 	}, nil
 }
 
@@ -1382,6 +1425,45 @@ func (s *schemaFetcher) fetchViews(ctx context.Context) ([]View, error) {
 	)
 
 	return views, nil
+}
+
+func (s *schemaFetcher) fetchMaterializedViews(ctx context.Context) ([]MaterializedView, error) {
+	rawMaterializedViews, err := s.q.GetMaterializedViews(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetMaterializedViews: %w", err)
+	}
+
+	var materializedViews []MaterializedView
+	for _, mv := range rawMaterializedViews {
+		options, err := relOptionsToMap(mv.RelOptions)
+		if err != nil {
+			return nil, fmt.Errorf("materialized view (%q): %w", mv.ViewName, err)
+		}
+
+		tableDependencies, err := parseJSONTableDependencies(mv.TableDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("parsing schema qualified names JSON: %w", err)
+		}
+
+		materializedViews = append(materializedViews, MaterializedView{
+			SchemaQualifiedName: buildNameFromUnescaped(mv.ViewName, mv.SchemaName),
+			ViewDefinition:      mv.ViewDefinition,
+			Options:             options,
+			Tablespace:          mv.TablespaceName,
+
+			TableDependencies: tableDependencies,
+		})
+	}
+
+	materializedViews = filterSliceByName(
+		materializedViews,
+		func(materializedView MaterializedView) SchemaQualifiedName {
+			return materializedView.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
+	return materializedViews, nil
 }
 
 // parseViewJSONTableDependencies takes an slice of JSON values with schema,
