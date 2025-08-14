@@ -1184,6 +1184,149 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 	},
+	{
+		name: "Add generated column",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE tabs (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE tabs (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT,
+                search_vector tsvector GENERATED ALWAYS AS (
+                    to_tsvector('simple', title || ' ' || coalesce(artist, ''))
+                ) STORED
+            );
+			`,
+		},
+	},
+	{
+		name: "Drop generated column",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE tabs (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT,
+                search_vector tsvector GENERATED ALWAYS AS (
+                    to_tsvector('simple', title || ' ' || coalesce(artist, ''))
+                ) STORED
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE tabs (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT
+            );
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "Add multiple generated columns",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE products (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                price NUMERIC(10,2) NOT NULL
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE products (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                price NUMERIC(10,2) NOT NULL,
+                price_with_tax NUMERIC(10,2) GENERATED ALWAYS AS (price * 1.1) STORED,
+                display_name TEXT GENERATED ALWAYS AS (upper(name)) STORED
+            );
+			`,
+		},
+		// expectedDBSchemaDDL reflects the actual column order after migration
+		// PostgreSQL adds columns in the order of execution, not declaration order
+		expectedDBSchemaDDL: []string{
+			`
+            CREATE TABLE products (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                price NUMERIC(10,2) NOT NULL,
+                display_name TEXT GENERATED ALWAYS AS (upper(name)) STORED,
+                price_with_tax NUMERIC(10,2) GENERATED ALWAYS AS (price * 1.1) STORED
+            );
+			`,
+		},
+	},
+	{
+		name: "Generated column with index",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE articles (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                content TEXT
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE articles (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                content TEXT,
+                search_vector tsvector GENERATED ALWAYS AS (
+                    to_tsvector('english', title || ' ' || coalesce(content, ''))
+                ) STORED
+            );
+            CREATE INDEX idx_articles_search_vector ON articles USING gin (search_vector);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
+		name: "Generated column no-op",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE tabs (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT,
+                search_vector tsvector GENERATED ALWAYS AS (
+                    to_tsvector('simple', title || ' ' || coalesce(artist, ''))
+                ) STORED
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE tabs (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT,
+                search_vector tsvector GENERATED ALWAYS AS (
+                    to_tsvector('simple', title || ' ' || coalesce(artist, ''))
+                ) STORED
+            );
+			`,
+		},
+		expectEmptyPlan: true,
+	},
 }
 
 func TestColumnTestCases(t *testing.T) {

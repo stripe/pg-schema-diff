@@ -2674,11 +2674,13 @@ func buildColumnDefinition(column schema.Column) (string, error) {
 	if column.IsCollated() {
 		sb.WriteString(fmt.Sprintf(" COLLATE %s", column.Collation.GetFQEscapedName()))
 	}
+	if column.IsGenerated {
+		sb.WriteString(fmt.Sprintf(" GENERATED ALWAYS AS (%s) STORED", column.GenerationExpression))
+	} else if len(column.Default) > 0 {
+		sb.WriteString(fmt.Sprintf(" DEFAULT %s", column.Default))
+	}
 	if !column.IsNullable {
 		sb.WriteString(" NOT NULL")
-	}
-	if len(column.Default) > 0 {
-		sb.WriteString(fmt.Sprintf(" DEFAULT %s", column.Default))
 	}
 	if column.Identity != nil {
 		identityDef, err := buildColumnIdentityDefinition(*column.Identity)

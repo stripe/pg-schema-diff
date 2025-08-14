@@ -3,6 +3,7 @@ package diff
 import (
 	"testing"
 
+	"github.com/stripe/pg-schema-diff/internal/schema"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,6 +22,62 @@ func TestIsNotNullCCRegex(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			actual := isNotNullCCRegex.MatchString(tc.input)
 			assert.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestBuildColumnDefinition(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		column   schema.Column
+		expected string
+	}{
+		{
+			name: "Regular column with default",
+			column: schema.Column{
+				Name:       "name",
+				Type:       "text",
+				Default:    "'default value'",
+				IsNullable: true,
+			},
+			expected: `"name" text DEFAULT 'default value'`,
+		},
+		{
+			name: "Generated column",
+			column: schema.Column{
+				Name:                 "search_vector",
+				Type:                 "tsvector",
+				IsGenerated:          true,
+				GenerationExpression: "to_tsvector('simple', title || ' ' || coalesce(artist, ''))",
+				IsNullable:           true,
+			},
+			expected: `"search_vector" tsvector GENERATED ALWAYS AS (to_tsvector('simple', title || ' ' || coalesce(artist, ''))) STORED`,
+		},
+		{
+			name: "Generated column with NOT NULL",
+			column: schema.Column{
+				Name:                 "price_with_tax",
+				Type:                 "numeric(10,2)",
+				IsGenerated:          true,
+				GenerationExpression: "price * 1.1",
+				IsNullable:           false,
+			},
+			expected: `"price_with_tax" numeric(10,2) GENERATED ALWAYS AS (price * 1.1) STORED NOT NULL`,
+		},
+		{
+			name: "Regular column with NOT NULL",
+			column: schema.Column{
+				Name:       "email",
+				Type:       "text",
+				IsNullable: false,
+			},
+			expected: `"email" text NOT NULL`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := buildColumnDefinition(tc.column)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, result)
 		})
 	}
 }
