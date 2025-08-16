@@ -140,7 +140,7 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                 LANGUAGE SQL
                 IMMUTABLE
                 RETURNS NULL ON NULL INPUT
-                RETURN CONCAT(a, b); 
+                RETURN CONCAT(a, b);
 		`},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
@@ -248,7 +248,7 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                 LANGUAGE SQL
                 IMMUTABLE
                 RETURNS NULL ON NULL INPUT
-                RETURN CONCAT(a, b); 
+                RETURN CONCAT(a, b);
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
@@ -572,6 +572,90 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
+	},
+
+	{
+		name:         "Non-sql function used a default for a column",
+		oldSchemaDDL: nil,
+		newSchemaDDL: []string{
+			`
+			CREATE FUNCTION add() RETURNS text
+				LANGUAGE plpgsql
+				AS $$
+					declare
+					begin
+					   return 'hi';
+					end;
+				$$;
+
+			CREATE TABLE foobar (
+				foo text DEFAULT add() NOT NULL
+			);
+
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
+	},
+	{
+		name: "Deletion of non-sql function used a default for a column",
+		oldSchemaDDL: []string{
+			`
+			CREATE FUNCTION add() RETURNS text
+				LANGUAGE plpgsql
+				AS $$
+					declare
+					begin
+					   return 'hi';
+					end;
+				$$;
+
+			CREATE TABLE foobar (
+				foo text DEFAULT add() NOT NULL
+			);
+
+			`,
+		},
+		newSchemaDDL:        nil,
+		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies, diff.MigrationHazardTypeDeletesData},
+	},
+
+	{
+		name:         "Sql function used a default for a column",
+		oldSchemaDDL: nil,
+		newSchemaDDL: []string{
+			`
+			CREATE FUNCTION add() RETURNS text
+				LANGUAGE SQL
+				IMMUTABLE
+				RETURNS NULL ON NULL INPUT
+				RETURN 'hi';
+
+			CREATE TABLE foobar (
+				foo text DEFAULT add() NOT NULL
+			);
+
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{},
+	},
+	{
+		name: "Deletion of sql function used a default for a column",
+		oldSchemaDDL: []string{
+			`
+			CREATE FUNCTION add() RETURNS text
+				LANGUAGE SQL
+				IMMUTABLE
+				RETURNS NULL ON NULL INPUT
+				RETURN 'hi';
+
+			CREATE TABLE foobar (
+				foo text DEFAULT add() NOT NULL
+			);
+
+			`,
+		},
+		newSchemaDDL:        nil,
+		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeDeletesData},
 	},
 }
 
