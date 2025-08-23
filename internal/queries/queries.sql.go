@@ -115,21 +115,6 @@ WITH identity_col_seq AS (
 
 SELECT
     a.attname::TEXT AS column_name,
-    COALESCE(coll.collname, '')::TEXT AS collation_name,
-    COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
-    COALESCE(
-        CASE 
-            WHEN a.attgenerated = 's' THEN ''
-            ELSE pg_catalog.pg_get_expr(d.adbin, d.adrelid)
-        END, ''
-    )::TEXT AS default_value,
-    COALESCE(
-        CASE
-            WHEN a.attgenerated = 's' THEN pg_catalog.pg_get_expr(d.adbin, d.adrelid)
-            ELSE ''
-        END, ''
-    )::TEXT AS generation_expression,
-    (a.attgenerated = 's') AS is_generated,
     a.attnotnull AS is_not_null,
     a.attlen AS column_size,
     a.attidentity::TEXT AS identity_type,
@@ -139,6 +124,22 @@ SELECT
     identity_col_seq.seqmin AS min_value,
     identity_col_seq.seqcache AS cache_size,
     identity_col_seq.seqcycle AS is_cycle,
+    coll.collname::TEXT AS collation_name,
+    collation_namespace.nspname::TEXT AS collation_schema_name,
+    COALESCE(
+        CASE
+            WHEN a.attgenerated = 's' THEN ''
+            ELSE pg_catalog.pg_get_expr(d.adbin, d.adrelid)
+        END, ''
+    )::TEXT AS default_value,
+    COALESCE(
+        CASE
+            WHEN a.attgenerated = 's'
+                THEN pg_catalog.pg_get_expr(d.adbin, d.adrelid)
+            ELSE ''
+        END, ''
+    )::TEXT AS generation_expression,
+    (a.attgenerated = 's') AS is_generated,
     pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type
 FROM pg_catalog.pg_attribute AS a
 LEFT JOIN
@@ -162,11 +163,6 @@ ORDER BY a.attnum
 
 type GetColumnsForTableRow struct {
 	ColumnName           string
-	CollationName        string
-	CollationSchemaName  string
-	DefaultValue         string
-	GenerationExpression string
-	IsGenerated          bool
 	IsNotNull            bool
 	ColumnSize           int16
 	IdentityType         string
@@ -176,6 +172,11 @@ type GetColumnsForTableRow struct {
 	MinValue             sql.NullInt64
 	CacheSize            sql.NullInt64
 	IsCycle              sql.NullBool
+	CollationName        string
+	CollationSchemaName  string
+	DefaultValue         string
+	GenerationExpression string
+	IsGenerated          bool
 	ColumnType           string
 }
 
@@ -190,11 +191,6 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) 
 		var i GetColumnsForTableRow
 		if err := rows.Scan(
 			&i.ColumnName,
-			&i.CollationName,
-			&i.CollationSchemaName,
-			&i.DefaultValue,
-			&i.GenerationExpression,
-			&i.IsGenerated,
 			&i.IsNotNull,
 			&i.ColumnSize,
 			&i.IdentityType,
@@ -204,6 +200,11 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) 
 			&i.MinValue,
 			&i.CacheSize,
 			&i.IsCycle,
+			&i.CollationName,
+			&i.CollationSchemaName,
+			&i.DefaultValue,
+			&i.GenerationExpression,
+			&i.IsGenerated,
 			&i.ColumnType,
 		); err != nil {
 			return nil, err
