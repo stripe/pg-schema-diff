@@ -26,6 +26,12 @@ func WithSchemaOnly() Parameter {
 	}
 }
 
+func WithRestrictKey(restrict_key string) Parameter {
+	return Parameter{
+		values: []string{"--restrict-key", restrict_key},
+	}
+}
+
 // GetDump gets the pg_dump of the inputted database.
 // It is only intended to be used for testing. You cannot securely pass passwords with this implementation, so it will
 // only accept databases created for unit tests (spun up with the pgengine package)
