@@ -78,9 +78,9 @@ func (suite *cmdTestSuite) TestApplyCmd() {
 			})
 			// The migration should have been successful. Assert it was.
 			expectedDb := tempDbWithSchema(suite.T(), suite.pgEngine, tc.expectedSchemaDDL)
-			expectedDbDump, err := pgdump.GetDump(expectedDb, pgdump.WithSchemaOnly(), pgdump.WithRestrictKey("test"))
+			expectedDbDump, err := pgdump.GetDump(expectedDb, pgdump.WithSchemaOnly(), pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
 			suite.Require().NoError(err)
-			fromDbDump, err := pgdump.GetDump(fromDb, pgdump.WithSchemaOnly(), pgdump.WithRestrictKey("test"))
+			fromDbDump, err := pgdump.GetDump(fromDb, pgdump.WithSchemaOnly(), pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
 			suite.Require().NoError(err)
 
 			suite.Equal(expectedDbDump, fromDbDump)

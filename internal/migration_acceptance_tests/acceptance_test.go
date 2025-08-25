@@ -183,7 +183,7 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 
 	// Make sure the pgdump after running the migration is the same as the
 	// pgdump from a database where we directly run the newSchemaDDL
-	oldDbDump, err := pgdump.GetDump(oldDb, pgdump.WithSchemaOnly())
+	oldDbDump, err := pgdump.GetDump(oldDb, pgdump.WithSchemaOnly(), pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
 	require.NoError(t, err)
 
 	newDbDump := directlyRunDDLAndGetDump(t, engine, tc.expectedDBSchemaDDL)
@@ -221,7 +221,7 @@ func directlyRunDDLAndGetDump(t *testing.T, engine *pgengine.Engine, ddl []strin
 	defer newDb.DropDB()
 	require.NoError(t, applyDDL(newDb, ddl))
 
-	newDbDump, err := pgdump.GetDump(newDb, pgdump.WithSchemaOnly())
+	newDbDump, err := pgdump.GetDump(newDb, pgdump.WithSchemaOnly(), pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
 	require.NoError(t, err)
 	return newDbDump
 }
