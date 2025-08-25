@@ -12,6 +12,8 @@ func (suite *cmdTestSuite) TestPlanCmd() {
 		args        []string
 		dynamicArgs []dArgGenerator
 
+		// outputEquals is the exact string that stdout should equal.
+		outputEquals string
 		// outputContains is a list of substrings that are expected to be contained in the stdout output of the command.
 		outputContains []string
 		// expectErrContains is a list of substrings that are expected to be contained in the error returned by
@@ -91,11 +93,43 @@ func (suite *cmdTestSuite) TestPlanCmd() {
 			args:              []string{"--from-dir", "some-dir", "--to-dir", "some-other-dir"},
 			expectErrContains: []string{"at least one Postgres server"},
 		},
+		{
+			name: "sql output format",
+			args: []string{"--output-format", "sql"},
+			dynamicArgs: []dArgGenerator{
+				tempDsnDArg(suite.pgEngine, "temp-db-dsn", []string{""}),
+				tempSchemaDirDArg("from-dir", []string{`
+						CREATE TABLE foobar(
+							bar TEXT,
+							fizzbuzz TEXT
+						);
+				`}),
+				tempSchemaDirDArg("to-dir", []string{`
+						CREATE TABLE foobar(
+							bar TEXT,
+							fizzbuzz TEXT
+						);
+					CREATE INDEX bar_idx ON foobar(bar);
+					CREATE INDEX fizzbuzz_idx ON foobar(fizzbuzz);
+				`}),
+			},
+			outputEquals: "-- Hazard INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.\nSET SESSION statement_timeout = 1200000;\nSET SESSION lock_timeout = 3000;\nCREATE INDEX CONCURRENTLY bar_idx ON public.foobar USING btree (bar);\n\n-- Hazard INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.\nSET SESSION statement_timeout = 1200000;\nSET SESSION lock_timeout = 3000;\nCREATE INDEX CONCURRENTLY fizzbuzz_idx ON public.foobar USING btree (fizzbuzz);\n",
+		},
+		{
+			name: "invalid output format",
+			args: []string{"--output-format", "invalid"},
+			dynamicArgs: []dArgGenerator{
+				tempDsnDArg(suite.pgEngine, "from-dsn", nil),
+				tempDsnDArg(suite.pgEngine, "to-dsn", []string{"CREATE TABLE foobar()"}),
+			},
+			expectErrContains: []string{"invalid output format"},
+		},
 	} {
 		suite.Run(tc.name, func() {
 			suite.runCmdWithAssertions(runCmdWithAssertionsParams{
 				args:              append([]string{"plan"}, tc.args...),
 				dynamicArgs:       tc.dynamicArgs,
+				outputEquals:      tc.outputEquals,
 				outputContains:    tc.outputContains,
 				expectErrContains: tc.expectErrContains,
 			})
