@@ -113,7 +113,7 @@ func (suite *cmdTestSuite) TestPlanCmd() {
 					CREATE INDEX fizzbuzz_idx ON foobar(fizzbuzz);
 				`}),
 			},
-			outputEquals: "-- Hazard INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.\nSET SESSION statement_timeout = 1200000;\nSET SESSION lock_timeout = 3000;\nCREATE INDEX CONCURRENTLY bar_idx ON public.foobar USING btree (bar);\n\n-- Hazard INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.\nSET SESSION statement_timeout = 1200000;\nSET SESSION lock_timeout = 3000;\nCREATE INDEX CONCURRENTLY fizzbuzz_idx ON public.foobar USING btree (fizzbuzz);\n",
+			outputEquals: "/*\nStatement 0\n  - INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.\n*/\nSET SESSION statement_timeout = 1200000;\nSET SESSION lock_timeout = 3000;\nCREATE INDEX CONCURRENTLY bar_idx ON public.foobar USING btree (bar);\n\n/*\nStatement 1\n  - INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.\n*/\nSET SESSION statement_timeout = 1200000;\nSET SESSION lock_timeout = 3000;\nCREATE INDEX CONCURRENTLY fizzbuzz_idx ON public.foobar USING btree (fizzbuzz);\n",
 		},
 		{
 			name: "invalid output format",
