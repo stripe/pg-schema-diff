@@ -42,11 +42,11 @@ func buildPlanCmd() *cobra.Command {
 	toSchemaFlags := createSchemaSourceFlags(cmd, "to-")
 	tempDbConnFlags := createConnectionFlags(cmd, "temp-db-", "The temporary database to use for schema extraction. This is optional if diffing to/from a Postgres instance")
 	planOptsFlags := createPlanOptionsFlags(cmd)
-	outputFmt := outputFormatPretty
+	outputFmt := outputFormatSql
 	cmd.Flags().Var(
 		&outputFmt,
 		"output-format",
-		fmt.Sprintf("Change the output format for what is printed. Defaults to pretty-printed human-readable output. (options: %s)", strings.Join(outputFormatStrings(), ", ")),
+		fmt.Sprintf("Change the output format for what is printed. Defaults to %v. (options: %s)", outputFmt.identifier, strings.Join(outputFormatStrings(), ", ")),
 	)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		logger := log.SimpleLogger()
@@ -162,11 +162,6 @@ type (
 )
 
 var (
-	outputFormatPretty = outputFormat{
-		identifier:            "pretty",
-		convertToOutputString: planToPrettyS,
-	}
-
 	outputFormatJson = outputFormat{
 		identifier:            "json",
 		convertToOutputString: planToJsonS,
@@ -177,10 +172,15 @@ var (
 		convertToOutputString: planToSql,
 	}
 
+	outputFormatPretty = outputFormat{
+		identifier:            "pretty",
+		convertToOutputString: planToPrettyS,
+	}
+
 	outputFormats = []outputFormat{
+		outputFormatSql,
 		outputFormatPretty,
 		outputFormatJson,
-		outputFormatSql,
 	}
 
 	outputFormatStrings = func() []string {
@@ -603,11 +603,14 @@ func planToJsonS(plan diff.Plan) string {
 func planToSql(plan diff.Plan) string {
 	sb := strings.Builder{}
 	for i, stmt := range plan.Statements {
+		sb.WriteString("/*\n")
+		sb.WriteString(fmt.Sprintf("Statement %d\n", i))
 		if len(stmt.Hazards) > 0 {
 			for _, hazard := range stmt.Hazards {
-				sb.WriteString(fmt.Sprintf("-- Hazard %s\n", hazardToPrettyS(hazard)))
+				sb.WriteString(fmt.Sprintf("  - %s\n", hazardToPrettyS(hazard)))
 			}
 		}
+		sb.WriteString("*/\n")
 		sb.WriteString(fmt.Sprintf("SET SESSION statement_timeout = %d;\n", stmt.Timeout.Milliseconds()))
 		sb.WriteString(fmt.Sprintf("SET SESSION lock_timeout = %d;\n", stmt.LockTimeout.Milliseconds()))
 		sb.WriteString(fmt.Sprintf("%s;", stmt.DDL))
