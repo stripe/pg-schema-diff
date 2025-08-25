@@ -174,7 +174,7 @@ var (
 
 	outputFormatSql = outputFormat{
 		identifier:            "sql",
-		convertToOutputString: planToSqlS,
+		convertToOutputString: planToSql,
 	}
 
 	outputFormats = []outputFormat{
@@ -590,6 +590,7 @@ func hazardToPrettyS(hazard diff.MigrationHazard) string {
 	}
 }
 
+// planToJsonS converts the plan to JSON.
 func planToJsonS(plan diff.Plan) string {
 	jsonData, err := json.MarshalIndent(plan, "", "  ")
 	if err != nil {
@@ -598,18 +599,21 @@ func planToJsonS(plan diff.Plan) string {
 	return string(jsonData)
 }
 
-func planToSqlS(plan diff.Plan) string {
+// planToSql converts the plan to one large runnable SQL script.
+func planToSql(plan diff.Plan) string {
 	sb := strings.Builder{}
-
-	if len(plan.Statements) == 0 {
-		return ""
+	for i, stmt := range plan.Statements {
+		if len(stmt.Hazards) > 0 {
+			for _, hazard := range stmt.Hazards {
+				sb.WriteString(fmt.Sprintf("-- Hazard %s\n", hazardToPrettyS(hazard)))
+			}
+		}
+		sb.WriteString(fmt.Sprintf("SET SESSION statement_timeout = %d;\n", stmt.Timeout.Milliseconds()))
+		sb.WriteString(fmt.Sprintf("SET SESSION lock_timeout = %d;\n", stmt.LockTimeout.Milliseconds()))
+		sb.WriteString(fmt.Sprintf("%s;", stmt.DDL))
+		if i < len(plan.Statements)-1 {
+			sb.WriteString("\n\n")
+		}
 	}
-
-	var stmtStrs []string
-	for _, stmt := range plan.Statements {
-		stmtStrs = append(stmtStrs, statementToPrettyS(stmt))
-	}
-	sb.WriteString(strings.Join(stmtStrs, "\n\n"))
-
 	return sb.String()
 }
