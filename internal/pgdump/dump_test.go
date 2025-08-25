@@ -51,3 +51,41 @@ func TestGetDump(t *testing.T) {
 	require.NotContains(t, onlyPublicSchemaDump, "test.bar")
 	require.NotContains(t, onlyPublicSchemaDump, "some-id")
 }
+
+func TestParseVersion(t *testing.T) {
+	testCases := []struct {
+		name            string
+		versionString   string
+		expectedVersion string
+		expectError     bool
+	}{
+		{
+			name:            "version 17.6",
+			versionString:   "pg_dump (PostgreSQL) 17.6",
+			expectedVersion: "17.6.0",
+			expectError:     false,
+		},
+		{
+			name:            "version 17",
+			versionString:   "pg_dump (PostgreSQL) 17",
+			expectedVersion: "17.0.0",
+			expectError:     false,
+		},
+		{
+			name:          "invalid version string",
+			versionString: "invalid version",
+			expectError:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			version, err := pgdump.ParseVersion(tc.versionString)
+			if tc.expectError {
+				require.Error(t, err)
+				return
+			}
+			require.Equal(t, tc.expectedVersion, version.String())
+		})
+	}
+}

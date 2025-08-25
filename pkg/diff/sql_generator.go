@@ -140,6 +140,8 @@ type schemaDiff struct {
 	functionDiffs             listDiff[schema.Function, functionDiff]
 	proceduresDiffs           listDiff[schema.Procedure, procedureDiff]
 	triggerDiffs              listDiff[schema.Trigger, triggerDiff]
+	viewDiff                  listDiff[schema.View, viewDiff]
+	materializedViewDiffs     listDiff[schema.MaterializedView, materializedViewDiff]
 }
 
 // The procedure for DIFFING schemas and GENERATING/RESOLVING the SQL required to migrate the old schema to the new schema is
@@ -223,13 +225,24 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing tables: %w", err)
 	}
-
 	newSchemaTablesByName := buildSchemaObjByNameMap(new.Tables)
 	addedTablesByName := buildSchemaObjByNameMap(tableDiffs.adds)
+	deletedTablesByName := buildSchemaObjByNameMap(tableDiffs.deletes)
+	tableDiffsByName := buildDiffByNameMap[schema.Table, tableDiff](tableDiffs.alters)
+
+	materializedViewDiffs, err := diffLists(old.MaterializedViews, new.MaterializedViews, func(old, new schema.MaterializedView, _, _ int) (diff materializedViewDiff, requiresRecreation bool, error error) {
+		return buildMaterializedViewDiff(deletedTablesByName, tableDiffsByName, old, new)
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing materialized views: %w", err)
+	}
+	addedMatViewsByName := buildSchemaObjByNameMap(materializedViewDiffs.adds)
+
 	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(oldIndex, newIndex schema.Index, _, _ int) (indexDiff, bool, error) {
 		return buildIndexDiff(indexDiffConfig{
 			newSchemaTablesByName:  newSchemaTablesByName,
 			addedTablesByName:      addedTablesByName,
+			addedMatViewsByName:    addedMatViewsByName,
 			oldSchemaIndexesByName: buildSchemaObjByNameMap(old.Indexes),
 			newSchemaIndexesByName: buildSchemaObjByNameMap(new.Indexes),
 		}, oldIndex, newIndex)
@@ -308,6 +321,13 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing triggers: %w", err)
 	}
 
+	viewDiffs, err := diffLists(old.Views, new.Views, func(old, new schema.View, _, _ int) (diff viewDiff, requiresRecreation bool, error error) {
+		return buildViewDiff(deletedTablesByName, tableDiffsByName, old, new)
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing views: %w", err)
+	}
+
 	return schemaDiff{
 		oldAndNew: oldAndNew[schema.Schema]{
 			old: old,
@@ -323,6 +343,8 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		functionDiffs:             functionDiffs,
 		proceduresDiffs:           procedureDiffs,
 		triggerDiffs:              triggerDiffs,
+		viewDiff:                  viewDiffs,
+		materializedViewDiffs:     materializedViewDiffs,
 	}, false, nil
 }
 
@@ -410,6 +432,7 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 type indexDiffConfig struct {
 	newSchemaTablesByName map[string]schema.Table
 	addedTablesByName     map[string]schema.Table
+	addedMatViewsByName   map[string]schema.MaterializedView
 
 	// oldSchemaIndexesByName and newSchemaIndexesByName by name are hackaround because the diff function does not yet support hierarchies
 	oldSchemaIndexesByName map[string]schema.Index
@@ -434,6 +457,10 @@ func buildIndexDiff(deps indexDiffConfig, old, new schema.Index) (diff indexDiff
 	if _, isOnNewTable := deps.addedTablesByName[new.OwningTable.GetName()]; isOnNewTable {
 		// If the table is new, then it must be re-created (this occurs if the base table has been
 		// re-created). In other words, an index must be re-created if the owning table is re-created
+		return indexDiff{}, true, nil
+	}
+	if _, isOnNewMatView := deps.addedMatViewsByName[new.OwningTable.GetName()]; isOnNewMatView {
+		// If the materialized view is new, then the index must be re-created
 		return indexDiff{}, true, nil
 	}
 
@@ -511,6 +538,8 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	tablesInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Tables)
 	deletedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.deletes)
 	addedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.adds)
+	deletedMatViewsByName := buildSchemaObjByNameMap(diff.materializedViewDiffs.deletes)
+	addedMatViewsByName := buildSchemaObjByNameMap(diff.materializedViewDiffs.adds)
 	functionsInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Functions)
 
 	namedSchemaStatements, err := diff.namedSchemaDiffs.resolveToSQLGroupedByEffect(&namedSchemaSQLGenerator{})
@@ -556,9 +585,13 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	partialGraph = concatPartialGraphs(partialGraph, renameConflictingIndexesPartialGraph)
 
 	indexGenerator := legacyToNewSqlVertexGenerator[schema.Index, indexDiff](&indexSQLVertexGenerator{
-		deletedTablesByName:      deletedTablesByName,
-		addedTablesByName:        addedTablesByName,
-		tablesInNewSchemaByName:  tablesInNewSchemaByName,
+		deletedTablesByName:     deletedTablesByName,
+		addedTablesByName:       addedTablesByName,
+		tablesInNewSchemaByName: tablesInNewSchemaByName,
+
+		deletedMatViewsByName: deletedMatViewsByName,
+		addedMatViewsByName:   addedMatViewsByName,
+
 		indexesInNewSchemaByName: buildSchemaObjByNameMap(diff.new.Indexes),
 
 		renameSQLVertexGenerator:          renameConflictingIndexesGenerator,
@@ -614,6 +647,21 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving trigger diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, triggersPartialGraph)
+
+	viewGenerator := newViewSQLVertexGenerator()
+	viewPartialGraph, err := generatePartialGraph(viewGenerator, diff.viewDiff)
+	if err != nil {
+		return nil, fmt.Errorf("resolving view diff: %w", err)
+	}
+	partialGraph = concatPartialGraphs(partialGraph, viewPartialGraph)
+
+	materializedViewGenerator := newMaterializedViewSQLVertexGenerator()
+	materializedViewPartialGraph, err := generatePartialGraph(materializedViewGenerator, diff.materializedViewDiffs)
+	if err != nil {
+		return nil, fmt.Errorf("resolving materialized view diff: %w", err)
+	}
+	partialGraph = concatPartialGraphs(partialGraph, materializedViewPartialGraph)
+
 	sqlGraph, err := graphFromPartials(partialGraph)
 	if err != nil {
 		return nil, fmt.Errorf("converting to graph: %w", err)
@@ -627,6 +675,9 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	// We migrate schemas and extensions first and disable them last since their dependencies may span across
 	// all other entities in the database.
 	var statements []Statement
+	// Initially to support views, we will leverage a very naive ordering, where we delete, add, alter. This will
+	// ensure that (1) no dependencies are dropped before the views are dropped (will lead to an error), and (2)
+	// that all dependencies exist before the view is created.
 	statements = append(statements, namedSchemaStatements.Adds...)
 	statements = append(statements, namedSchemaStatements.Alters...)
 	statements = append(statements, extensionStatements.Adds...)
@@ -1529,6 +1580,12 @@ type indexSQLVertexGenerator struct {
 	// tablesInNewSchemaByName is a map of table name to tables (and partitions) in the new schema.
 	// These tables are not necessarily new. This is used to identify if the table is partitioned
 	tablesInNewSchemaByName map[string]schema.Table
+
+	// deletedMatViewsByName is a map of materialized view name to the delete materialized view
+	deletedMatViewsByName map[string]schema.MaterializedView
+	// addedMatViewsByName is a map of materialiezd view name to added materialized view.
+	addedMatViewsByName map[string]schema.MaterializedView
+
 	// indexesInNewSchemaByName is a map of index name to the index
 	// This is used to identify the parent index is a primary key
 	indexesInNewSchemaByName map[string]schema.Index
@@ -1546,6 +1603,9 @@ func (isg *indexSQLVertexGenerator) Add(index schema.Index) ([]Statement, error)
 	}
 
 	if _, isNewTable := isg.addedTablesByName[index.OwningTable.GetName()]; isNewTable {
+		stmts = stripMigrationHazards(stmts...)
+	}
+	if _, isNewMatView := isg.addedMatViewsByName[index.OwningTable.GetName()]; isNewMatView {
 		stmts = stripMigrationHazards(stmts...)
 	}
 	return stmts, nil
@@ -1618,9 +1678,12 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 }
 
 func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, error) {
-	_, tableWasDeleted := isg.deletedTablesByName[index.OwningTable.GetName()]
-	// An index will be dropped if its owning table is dropped.
-	if tableWasDeleted {
+	if _, tableWasDeleted := isg.deletedTablesByName[index.OwningTable.GetName()]; tableWasDeleted {
+		// An index will be dropped if its owning table is dropped.
+		return nil, nil
+	}
+	if _, matViewWasDeleted := isg.deletedMatViewsByName[index.OwningTable.GetName()]; matViewWasDeleted {
+		// An index will be dropped if its owning materialized view is dropped.
 		return nil, nil
 	}
 
@@ -1794,7 +1857,11 @@ func (isg *indexSQLVertexGenerator) GetAddAlterDependencies(index, _ schema.Inde
 
 func (isg *indexSQLVertexGenerator) GetDeleteDependencies(index schema.Index) ([]dependency, error) {
 	dependencies := []dependency{
+		// Technically, only the table -or- materialized view will exist, but there is no harm in having a dependency
+		// on both.
 		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildTableVertexId(index.OwningTable, diffTypeDelete)),
+		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildMaterializedViewVertexId(index.OwningTable, diffTypeDelete)),
+
 		// Drop the index after it has been potentially renamed
 		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildRenameConflictingIndexVertexId(index.GetSchemaQualifiedName(), diffTypeAddAlter)),
 	}
@@ -1812,12 +1879,20 @@ func (isg *indexSQLVertexGenerator) GetDeleteDependencies(index schema.Index) ([
 
 func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index schema.Index) []dependency {
 	// This could be cleaner if start sorting columns separately in the graph
+	// TODO(bplunkett) - can below just be switched to deleted tables by name
 	parentTable, ok := isg.tablesInNewSchemaByName[index.OwningTable.GetName()]
 	if !ok {
 		// If the parent table is deleted, we don't need to worry about making the index statement come
 		// before any alters
 		return nil
 	}
+	if _, deletedMatView := isg.deletedMatViewsByName[index.OwningTable.GetName()]; deletedMatView {
+		// If the parent materialized view is deleted, we don't need to worry about making the index statement come
+		// before any alters.
+		return nil
+	}
+
+	// TODO(bplunkett) - add conditinoal switches for materialized views
 
 	// These dependencies will force the index deletion statement to come before the table AddAlter
 	addAlterColumnDeps := []dependency{

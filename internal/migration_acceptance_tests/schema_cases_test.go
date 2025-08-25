@@ -89,6 +89,16 @@ var schemaAcceptanceTests = []acceptanceTestCase{
                             RAISE NOTICE 'foobar';
                     END;
             $$ LANGUAGE plpgsql;
+
+            CREATE VIEW schema_1.foobar_view AS
+                SELECT id, foo, fizz 
+                FROM schema_1.foobar
+                WHERE LENGTH(foo) > 10;
+
+            CREATE VIEW public_bar_view AS
+                SELECT bar, foo, fizz, buzz
+                FROM bar
+                WHERE buzz > 0.5;
 			`,
 		},
 		newSchemaDDL: []string{
@@ -170,6 +180,16 @@ var schemaAcceptanceTests = []acceptanceTestCase{
                             RAISE NOTICE 'foobar';
                     END;
             $$ LANGUAGE plpgsql;
+
+            CREATE VIEW schema_1.foobar_view AS
+                SELECT id, foo, fizz 
+                FROM schema_1.foobar
+                WHERE LENGTH(foo) > 10;
+
+            CREATE VIEW public_bar_view AS
+                SELECT bar, foo, fizz, buzz
+                FROM bar
+                WHERE buzz > 0.5;
 			`,
 		},
 		expectEmptyPlan: true,
@@ -360,6 +380,16 @@ var schemaAcceptanceTests = []acceptanceTestCase{
                 BEFORE UPDATE ON schema_2.bar
                 FOR EACH ROW
                 EXECUTE FUNCTION check_content();
+
+            CREATE VIEW schema_2.new_table_view AS
+                SELECT id, version, new_foo, new_bar
+                FROM "New_table"
+                WHERE version > 0;
+
+            CREATE VIEW schema_3.bar_summary AS
+                SELECT fizz, buzz, COUNT(*) as count
+                FROM schema_2.bar
+                GROUP BY fizz, buzz;
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{

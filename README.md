@@ -171,12 +171,11 @@ for _, stmt := range plan.Statements {
 ```
 
 # Supported Postgres versions
-Supported: 14, 15, 16, 17  
+Supported: 14, 15, 16, 17
 Unsupported: <= 13  are not supported. Use at your own risk.
 
 # Unsupported migrations
 An abridged list of unsupported migrations:
-- Views (Planned)
 - Privileges (Planned)
 - Types (Only enums are currently supported)
 - Renaming. The diffing library relies on names to identify the old and new versions of a table, index, etc. If you rename

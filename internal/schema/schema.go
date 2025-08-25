@@ -3,9 +3,11 @@ package schema
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/stripe/pg-schema-diff/internal/concurrent"
@@ -59,6 +61,8 @@ type Schema struct {
 	Functions             []Function
 	Procedures            []Procedure
 	Triggers              []Trigger
+	Views                 []View
+	MaterializedViews     []MaterializedView
 }
 
 // Normalize normalizes the schema (alphabetically sorts tables and columns in tables).
@@ -88,6 +92,18 @@ func (s Schema) Normalize() Schema {
 	s.Procedures = sortSchemaObjectsByName(s.Procedures)
 	s.Triggers = sortSchemaObjectsByName(s.Triggers)
 
+	var normViews []View
+	for _, v := range sortSchemaObjectsByName(s.Views) {
+		normViews = append(normViews, normalizeView(v))
+	}
+	s.Views = normViews
+
+	var normMaterializedViews []MaterializedView
+	for _, mv := range sortSchemaObjectsByName(s.MaterializedViews) {
+		normMaterializedViews = append(normMaterializedViews, normalizeMaterializedView(mv))
+	}
+	s.MaterializedViews = normMaterializedViews
+
 	return s
 }
 
@@ -116,6 +132,26 @@ func normalizeTable(t Table) Table {
 	}
 	t.Policies = normPolicies
 	return t
+}
+
+func normalizeView(v View) View {
+	var normTableDeps []TableDependency
+	for _, d := range sortSchemaObjectsByName(v.TableDependencies) {
+		d.Columns = sortByKey(d.Columns, func(s string) string { return s })
+		normTableDeps = append(normTableDeps, d)
+	}
+	v.TableDependencies = normTableDeps
+	return v
+}
+
+func normalizeMaterializedView(mv MaterializedView) MaterializedView {
+	var normTableDeps []TableDependency
+	for _, d := range sortSchemaObjectsByName(mv.TableDependencies) {
+		d.Columns = sortByKey(d.Columns, func(s string) string { return s })
+		normTableDeps = append(normTableDeps, d)
+	}
+	mv.TableDependencies = normTableDeps
+	return mv
 }
 
 // sortSchemaObjectsByName returns a (copied) sorted list of schema objects.
@@ -439,6 +475,36 @@ func (t Trigger) GetName() string {
 	return t.OwningTable.GetFQEscapedName() + "-" + t.EscapedName
 }
 
+// TableDependency represents a (view's) dependency on a table.
+type TableDependency struct {
+	SchemaQualifiedName
+	Columns []string
+}
+
+type View struct {
+	SchemaQualifiedName
+	// ViewDefinition is the select query that defines the view. It is derived from pg_get_viewdef.
+	ViewDefinition string
+	// Options represents key value map of view options, i.e., pg_class.reloptions.
+	Options map[string]string
+
+	// TableDependencies is a list of tables the view depends on.
+	TableDependencies []TableDependency
+}
+
+type MaterializedView struct {
+	SchemaQualifiedName
+	// ViewDefinition is the select query that defines the materialized view. It is derived from pg_get_viewdef.
+	ViewDefinition string
+	// Options represents key value map of materialized view options, i.e., pg_class.reloptions.
+	Options map[string]string
+	// Tablespace is the tablespace where the materialized view is stored. Empty string means default tablespace.
+	Tablespace string
+
+	// TableDependencies is a list of tables the materialized view depends on.
+	TableDependencies []TableDependency
+}
+
 type (
 	GetSchemaOpt func(*getSchemaOptions)
 )
@@ -646,6 +712,20 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("starting triggers future: %w", err)
 	}
 
+	viewsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]View, error) {
+		return s.fetchViews(ctx)
+	})
+	if err != nil {
+		return Schema{}, fmt.Errorf("starting views future: %w", err)
+	}
+
+	materializedViewsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]MaterializedView, error) {
+		return s.fetchMaterializedViews(ctx)
+	})
+	if err != nil {
+		return Schema{}, fmt.Errorf("starting materialized views future: %w", err)
+	}
+
 	schemas, err := namedSchemasFuture.Get(ctx)
 	if err != nil {
 		return Schema{}, fmt.Errorf("getting named schemas: %w", err)
@@ -696,6 +776,16 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("getting triggers: %w", err)
 	}
 
+	views, err := viewsFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting views: %w", err)
+	}
+
+	materializedViews, err := materializedViewsFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting materialized views: %w", err)
+	}
+
 	return Schema{
 		NamedSchemas:          schemas,
 		Extensions:            extensions,
@@ -707,6 +797,8 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		Functions:             functions,
 		Procedures:            procedures,
 		Triggers:              triggers,
+		Views:                 views,
+		MaterializedViews:     materializedViews,
 	}, nil
 }
 
@@ -1297,6 +1389,104 @@ func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {
 	return triggers, nil
 }
 
+func (s *schemaFetcher) fetchViews(ctx context.Context) ([]View, error) {
+	rawViews, err := s.q.GetViews(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetViews: %w", err)
+	}
+
+	var views []View
+	for _, v := range rawViews {
+		options, err := relOptionsToMap(v.RelOptions)
+		if err != nil {
+			return nil, fmt.Errorf("view (%q): %w", v.ViewName, err)
+		}
+
+		tableDependencies, err := parseJSONTableDependencies(v.TableDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("parsing schema qualified names JSON: %w", err)
+		}
+
+		views = append(views, View{
+			SchemaQualifiedName: buildNameFromUnescaped(v.ViewName, v.SchemaName),
+			ViewDefinition:      v.ViewDefinition,
+			Options:             options,
+
+			TableDependencies: tableDependencies,
+		})
+	}
+
+	views = filterSliceByName(
+		views,
+		func(view View) SchemaQualifiedName {
+			return view.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
+	return views, nil
+}
+
+func (s *schemaFetcher) fetchMaterializedViews(ctx context.Context) ([]MaterializedView, error) {
+	rawMaterializedViews, err := s.q.GetMaterializedViews(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetMaterializedViews: %w", err)
+	}
+
+	var materializedViews []MaterializedView
+	for _, mv := range rawMaterializedViews {
+		options, err := relOptionsToMap(mv.RelOptions)
+		if err != nil {
+			return nil, fmt.Errorf("materialized view (%q): %w", mv.ViewName, err)
+		}
+
+		tableDependencies, err := parseJSONTableDependencies(mv.TableDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("parsing schema qualified names JSON: %w", err)
+		}
+
+		materializedViews = append(materializedViews, MaterializedView{
+			SchemaQualifiedName: buildNameFromUnescaped(mv.ViewName, mv.SchemaName),
+			ViewDefinition:      mv.ViewDefinition,
+			Options:             options,
+			Tablespace:          mv.TablespaceName,
+
+			TableDependencies: tableDependencies,
+		})
+	}
+
+	materializedViews = filterSliceByName(
+		materializedViews,
+		func(materializedView MaterializedView) SchemaQualifiedName {
+			return materializedView.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
+	return materializedViews, nil
+}
+
+// parseViewJSONTableDependencies takes an slice of JSON values with schema,
+// `schema: string; table: string, columns: []string` and unmarshals them into a go struct.
+func parseJSONTableDependencies(vals []string) ([]TableDependency, error) {
+	var out []TableDependency
+	for _, v := range vals {
+		var s struct {
+			Schema  string   `json:"schema"`
+			Name    string   `json:"name"`
+			Columns []string `json:"columns"`
+		}
+		if err := json.Unmarshal([]byte(v), &s); err != nil {
+			return nil, fmt.Errorf("json.Unmarshal(%q, SchemaQualifiedName): %w", string(v), err)
+		}
+		out = append(out, TableDependency{
+			SchemaQualifiedName: buildNameFromUnescaped(s.Name, s.Schema),
+			Columns:             s.Columns,
+		})
+	}
+	return out, nil
+}
+
 // buildProcName is used to build the schema qualified name for a proc (function, procedure), i.e., anything
 // identified by a name AND its arguments.
 func buildProcName(name, identityArguments, schemaName string) SchemaQualifiedName {
@@ -1320,4 +1510,17 @@ func FQEscapedColumnName(table SchemaQualifiedName, columnName string) string {
 
 func EscapeIdentifier(name string) string {
 	return fmt.Sprintf("\"%s\"", name)
+}
+
+// relOptionsToMap converts pg_catalog.pg_class.reloptions to a map.
+func relOptionsToMap(vals []string) (map[string]string, error) {
+	out := make(map[string]string)
+	for i, v := range vals {
+		kv := strings.SplitN(v, "=", 2)
+		if len(kv) != 2 {
+			return nil, fmt.Errorf("val[%d] (%q): expected 2 values when splitting by \"=\" but found %d", i, v, len(kv))
+		}
+		out[kv[0]] = kv[1]
+	}
+	return out, nil
 }
