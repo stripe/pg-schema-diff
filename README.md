@@ -29,19 +29,28 @@ index cc3a14b..cf4b32d 100644
 The generated plan (*queries using `message_idx` will always have an index backing them, even while the new index is being built*):
 ```
 $ pg-schema-diff plan --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir ./schema
-################################ Generated plan ################################
-1. ALTER INDEX "message_idx" RENAME TO "pgschemadiff_tmpidx_message_idx_IiaKzkvPQtyA7ob9piVqiQ";
-        -- Statement Timeout: 3s
+/*
+Statement 0
+*/
+SET SESSION statement_timeout = 3000;
+SET SESSION lock_timeout = 3000;
+ALTER INDEX "public"."message_idx" RENAME TO "pgschemadiff_tmpidx_message_idx_cWw18w4cQ_i7MKzfy7ek9g";
 
-2. CREATE INDEX CONCURRENTLY message_idx ON public.foobar USING btree (message, created_at);
-        -- Statement Timeout: 20m0s
-        -- Lock Timeout: 3s
-        -- Hazard INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.
+/*
+Statement 1
+  - INDEX_BUILD: This might affect database performance. Concurrent index builds require a non-trivial amount of CPU, potentially affecting database performance. They also can take a while but do not lock out writes.
+*/
+SET SESSION statement_timeout = 1200000;
+SET SESSION lock_timeout = 3000;
+CREATE INDEX CONCURRENTLY message_idx ON public.foobar USING btree (message, created_at);
 
-3. DROP INDEX CONCURRENTLY "pgschemadiff_tmpidx_message_idx_IiaKzkvPQtyA7ob9piVqiQ";
-        -- Statement Timeout: 20m0s
-        -- Lock Timeout: 3s
-        -- Hazard INDEX_DROPPED: Dropping this index means queries that use this index might perform worse because they will no longer will be able to leverage it.
+/*
+Statement 2
+  - INDEX_DROPPED: Dropping this index means queries that use this index might perform worse because they will no longer will be able to leverage it.
+*/
+SET SESSION statement_timeout = 1200000;
+SET SESSION lock_timeout = 3000;
+DROP INDEX CONCURRENTLY "public"."pgschemadiff_tmpidx_message_idx_cWw18w4cQ_i7MKzfy7ek9g";
 ```
 ### Online `NOT NULL` constraint creation
 Your project's diff:
@@ -61,18 +70,33 @@ index cc3a14b..5a1cec2 100644
 The generated plan (*leverages check constraints to eliminate the need for a long-lived access-exclusive lock on the table*):
 ```
 $ pg-schema-diff plan --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir ./schema
-################################ Generated plan ################################
-1. ALTER TABLE "public"."foobar" ADD CONSTRAINT "pgschemadiff_tmpnn_BCOxMXqAQwaXlKPCRXoMMg" CHECK("created_at" IS NOT NULL) NOT VALID;
-        -- Statement Timeout: 3s
+/*
+Statement 0
+*/
+SET SESSION statement_timeout = 3000;
+SET SESSION lock_timeout = 3000;
+ALTER TABLE "public"."foobar" ADD CONSTRAINT "pgschemadiff_tmpnn_GimngG1rRkODhKvgjhGfNA" CHECK("created_at" IS NOT NULL) NOT VALID;
 
-2. ALTER TABLE "public"."foobar" VALIDATE CONSTRAINT "pgschemadiff_tmpnn_BCOxMXqAQwaXlKPCRXoMMg";
-        -- Statement Timeout: 3s
+/*
+Statement 1
+*/
+SET SESSION statement_timeout = 3000;
+SET SESSION lock_timeout = 3000;
+ALTER TABLE "public"."foobar" VALIDATE CONSTRAINT "pgschemadiff_tmpnn_GimngG1rRkODhKvgjhGfNA";
 
-3. ALTER TABLE "public"."foobar" ALTER COLUMN "created_at" SET NOT NULL;
-        -- Statement Timeout: 3s
+/*
+Statement 2
+*/
+SET SESSION statement_timeout = 3000;
+SET SESSION lock_timeout = 3000;
+ALTER TABLE "public"."foobar" ALTER COLUMN "created_at" SET NOT NULL;
 
-4. ALTER TABLE "public"."foobar" DROP CONSTRAINT "pgschemadiff_tmpnn_BCOxMXqAQwaXlKPCRXoMMg";
-        -- Statement Timeout: 3s
+/*
+Statement 3
+*/
+SET SESSION statement_timeout = 3000;
+SET SESSION lock_timeout = 3000;
+ALTER TABLE "public"."foobar" DROP CONSTRAINT "pgschemadiff_tmpnn_GimngG1rRkODhKvgjhGfNA";
 ```
 
 # Key features
@@ -90,10 +114,14 @@ $ pg-schema-diff plan --from-dsn "postgres://postgres:postgres@localhost:5432/po
 * Strong support of partitions
 # Install
 ## CLI
+Brew:
+```bash
+brew install pg-schema-diff
+```
+Go toolchain:
 ```bash
 go install github.com/stripe/pg-schema-diff/cmd/pg-schema-diff@latest
 ```
-
 ## Library
 ```bash
 go get -u github.com/stripe/pg-schema-diff@latest
