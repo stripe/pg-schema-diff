@@ -1184,6 +1184,58 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 	},
+	{
+		name: "Incompatible type conversion (integer to timestamptz) - Issue #179",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE activity(
+                id INT PRIMARY KEY,
+                ts INTEGER NOT NULL
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE activity(
+                id INT PRIMARY KEY,
+                ts TIMESTAMPTZ NOT NULL
+            );
+			`,
+		},
+		expectedPlanDDL: []string{
+			"ALTER TABLE \"public\".\"activity\" DROP COLUMN \"ts\"",
+			"ALTER TABLE \"public\".\"activity\" ADD COLUMN \"ts\" timestamp with time zone NOT NULL",
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "Incompatible type conversion (timestamp to integer) - Issue #179 reverse",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE activity(
+                id INT PRIMARY KEY,
+                ts TIMESTAMP NOT NULL
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE activity(
+                id INT PRIMARY KEY,
+                ts INTEGER NOT NULL
+            );
+			`,
+		},
+		expectedPlanDDL: []string{
+			"ALTER TABLE \"public\".\"activity\" DROP COLUMN \"ts\"",
+			"ALTER TABLE \"public\".\"activity\" ADD COLUMN \"ts\" integer NOT NULL",
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
+	},
 }
 
 func TestColumnTestCases(t *testing.T) {
