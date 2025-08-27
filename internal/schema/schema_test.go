@@ -229,7 +229,7 @@ var (
 				SELECT id, author
 				FROM schema_2.foo;
 		`},
-			expectedHash: "f0fb3f95f68ba482",
+			expectedHash: "ff9ed400558572aa",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -571,7 +571,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "bcad7c978a081c30",
+			expectedHash: "9647ef46a878d426",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},

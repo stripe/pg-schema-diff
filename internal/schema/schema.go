@@ -264,8 +264,16 @@ type (
 		//   ''::text
 		//   CURRENT_TIMESTAMP
 		// If empty, indicates that there is no default value.
-		Default    string
-		IsNullable bool
+		Default string
+		// If the column is a generated column, this will be true.
+		IsGenerated bool
+		// If the column is a generated column, this will be the generation expression.
+		// Examples:
+		//   to_tsvector('simple', title || ' ' || coalesce(artist, ''))
+		//   (price * 1.1)
+		// Only populated if IsGenerated is true.
+		GenerationExpression string
+		IsNullable           bool
 		// Size is the number of bytes required to store the value.
 		// It is used for data-packing purposes
 		Size     int
@@ -981,9 +989,11 @@ func (s *schemaFetcher) buildTable(
 			//   ''::text
 			//   CURRENT_TIMESTAMP
 			// If empty, indicates that there is no default value.
-			Default:  column.DefaultValue,
-			Size:     int(column.ColumnSize),
-			Identity: identity,
+			Default:              column.DefaultValue,
+			IsGenerated:          column.IsGenerated,
+			GenerationExpression: column.GenerationExpression,
+			Size:                 int(column.ColumnSize),
+			Identity:             identity,
 		})
 	}
 

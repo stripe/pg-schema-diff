@@ -89,11 +89,6 @@ WITH identity_col_seq AS (
 
 SELECT
     a.attname::TEXT AS column_name,
-    COALESCE(coll.collname, '')::TEXT AS collation_name,
-    COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
-    COALESCE(
-        pg_catalog.pg_get_expr(d.adbin, d.adrelid), ''
-    )::TEXT AS default_value,
     a.attnotnull AS is_not_null,
     a.attlen AS column_size,
     a.attidentity::TEXT AS identity_type,
@@ -103,6 +98,22 @@ SELECT
     identity_col_seq.seqmin AS min_value,
     identity_col_seq.seqcache AS cache_size,
     identity_col_seq.seqcycle AS is_cycle,
+    COALESCE(coll.collname, '')::TEXT AS collation_name,
+    COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
+    COALESCE(
+        CASE
+            WHEN a.attgenerated = 's' THEN ''
+            ELSE pg_catalog.pg_get_expr(d.adbin, d.adrelid)
+        END, ''
+    )::TEXT AS default_value,
+    COALESCE(
+        CASE
+            WHEN a.attgenerated = 's'
+                THEN pg_catalog.pg_get_expr(d.adbin, d.adrelid)
+            ELSE ''
+        END, ''
+    )::TEXT AS generation_expression,
+    (a.attgenerated = 's') AS is_generated,
     pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type
 FROM pg_catalog.pg_attribute AS a
 LEFT JOIN
