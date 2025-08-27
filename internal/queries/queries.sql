@@ -98,8 +98,8 @@ SELECT
     identity_col_seq.seqmin AS min_value,
     identity_col_seq.seqcache AS cache_size,
     identity_col_seq.seqcycle AS is_cycle,
-    coll.collname::TEXT AS collation_name,
-    collation_namespace.nspname::TEXT AS collation_schema_name,
+    COALESCE(coll.collname, '')::TEXT AS collation_name,
+    COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
     COALESCE(
         CASE
             WHEN a.attgenerated = 's' THEN ''
