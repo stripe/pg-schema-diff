@@ -370,7 +370,7 @@ func TestSchemaMigrationPlanTest(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
-			stmts, err := newSchemaSQLGenerator(randReader).Alter(schemaDiff)
+			stmts, err := newSchemaSQLGenerator(randReader, &planOptions{}).Alter(schemaDiff)
 			require.NoError(t, err)
 			assert.Equal(t, testCase.expectedStatements, stmts, "actual:\n %# v", pretty.Formatter(stmts))
 		})

@@ -35,6 +35,7 @@ type (
 		validatePlan            bool
 		getSchemaOpts           []schema.GetSchemaOpt
 		randReader              io.Reader
+		noConcurrentIndexOps    bool
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -99,6 +100,16 @@ func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
 func WithRandReader(randReader io.Reader) PlanOpt {
 	return func(opts *planOptions) {
 		opts.randReader = randReader
+	}
+}
+
+// WithNoConcurrentIndexOps disables the use of CONCURRENTLY in CREATE INDEX and DROP INDEX statements.
+// This can be useful when you need simpler DDL statements or when working in environments that don't support
+// concurrent index operations. Note that disabling concurrent operations may result in longer lock times
+// and potential downtime during migrations.
+func WithNoConcurrentIndexOps() PlanOpt {
+	return func(opts *planOptions) {
+		opts.noConcurrentIndexOps = true
 	}
 }
 
@@ -187,7 +198,7 @@ func generateMigrationStatements(oldSchema, newSchema schema.Schema, planOptions
 		diff = removeChangesToColumnOrdering(diff)
 	}
 
-	statements, err := newSchemaSQLGenerator(planOptions.randReader).Alter(diff)
+	statements, err := newSchemaSQLGenerator(planOptions.randReader, planOptions).Alter(diff)
 	if err != nil {
 		return nil, fmt.Errorf("generating migration statements: %w", err)
 	}
