@@ -35,7 +35,7 @@ type (
 		validatePlan            bool
 		getSchemaOpts           []schema.GetSchemaOpt
 		randReader              io.Reader
-		disableConcurrentIndexOps bool
+		noConcurrentIndexOps    bool
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -103,13 +103,13 @@ func WithRandReader(randReader io.Reader) PlanOpt {
 	}
 }
 
-// WithDisableConcurrentIndexOps disables the use of CONCURRENTLY in CREATE INDEX and DROP INDEX statements.
+// WithNoConcurrentIndexOps disables the use of CONCURRENTLY in CREATE INDEX and DROP INDEX statements.
 // This can be useful when you need simpler DDL statements or when working in environments that don't support
 // concurrent index operations. Note that disabling concurrent operations may result in longer lock times
 // and potential downtime during migrations.
-func WithDisableConcurrentIndexOps() PlanOpt {
+func WithNoConcurrentIndexOps() PlanOpt {
 	return func(opts *planOptions) {
-		opts.disableConcurrentIndexOps = true
+		opts.noConcurrentIndexOps = true
 	}
 }
 

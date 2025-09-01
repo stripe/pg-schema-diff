@@ -64,6 +64,7 @@ const (
 var (
 	defaultServerConfiguration = map[string]string{
 		"log_checkpoints": "false",
+		"max_connections": "1000",
 	}
 )
 
