@@ -140,6 +140,8 @@ type schemaDiff struct {
 	functionDiffs             listDiff[schema.Function, functionDiff]
 	proceduresDiffs           listDiff[schema.Procedure, procedureDiff]
 	triggerDiffs              listDiff[schema.Trigger, triggerDiff]
+	viewDiff                  listDiff[schema.View, viewDiff]
+	materializedViewDiffs     listDiff[schema.MaterializedView, materializedViewDiff]
 }
 
 // The procedure for DIFFING schemas and GENERATING/RESOLVING the SQL required to migrate the old schema to the new schema is
@@ -226,6 +228,8 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 
 	newSchemaTablesByName := buildSchemaObjByNameMap(new.Tables)
 	addedTablesByName := buildSchemaObjByNameMap(tableDiffs.adds)
+	deletedTablesByName := buildSchemaObjByNameMap(tableDiffs.deletes)
+	tableDiffsByName := buildDiffByNameMap[schema.Table, tableDiff](tableDiffs.alters)
 	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(oldIndex, newIndex schema.Index, _, _ int) (indexDiff, bool, error) {
 		return buildIndexDiff(indexDiffConfig{
 			newSchemaTablesByName:  newSchemaTablesByName,
@@ -308,6 +312,20 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing triggers: %w", err)
 	}
 
+	viewDiffs, err := diffLists(old.Views, new.Views, func(old, new schema.View, _, _ int) (diff viewDiff, requiresRecreation bool, error error) {
+		return buildViewDiff(deletedTablesByName, tableDiffsByName, old, new)
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing views: %w", err)
+	}
+
+	materializedViewDiffs, err := diffLists(old.MaterializedViews, new.MaterializedViews, func(old, new schema.MaterializedView, _, _ int) (diff materializedViewDiff, requiresRecreation bool, error error) {
+		return buildMaterializedViewDiff(deletedTablesByName, tableDiffsByName, old, new)
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing materialized views: %w", err)
+	}
+
 	return schemaDiff{
 		oldAndNew: oldAndNew[schema.Schema]{
 			old: old,
@@ -323,6 +341,8 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		functionDiffs:             functionDiffs,
 		proceduresDiffs:           procedureDiffs,
 		triggerDiffs:              triggerDiffs,
+		viewDiff:                  viewDiffs,
+		materializedViewDiffs:     materializedViewDiffs,
 	}, false, nil
 }
 
@@ -617,6 +637,21 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving trigger diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, triggersPartialGraph)
+
+	viewGenerator := newViewSQLVertexGenerator()
+	viewPartialGraph, err := generatePartialGraph(viewGenerator, diff.viewDiff)
+	if err != nil {
+		return nil, fmt.Errorf("resolving view diff: %w", err)
+	}
+	partialGraph = concatPartialGraphs(partialGraph, viewPartialGraph)
+
+	materializedViewGenerator := newMaterializedViewSQLVertexGenerator()
+	materializedViewPartialGraph, err := generatePartialGraph(materializedViewGenerator, diff.materializedViewDiffs)
+	if err != nil {
+		return nil, fmt.Errorf("resolving materialized view diff: %w", err)
+	}
+	partialGraph = concatPartialGraphs(partialGraph, materializedViewPartialGraph)
+
 	sqlGraph, err := graphFromPartials(partialGraph)
 	if err != nil {
 		return nil, fmt.Errorf("converting to graph: %w", err)
@@ -630,6 +665,9 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	// We migrate schemas and extensions first and disable them last since their dependencies may span across
 	// all other entities in the database.
 	var statements []Statement
+	// Initially to support views, we will leverage a very naive ordering, where we delete, add, alter. This will
+	// ensure that (1) no dependencies are dropped before the views are dropped (will lead to an error), and (2)
+	// that all dependencies exist before the view is created.
 	statements = append(statements, namedSchemaStatements.Adds...)
 	statements = append(statements, namedSchemaStatements.Alters...)
 	statements = append(statements, extensionStatements.Adds...)
@@ -2625,11 +2663,13 @@ func buildColumnDefinition(column schema.Column) (string, error) {
 	if column.IsCollated() {
 		sb.WriteString(fmt.Sprintf(" COLLATE %s", column.Collation.GetFQEscapedName()))
 	}
+	if column.IsGenerated {
+		sb.WriteString(fmt.Sprintf(" GENERATED ALWAYS AS (%s) STORED", column.GenerationExpression))
+	} else if len(column.Default) > 0 {
+		sb.WriteString(fmt.Sprintf(" DEFAULT %s", column.Default))
+	}
 	if !column.IsNullable {
 		sb.WriteString(" NOT NULL")
-	}
-	if len(column.Default) > 0 {
-		sb.WriteString(fmt.Sprintf(" DEFAULT %s", column.Default))
 	}
 	if column.Identity != nil {
 		identityDef, err := buildColumnIdentityDefinition(*column.Identity)

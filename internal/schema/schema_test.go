@@ -187,6 +187,12 @@ var (
 				ON DELETE CASCADE
 				NOT VALID;
 
+			CREATE VIEW schema_2.foo_view 
+				WITH (security_barrier=true) AS
+				SELECT foo.id, foo.author
+				FROM schema_2.foo
+				JOIN schema_1.foo_fk ON foo.id = foo_fk.id;
+
 			-- Validate tables are filtered out
 			CREATE TABLE schema_filtered_1.foo_fk(
 				id INT,
@@ -218,8 +224,12 @@ var (
 				FOR SELECT
 				TO PUBLIC
 				USING (version > 0);
+			-- Validate views are filtered out.
+			CREATE VIEW schema_filtered_1.foo_view AS
+				SELECT id, author
+				FROM schema_2.foo;
 		`},
-			expectedHash: "eb6b7f4b7427a1a7",
+			expectedHash: "ff9ed400558572aa",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -473,6 +483,28 @@ var (
 						IsConstraint:      true,
 					},
 				},
+				Views: []View{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{
+							SchemaName:  "schema_2",
+							EscapedName: "\"foo_view\"",
+						},
+						ViewDefinition: " SELECT foo.id,\n    foo.author\n   FROM schema_2.foo\n     JOIN schema_1.foo_fk ON foo.id = foo_fk.id;",
+						Options: map[string]string{
+							"security_barrier": "true",
+						},
+						TableDependencies: []TableDependency{
+							{
+								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: `"foo_fk"`},
+								Columns:             []string{"id"},
+							},
+							{
+								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: `"foo"`},
+								Columns:             []string{"author", "id"},
+							},
+						},
+					},
+				},
 			},
 		},
 		{
@@ -539,7 +571,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "3a3997bec3f1b981",
+			expectedHash: "9647ef46a878d426",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -1103,7 +1135,7 @@ var (
 				CREATE TYPE pg_temp.color AS ENUM ('red', 'green', 'blue');
 			`},
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash: "83bae9b012ee367e",
+			expectedHash: "9c413c6ad2f4a042",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -1260,7 +1292,7 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 		}()
 	}
 
-	fetchedSchema, err := GetSchema(context.TODO(), dbtx, testCase.opts...)
+	fetchedSchema, err := GetSchema(context.Background(), dbtx, testCase.opts...)
 	if testCase.expectedErrIs != nil {
 		require.ErrorIs(t, err, testCase.expectedErrIs)
 		return

@@ -34,6 +34,8 @@ type runCmdWithAssertionsParams struct {
 	// saving schemas to a randomly generated temporary directory.
 	dynamicArgs []dArgGenerator
 
+	// outputEquals is the exact string that stdout should equal.
+	outputEquals string
 	// outputContains is a list of substrings that are expected to be contained in the stdout output of the command.
 	outputContains []string
 	// expectErrContains is a list of substrings that are expected to be contained in the error returned by
@@ -71,6 +73,9 @@ func (suite *cmdTestSuite) runCmdWithAssertions(tc runCmdWithAssertionsParams) {
 		for _, o := range tc.outputContains {
 			suite.Contains(stdOutStr, o)
 		}
+	}
+	if len(tc.outputEquals) > 0 {
+		suite.Equal(tc.outputEquals, stdOutStr)
 	}
 }
 

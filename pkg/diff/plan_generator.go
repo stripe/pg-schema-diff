@@ -15,7 +15,6 @@ import (
 	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 
 	"github.com/stripe/pg-schema-diff/pkg/log"
-	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
@@ -112,24 +111,6 @@ func WithDisableConcurrentIndexOps() PlanOpt {
 	return func(opts *planOptions) {
 		opts.disableConcurrentIndexOps = true
 	}
-}
-
-// deprecated: GeneratePlan generates a migration plan to migrate the database to the target schema. This function only
-// diffs the public schemas.
-//
-// Use Generate instead with the DDLSchemaSource(newDDL) and WithIncludeSchemas("public") and WithTempDbFactory options.
-//
-// Parameters:
-// queryable: 	The target database to generate the diff for. It is recommended to pass in *sql.DB of the db you
-// wish to migrate. If using a connection pool, it is RECOMMENDED to set a maximum number of connections.
-// tempDbFactory:  	used to create a temporary database instance to extract the schema from the new DDL and validate the
-// migration plan. It is recommended to use tempdb.NewOnInstanceFactory, or you can provide your own.
-// newDDL:  		DDL encoding the new schema
-// opts:  			Additional options to configure the plan generation
-func GeneratePlan(ctx context.Context, queryable sqldb.Queryable, tempdbFactory tempdb.Factory, newDDL []string, opts ...PlanOpt) (Plan, error) {
-	schemaSource := DBSchemaSource(queryable)
-
-	return Generate(ctx, schemaSource, DDLSchemaSource(newDDL), append(opts, WithTempDbFactory(tempdbFactory), WithIncludeSchemas("public"))...)
 }
 
 // Generate generates a migration plan to migrate the database to the target schema
