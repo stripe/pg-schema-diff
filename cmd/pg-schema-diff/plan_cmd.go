@@ -99,7 +99,7 @@ func buildPlanCmd() *cobra.Command {
 			return err
 		}
 
-		cmd.Println(outputFmt.convertToOutputString(plan))
+		cmdPrintln(cmd, outputFmt.convertToOutputString(plan))
 		return nil
 	}
 
