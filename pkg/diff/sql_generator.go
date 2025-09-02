@@ -695,7 +695,7 @@ func buildIndexesByTableNameMap(indexes []schema.Index) map[string][]schema.Inde
 
 // buildChildrenByPartitionedIndexNameMap builds a map of indexes by their parent index name. This map will include
 // all descendents, not just direct descendents. For example, if foobar idx  has 5 children and each of those children
-// has 5 children, the slice for foobar index wil contain 30 indexes (the 5 direct children and the 25 "grandchildren")
+// has 5 children, the slice for foobar index will contain 30 indexes (the 5 direct children and the 25 "grandchildren")
 func buildChildrenByPartitionedIndexNameMap(indexes []schema.Index) map[string][]schema.Index {
 	// Build a map of children by their direct parent index
 	var childrenByDirectParentIdxName = make(map[string][]schema.Index)

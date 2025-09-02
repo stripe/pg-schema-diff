@@ -35,7 +35,7 @@ func buildMaterializedViewDiff(
 	// and that column/table is deleted/recreated. In part, this is because we cannot depend on individual column
 	// changes...all added and removes columns are combined into the same SQL vertex.
 	// - See https://github.com/stripe/pg-schema-diff/issues/135#issuecomment-2357382217 for details.
-	// - For some table X, it is currently not possible to create a SQL statement outside the table sql genreator
+	// - For some table X, it is currently not possible to create a SQL statement outside the table sql generator
 	// that comes before a column Y's delete statement but after a column Z's add statement.
 	for _, t := range old.TableDependencies {
 		if _, ok := deletedTablesByName[t.GetName()]; ok {
