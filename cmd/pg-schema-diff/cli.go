@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/manifoldco/promptui"
+	"github.com/spf13/cobra"
 )
 
 func header(header string) string {
@@ -43,4 +44,19 @@ func mustContinuePrompt(continueLabel string) error {
 		return fmt.Errorf("user aborted")
 	}
 	return nil
+}
+
+// cmdPrint writes the arguments to stdout using cmd.OutOrStdout() to ensure consistent output behavior
+func cmdPrint(cmd *cobra.Command, a ...interface{}) {
+	fmt.Fprint(cmd.OutOrStdout(), a...)
+}
+
+// cmdPrintf writes the formatted string to stdout using cmd.OutOrStdout() to ensure consistent output behavior
+func cmdPrintf(cmd *cobra.Command, format string, a ...interface{}) {
+	fmt.Fprintf(cmd.OutOrStdout(), format, a...)
+}
+
+// cmdPrintln writes the arguments to stdout with a newline using cmd.OutOrStdout() to ensure consistent output behavior
+func cmdPrintln(cmd *cobra.Command, a ...interface{}) {
+	fmt.Fprintln(cmd.OutOrStdout(), a...)
 }

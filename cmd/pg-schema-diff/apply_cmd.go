@@ -59,12 +59,12 @@ func buildApplyCmd() *cobra.Command {
 		if err != nil {
 			return err
 		} else if len(plan.Statements) == 0 {
-			cmd.Println("Schema matches expected. No plan generated")
+			cmdPrintln(cmd, "Schema matches expected. No plan generated")
 			return nil
 		}
 
-		cmd.Println(header("Review plan"))
-		cmd.Print(planToPrettyS(plan), "\n\n")
+		cmdPrintln(cmd, header("Review plan"))
+		cmdPrint(cmd, planToPrettyS(plan), "\n\n")
 
 		if err := failIfHazardsNotAllowed(plan, *allowedHazardsTypesStrs); err != nil {
 			return err
@@ -84,7 +84,7 @@ func buildApplyCmd() *cobra.Command {
 		if err := runPlan(cmd.Context(), cmd, connConfig, plan); err != nil {
 			return err
 		}
-		cmd.Println("Schema applied successfully")
+		cmdPrintln(cmd, "Schema applied successfully")
 		return nil
 	}
 
@@ -143,8 +143,8 @@ func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig
 	// must be executed within its own transaction block. Postgres will error if you try to set a TRANSACTION-level
 	// timeout for it. SESSION-level statement_timeouts are respected by `ADD INDEX CONCURRENTLY`
 	for i, stmt := range plan.Statements {
-		cmd.Println(header(fmt.Sprintf("Executing statement %d", getDisplayableStmtIdx(i))))
-		cmd.Printf("%s\n\n", statementToPrettyS(stmt))
+		cmdPrintln(cmd, header(fmt.Sprintf("Executing statement %d", getDisplayableStmtIdx(i))))
+		cmdPrintf(cmd, "%s\n\n", statementToPrettyS(stmt))
 		start := time.Now()
 		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
 			return fmt.Errorf("setting statement timeout: %w", err)
@@ -155,9 +155,9 @@ func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig
 		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
 			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt, err)
 		}
-		cmd.Printf("Finished executing statement. Duration: %s\n", time.Since(start))
+		cmdPrintf(cmd, "Finished executing statement. Duration: %s\n", time.Since(start))
 	}
-	cmd.Println(header("Complete"))
+	cmdPrintln(cmd, header("Complete"))
 
 	return nil
 }
