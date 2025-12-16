@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/stripe/pg-schema-diff/internal/pgdump"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
+	"github.com/stripe/pg-schema-diff/pkg/diff"
 )
 
 func (suite *cmdTestSuite) TestApplyCmd() {
@@ -86,4 +87,22 @@ func (suite *cmdTestSuite) TestApplyCmd() {
 			suite.Equal(expectedDbDump, fromDbDump)
 		})
 	}
+}
+
+func (suite *cmdTestSuite) TestFailIfHazardsNotAllowed() {
+	plan := diff.Plan{
+		Statements: []diff.Statement{{
+			DDL: "ALTER TABLE public.t ADD COLUMN city_name text NOT NULL",
+			Hazards: []diff.MigrationHazard{{
+				Type: diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill,
+			}},
+		}},
+	}
+
+	err := failIfHazardsNotAllowed(plan, nil)
+	suite.Error(err)
+	suite.Contains(err.Error(), string(diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill))
+
+	err = failIfHazardsNotAllowed(plan, []string{string(diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill)})
+	suite.NoError(err)
 }

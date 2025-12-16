@@ -152,6 +152,9 @@ Apply the schema. Any hazards in the generated plan must be approved
 pg-schema-diff apply --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir schema --allow-hazards INDEX_BUILD
 ```
 
+# Stateful migrations
+- Adding a brand new `NOT NULL` column without a constant `DEFAULT` requires backfilling existing rows. pg-schema-diff will emit the `NEW_NOT_NULL_COLUMN_REQUIRES_BACKFILL` hazard and annotate the plan with an online sequence: add the column as nullable, backfill in batches, then rerun pg-schema-diff to flip to `NOT NULL` via the online CHECK/VALIDATE/SET NOT NULL flow.
+
 # Using Library
 Docs to use the library can be found [here](https://pkg.go.dev/github.com/stripe/pg-schema-diff). Check out [the CLI](https://github.com/stripe/pg-schema-diff/tree/main/cmd/pg-schema-diff)
 for an example implementation with the library

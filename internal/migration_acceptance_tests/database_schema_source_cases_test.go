@@ -156,6 +156,7 @@ var databaseSchemaSourceTestCases = []acceptanceTestCase{
 
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeIndexBuild,
+			diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill,
 		},
 		expectedDBSchemaDDL: []string{
 			`

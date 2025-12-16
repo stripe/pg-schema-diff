@@ -95,7 +95,10 @@ var procedureAcceptanceTestCases = []acceptanceTestCase{
             $$;
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeHasUntrackableDependencies,
+			diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill,
+		},
 	},
 	{
 		name: "Drop procedure and its dependencies",

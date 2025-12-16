@@ -6,6 +6,7 @@ import (
 	"fmt"
 	stdlog "log"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -62,6 +63,9 @@ type (
 		//
 		// If no expectedDBSchemaDDL is specified, the newSchemaDDL will be used
 		expectedDBSchemaDDL []string
+		// expectedHazardMessages is a list of substrings that must be found within the set of hazard messages generated
+		// by the plan.
+		expectedHazardMessages []string
 	}
 )
 
@@ -177,6 +181,19 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 		assert.Empty(t, plan.Statements)
 	}
 	assert.ElementsMatch(t, tc.expectedHazardTypes, getUniqueHazardTypesFromStatements(plan.Statements), prettySprintPlan(plan))
+
+	if len(tc.expectedHazardMessages) > 0 {
+		var hazardMsgs []string
+		for _, stmt := range plan.Statements {
+			for _, hazard := range stmt.Hazards {
+				hazardMsgs = append(hazardMsgs, hazard.Message)
+			}
+		}
+		joinedHazardMsgs := strings.Join(hazardMsgs, "\n")
+		for _, expectedHazardMsg := range tc.expectedHazardMessages {
+			assert.Contains(t, joinedHazardMsgs, expectedHazardMsg, prettySprintPlan(plan))
+		}
+	}
 
 	// Apply the plan
 	require.NoError(t, applyPlan(oldDb, plan), prettySprintPlan(plan))

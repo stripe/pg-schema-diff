@@ -541,6 +541,7 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeAuthzUpdate,
 			diff.MigrationHazardTypeDeletesData,
 			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill,
 			diff.MigrationHazardTypeIndexBuild,
 		},
 	},
@@ -567,6 +568,50 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
+		},
+	},
+	{
+		name: "Add NOT NULL column without default emits backfill hazard",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE t(
+                id INT
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE t(
+                id INT,
+                city_name VARCHAR(255) NOT NULL
+            );
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill,
+		},
+		expectedHazardMessages: []string{
+			"backfill",
+			"Add the column as NULLABLE",
+			"SET NOT NULL",
+		},
+	},
+	{
+		name: "Add NOT NULL column with constant default avoids backfill hazard",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE t(
+                id INT
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE t(
+                id INT,
+                city_name VARCHAR(255) NOT NULL DEFAULT ''
+            );
+			`,
 		},
 	},
 }

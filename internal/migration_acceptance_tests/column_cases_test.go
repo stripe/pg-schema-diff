@@ -85,6 +85,9 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
             );
 			`,
 		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill,
+		},
 	},
 	{
 		name: "Add one column with serial",

@@ -866,6 +866,7 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
 
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
+			diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill,
 			diff.MigrationHazardTypeIndexBuild,
 			diff.MigrationHazardTypeIndexDropped,
 		},

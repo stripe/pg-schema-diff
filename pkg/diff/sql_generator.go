@@ -66,6 +66,14 @@ var (
 		Type:    MigrationHazardTypeExtensionVersionUpgrade,
 		Message: "This extension's version is being upgraded. Be sure the newer version is backwards compatible with your use case.",
 	}
+	migrationHazardNewNotNullColumnRequiresBackfill = MigrationHazard{
+		Type: MigrationHazardTypeNewNotNullColumnRequiresBackfill,
+		Message: "Adding a new NOT NULL column without a constant DEFAULT requires a backfill to populate existing rows. " +
+			"Recommended online sequence:\n" +
+			"  1) Add the column as NULLABLE (no NOT NULL)\n" +
+			"  2) Backfill existing rows in batches via application jobs or scripts\n" +
+			"  3) Re-run pg-schema-diff to enforce NOT NULL using the online CHECK/VALIDATE/SET NOT NULL flow",
+	}
 )
 
 type oldAndNew[S any] struct {
@@ -1204,11 +1212,29 @@ func (csg *columnSQLVertexGenerator) Add(column schema.Column) ([]Statement, err
 	if err != nil {
 		return nil, fmt.Errorf("building column definition: %w", err)
 	}
-	return []Statement{{
+	stmt := Statement{
 		DDL:         fmt.Sprintf("%s ADD COLUMN %s", alterTablePrefix(csg.tableName), columnDef),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
-	}}, nil
+	}
+	if columnRequiresBackfill(column) {
+		stmt.Hazards = append(stmt.Hazards, migrationHazardNewNotNullColumnRequiresBackfill)
+	}
+	return []Statement{stmt}, nil
+}
+
+func columnRequiresBackfill(column schema.Column) bool {
+	if column.IsNullable {
+		return false
+	}
+	return !columnHasSafeDefault(column)
+}
+
+func columnHasSafeDefault(column schema.Column) bool {
+	if column.Identity != nil || column.IsGenerated {
+		return true
+	}
+	return len(strings.TrimSpace(column.Default)) > 0
 }
 
 func (csg *columnSQLVertexGenerator) Delete(column schema.Column) ([]Statement, error) {
