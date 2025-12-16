@@ -529,10 +529,9 @@ SELECT
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    -- Cast to text because pgv4/pq does not support unmarshalling JSON
-    -- arrays into []json.RawMessage.
-    -- Instead, they must be unmarshalled as string arrays.
-    -- https://github.com/lib/pq/pull/466
+    -- Cast to text because our database/sql driver does not support unmarshalling
+    -- JSON arrays into []json.RawMessage. Instead, they must be unmarshalled as
+    -- string arrays.
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
@@ -600,10 +599,9 @@ SELECT
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    -- Cast to text because pgv4/pq does not support unmarshalling JSON
-    -- arrays into []json.RawMessage.
-    -- Instead, they must be unmarshalled as string arrays.
-    -- https://github.com/lib/pq/pull/466
+    -- Cast to text because our database/sql driver does not support unmarshalling
+    -- JSON arrays into []json.RawMessage. Instead, they must be unmarshalled as
+    -- string arrays.
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c

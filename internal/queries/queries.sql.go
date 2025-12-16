@@ -9,8 +9,16 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgtype"
 )
+
+func textArrayToStringSlice(arr pgtype.TextArray) ([]string, error) {
+	var values []string
+	if err := arr.AssignTo(&values); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
 
 const getCheckConstraints = `-- name: GetCheckConstraints :many
 SELECT
@@ -65,16 +73,21 @@ func (q *Queries) GetCheckConstraints(ctx context.Context) ([]GetCheckConstraint
 	var items []GetCheckConstraintsRow
 	for rows.Next() {
 		var i GetCheckConstraintsRow
+		var columnNames pgtype.TextArray
 		if err := rows.Scan(
 			&i.Oid,
 			&i.ConstraintName,
-			pq.Array(&i.ColumnNames),
+			&columnNames,
 			&i.TableName,
 			&i.TableSchemaName,
 			&i.IsValid,
 			&i.IsNotInheritable,
 			&i.ConstraintExpression,
 		); err != nil {
+			return nil, err
+		}
+		i.ColumnNames, err = textArrayToStringSlice(columnNames)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -321,7 +334,12 @@ func (q *Queries) GetEnums(ctx context.Context) ([]GetEnumsRow, error) {
 	var items []GetEnumsRow
 	for rows.Next() {
 		var i GetEnumsRow
-		if err := rows.Scan(&i.EnumName, &i.EnumSchemaName, pq.Array(&i.EnumLabels)); err != nil {
+		var enumLabels pgtype.TextArray
+		if err := rows.Scan(&i.EnumName, &i.EnumSchemaName, &enumLabels); err != nil {
+			return nil, err
+		}
+		i.EnumLabels, err = textArrayToStringSlice(enumLabels)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -545,6 +563,7 @@ func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
 	var items []GetIndexesRow
 	for rows.Next() {
 		var i GetIndexesRow
+		var columnNames pgtype.TextArray
 		if err := rows.Scan(
 			&i.Oid,
 			&i.IndexName,
@@ -559,9 +578,13 @@ func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
 			&i.IndexIsUnique,
 			&i.ParentIndexName,
 			&i.ParentIndexSchemaName,
-			pq.Array(&i.ColumnNames),
+			&columnNames,
 			&i.ConstraintIsLocal,
 		); err != nil {
+			return nil, err
+		}
+		i.ColumnNames, err = textArrayToStringSlice(columnNames)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -624,10 +647,9 @@ SELECT
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    -- Cast to text because pgv4/pq does not support unmarshalling JSON
-    -- arrays into []json.RawMessage.
-    -- Instead, they must be unmarshalled as string arrays.
-    -- https://github.com/lib/pq/pull/466
+    -- Cast to text because our database/sql driver does not support unmarshalling
+    -- JSON arrays into []json.RawMessage. Instead, they must be unmarshalled as
+    -- string arrays.
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
@@ -666,14 +688,24 @@ func (q *Queries) GetMaterializedViews(ctx context.Context) ([]GetMaterializedVi
 	var items []GetMaterializedViewsRow
 	for rows.Next() {
 		var i GetMaterializedViewsRow
+		var relOptions pgtype.TextArray
+		var tableDependencies pgtype.TextArray
 		if err := rows.Scan(
 			&i.SchemaName,
 			&i.ViewName,
-			pq.Array(&i.RelOptions),
+			&relOptions,
 			&i.TablespaceName,
-			pq.Array(&i.TableDependencies),
+			&tableDependencies,
 			&i.ViewDefinition,
 		); err != nil {
+			return nil, err
+		}
+		i.RelOptions, err = textArrayToStringSlice(relOptions)
+		if err != nil {
+			return nil, err
+		}
+		i.TableDependencies, err = textArrayToStringSlice(tableDependencies)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -761,17 +793,27 @@ func (q *Queries) GetPolicies(ctx context.Context) ([]GetPoliciesRow, error) {
 	var items []GetPoliciesRow
 	for rows.Next() {
 		var i GetPoliciesRow
+		var appliesTo pgtype.TextArray
+		var columnNames pgtype.TextArray
 		if err := rows.Scan(
 			&i.PolicyName,
 			&i.OwningTableName,
 			&i.OwningTableSchemaName,
 			&i.IsPermissive,
-			pq.Array(&i.AppliesTo),
+			&appliesTo,
 			&i.Cmd,
 			&i.CheckExpression,
 			&i.UsingExpression,
-			pq.Array(&i.ColumnNames),
+			&columnNames,
 		); err != nil {
+			return nil, err
+		}
+		i.AppliesTo, err = textArrayToStringSlice(appliesTo)
+		if err != nil {
+			return nil, err
+		}
+		i.ColumnNames, err = textArrayToStringSlice(columnNames)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1212,10 +1254,9 @@ SELECT
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    -- Cast to text because pgv4/pq does not support unmarshalling JSON
-    -- arrays into []json.RawMessage.
-    -- Instead, they must be unmarshalled as string arrays.
-    -- https://github.com/lib/pq/pull/466
+    -- Cast to text because our database/sql driver does not support unmarshalling
+    -- JSON arrays into []json.RawMessage. Instead, they must be unmarshalled as
+    -- string arrays.
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
@@ -1252,13 +1293,23 @@ func (q *Queries) GetViews(ctx context.Context) ([]GetViewsRow, error) {
 	var items []GetViewsRow
 	for rows.Next() {
 		var i GetViewsRow
+		var relOptions pgtype.TextArray
+		var tableDependencies pgtype.TextArray
 		if err := rows.Scan(
 			&i.SchemaName,
 			&i.ViewName,
-			pq.Array(&i.RelOptions),
-			pq.Array(&i.TableDependencies),
+			&relOptions,
+			&tableDependencies,
 			&i.ViewDefinition,
 		); err != nil {
+			return nil, err
+		}
+		i.RelOptions, err = textArrayToStringSlice(relOptions)
+		if err != nil {
+			return nil, err
+		}
+		i.TableDependencies, err = textArrayToStringSlice(tableDependencies)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, i)
