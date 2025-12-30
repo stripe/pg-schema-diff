@@ -529,7 +529,7 @@ SELECT
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    -- Cast to text because our database/sql driver does not support unmarshalling
+    -- Cast to text because our driver does not support unmarshalling
     -- JSON arrays into []json.RawMessage. Instead, they must be unmarshalled as
     -- string arrays.
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
@@ -599,7 +599,7 @@ SELECT
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    -- Cast to text because our database/sql driver does not support unmarshalling
+    -- Cast to text because our driver does not support unmarshalling
     -- JSON arrays into []json.RawMessage. Instead, they must be unmarshalled as
     -- string arrays.
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
