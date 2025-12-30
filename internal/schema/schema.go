@@ -275,6 +275,8 @@ type (
 		// Only populated if IsGenerated is true.
 		GenerationExpression string
 		IsNullable           bool
+		// HasMissingValOptimization refers to the 'attmissingval' optimization for adding columns with a default.
+		HasMissingValOptimization bool
 		// Size is the number of bytes required to store the value.
 		// It is used for data-packing purposes
 		Size     int
@@ -981,10 +983,11 @@ func (s *schemaFetcher) buildTable(
 		}
 
 		columns = append(columns, Column{
-			Name:       column.ColumnName,
-			Type:       column.ColumnType,
-			Collation:  collation,
-			IsNullable: !column.IsNotNull,
+			Name:                      column.ColumnName,
+			Type:                      column.ColumnType,
+			Collation:                 collation,
+			IsNullable:                !column.IsNotNull,
+			HasMissingValOptimization: column.HasMissingValOptimization,
 			// If the column has a default value, this will be a SQL string representing that value.
 			// Examples:
 			//   ''::text

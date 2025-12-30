@@ -1207,6 +1207,9 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
             );
 			`,
 		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
 	},
 	{
 		name: "Drop generated column",
@@ -1270,6 +1273,9 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
             );
 			`,
 		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
 	},
 	{
 		name: "Generated column with index",
@@ -1296,6 +1302,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexBuild,
 		},
 	},

@@ -66,6 +66,10 @@ var (
 		Type:    MigrationHazardTypeExtensionVersionUpgrade,
 		Message: "This extension's version is being upgraded. Be sure the newer version is backwards compatible with your use case.",
 	}
+	migrationHazardNewColumnFullTableRewrite = MigrationHazard{
+		Type:    MigrationHazardTypeAcquiresAccessExclusiveLock,
+		Message: "Adding a new column with a volatile default value will result in a full table rewrite.",
+	}
 )
 
 type oldAndNew[S any] struct {
@@ -1204,11 +1208,28 @@ func (csg *columnSQLVertexGenerator) Add(column schema.Column) ([]Statement, err
 	if err != nil {
 		return nil, fmt.Errorf("building column definition: %w", err)
 	}
-	return []Statement{{
+	stmt := Statement{
 		DDL:         fmt.Sprintf("%s ADD COLUMN %s", alterTablePrefix(csg.tableName), columnDef),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
-	}}, nil
+	}
+	if newColumnRequiresFullTableRewrite(column) {
+		stmt.Hazards = append(stmt.Hazards, migrationHazardNewColumnFullTableRewrite)
+	}
+	return []Statement{stmt}, nil
+}
+
+func newColumnRequiresFullTableRewrite(column schema.Column) bool {
+	// Generated columns require computing the expression for every existing row, causing a full
+	// table rewrite.
+	if column.IsGenerated {
+		return true
+	}
+	// Columns with defaults use PostgreSQL's "fast default" optimization (PostgreSQL 11+) for
+	// constant defaults, which avoids a full table rewrite. We can't reliably detect volatile
+	// defaults (e.g., now()) from schema comparison, but they're rare. Identity columns also
+	// don't require a full table rewrite.
+	return false
 }
 
 func (csg *columnSQLVertexGenerator) Delete(column schema.Column) ([]Statement, error) {

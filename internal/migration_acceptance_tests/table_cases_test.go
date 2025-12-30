@@ -569,6 +569,42 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
 	},
+	{
+		name: "Add NOT NULL column without default",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE t(
+                id INT
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE t(
+                id INT,
+                city_name VARCHAR(255) NOT NULL
+            );
+			`,
+		},
+	},
+	{
+		name: "Add NOT NULL column with constant default avoids backfill hazard",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE t(
+                id INT
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE t(
+                id INT,
+                city_name VARCHAR(255) NOT NULL DEFAULT ''
+            );
+			`,
+		},
+	},
 }
 
 func TestTableTestCases(t *testing.T) {
