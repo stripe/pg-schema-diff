@@ -1,15 +1,27 @@
-ARG BASE_IMAGE=golang:1.20.14-alpine3.19
+ARG GO_VERSION=1.20
+FROM golang:${GO_VERSION}-bookworm
 
-FROM $BASE_IMAGE
+ARG PG_VERSION=14
 
-ARG POSTGRES_PACKAGE=postgresql14
-RUN apk update && \
-    apk add --no-cache  \
-      build-base \
-      make \
-      $POSTGRES_PACKAGE \
-      $POSTGRES_PACKAGE-contrib \
-      $POSTGRES_PACKAGE-client
+# Install build dependencies and PostgreSQL from official apt repository
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        make \
+        gnupg \
+        wget \
+        ca-certificates \
+        lsb-release \
+    && wget -qO - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-${PG_VERSION} \
+        postgresql-contrib-${PG_VERSION} \
+        postgresql-client-${PG_VERSION} \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add PostgreSQL bin directory to PATH (Debian installs to /usr/lib/postgresql/<version>/bin/)
+ENV PATH="/usr/lib/postgresql/${PG_VERSION}/bin:${PATH}"
 
 WORKDIR /pg-schema-diff
 
@@ -20,7 +32,7 @@ RUN go mod download
 
 # Run all tests from non-root. This will also prevent Postgres from complaining when
 # we try to launch it within tests
-RUN adduser --disabled-password --gecos '' testrunner
+RUN useradd --create-home testrunner
 USER testrunner
 
 # Run tests serially so logs can be streamed. Set overall timeout to 30m (the default is 10m, which is not enough)
