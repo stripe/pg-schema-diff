@@ -90,6 +90,7 @@ WITH identity_col_seq AS (
 SELECT
     a.attname::TEXT AS column_name,
     a.attnotnull AS is_not_null,
+    a.atthasmissing AS has_missing_val_optimization,
     a.attlen AS column_size,
     a.attidentity::TEXT AS identity_type,
     identity_col_seq.seqstart AS start_value,

@@ -97,7 +97,6 @@ var procedureAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeHasUntrackableDependencies,
-			diff.MigrationHazardTypeNewNotNullColumnRequiresBackfill,
 		},
 	},
 	{

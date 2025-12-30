@@ -116,6 +116,7 @@ WITH identity_col_seq AS (
 SELECT
     a.attname::TEXT AS column_name,
     a.attnotnull AS is_not_null,
+    a.atthasmissing AS has_missing_val_optimization,
     a.attlen AS column_size,
     a.attidentity::TEXT AS identity_type,
     identity_col_seq.seqstart AS start_value,
@@ -162,22 +163,23 @@ ORDER BY a.attnum
 `
 
 type GetColumnsForTableRow struct {
-	ColumnName           string
-	IsNotNull            bool
-	ColumnSize           int16
-	IdentityType         string
-	StartValue           sql.NullInt64
-	IncrementValue       sql.NullInt64
-	MaxValue             sql.NullInt64
-	MinValue             sql.NullInt64
-	CacheSize            sql.NullInt64
-	IsCycle              sql.NullBool
-	CollationName        string
-	CollationSchemaName  string
-	DefaultValue         string
-	GenerationExpression string
-	IsGenerated          bool
-	ColumnType           string
+	ColumnName                string
+	IsNotNull                 bool
+	HasMissingValOptimization bool
+	ColumnSize                int16
+	IdentityType              string
+	StartValue                sql.NullInt64
+	IncrementValue            sql.NullInt64
+	MaxValue                  sql.NullInt64
+	MinValue                  sql.NullInt64
+	CacheSize                 sql.NullInt64
+	IsCycle                   sql.NullBool
+	CollationName             string
+	CollationSchemaName       string
+	DefaultValue              string
+	GenerationExpression      string
+	IsGenerated               bool
+	ColumnType                string
 }
 
 func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) ([]GetColumnsForTableRow, error) {
@@ -192,6 +194,7 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) 
 		if err := rows.Scan(
 			&i.ColumnName,
 			&i.IsNotNull,
+			&i.HasMissingValOptimization,
 			&i.ColumnSize,
 			&i.IdentityType,
 			&i.StartValue,

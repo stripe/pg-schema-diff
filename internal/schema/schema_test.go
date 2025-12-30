@@ -228,8 +228,11 @@ var (
 			CREATE VIEW schema_filtered_1.foo_view AS
 				SELECT id, author
 				FROM schema_2.foo;
+
+			-- Add a column with a default to test HasMissingValOptimization
+			ALTER TABLE schema_2.foo ADD COLUMN added_col TEXT DEFAULT 'some_default';
 		`},
-			expectedHash: "ff9ed400558572aa",
+			expectedHash: "386c0eb7ee3f4874",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -271,6 +274,7 @@ var (
 							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
+							{Name: "added_col", Type: "text", Default: "'some_default'::text", IsNullable: true, Size: -1, Collation: defaultCollation, HasMissingValOptimization: true},
 						},
 						CheckConstraints: []CheckConstraint{
 							{Name: "author_content_check", Expression: "((length(content) > 0) AND (length(author) > 0))", KeyColumns: []string{"author", "content"}},
@@ -571,7 +575,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "9647ef46a878d426",
+			expectedHash: "1f2c44c4589a8d6a",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -606,7 +610,7 @@ var (
 							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", IsNullable: false, Size: 4},
+							{Name: "version", Type: "integer", Size: 4},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityNothing,
