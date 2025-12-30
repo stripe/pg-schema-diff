@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/stripe/pg-schema-diff/internal/concurrent"
 	"github.com/stripe/pg-schema-diff/internal/queries"
@@ -1519,7 +1520,7 @@ func FQEscapedColumnName(table SchemaQualifiedName, columnName string) string {
 }
 
 func EscapeIdentifier(name string) string {
-	return fmt.Sprintf("\"%s\"", name)
+	return pgx.Identifier{name}.Sanitize()
 }
 
 // relOptionsToMap converts pg_catalog.pg_class.reloptions to a map.
