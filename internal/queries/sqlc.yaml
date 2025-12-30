@@ -3,6 +3,7 @@ packages:
   - path: "."
     name: "queries"
     engine: "postgresql"
+    sql_package: "pgx/v4"
     queries: "queries.sql"
     output_db_file_name: "dml.sql.go"
     output_models_file_name: "models.sql.go"
