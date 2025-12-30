@@ -13,18 +13,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - go_version: "1.20"
-            pg_version: "14"
-          - go_version: "1.20"
-            pg_version: "15"
-          - go_version: "1.20"
-            pg_version: "16"
-          - go_version: "1.22"
-            pg_version: "17"
+          - pg_version: "14"
+          - pg_version: "15"
+          - pg_version: "16"
+          - pg_version: "17"
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Build Docker image
-        run: docker build -t pg-schema-diff-test-runner -f ./build/Dockerfile.test --build-arg GO_VERSION=${{ matrix.go_version }} --build-arg PG_VERSION=${{ matrix.pg_version }} .
+        run: docker build -t pg-schema-diff-test-runner -f ./build/Dockerfile.test --build-arg PG_VERSION=${{ matrix.pg_version }} .
       - name: Run tests
         run: docker run pg-schema-diff-test-runner
