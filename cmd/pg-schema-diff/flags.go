@@ -14,9 +14,9 @@ type connectionFlags struct {
 	dsn         string
 	dsnFlagName string
 
-	// isEmptyDsnUsingPq indicates to connect via DSN using the pq environment variables and defaults.
-	isEmptyDsnUsingPq         bool
-	isEmptyDsnUsingPqFlagName string
+	// useEmptyDsn indicates to connect via DSN using the libpq-compatible environment variables and defaults.
+	useEmptyDsn         bool
+	useEmptyDsnFlagName string
 }
 
 func createConnectionFlags(cmd *cobra.Command, prefix string, additionalHelp string) *connectionFlags {
@@ -29,23 +29,23 @@ func createConnectionFlags(cmd *cobra.Command, prefix string, additionalHelp str
 	}
 	cmd.Flags().StringVar(&c.dsn, c.dsnFlagName, "", dsnFlagHelp)
 
-	c.isEmptyDsnUsingPqFlagName = prefix + "empty-dsn"
-	isEmptyDsnUsingPqFlagHelp := "Connect with an empty DSN using the pq environment variables and defaults."
+	c.useEmptyDsnFlagName = prefix + "empty-dsn"
+	useEmptyDsnFlagHelp := "Connect with an empty DSN using the libpq-compatible environment variables and defaults."
 	if additionalHelp != "" {
-		isEmptyDsnUsingPqFlagHelp += " " + additionalHelp
+		useEmptyDsnFlagHelp += " " + additionalHelp
 	}
-	cmd.Flags().BoolVar(&c.isEmptyDsnUsingPq, c.isEmptyDsnUsingPqFlagName, false, isEmptyDsnUsingPqFlagHelp)
+	cmd.Flags().BoolVar(&c.useEmptyDsn, c.useEmptyDsnFlagName, false, useEmptyDsnFlagHelp)
 
 	return &c
 }
 
 func (c *connectionFlags) IsSet() bool {
-	return c.dsn != "" || c.isEmptyDsnUsingPq
+	return c.dsn != "" || c.useEmptyDsn
 }
 
 func parseConnectionFlags(flags *connectionFlags) (*pgx.ConnConfig, error) {
-	if !flags.isEmptyDsnUsingPq && flags.dsn == "" {
-		return nil, fmt.Errorf("must specify either --%s or --%s", flags.dsnFlagName, flags.isEmptyDsnUsingPqFlagName)
+	if !flags.useEmptyDsn && flags.dsn == "" {
+		return nil, fmt.Errorf("must specify either --%s or --%s", flags.dsnFlagName, flags.useEmptyDsnFlagName)
 	}
 	connConfig, err := pgx.ParseConfig(flags.dsn)
 	if err != nil {
