@@ -187,11 +187,16 @@ var (
 				ON DELETE CASCADE
 				NOT VALID;
 
-			CREATE VIEW schema_2.foo_view 
+			CREATE VIEW schema_2.foo_view
 				WITH (security_barrier=true) AS
 				SELECT foo.id, foo.author
 				FROM schema_2.foo
 				JOIN schema_1.foo_fk ON foo.id = foo_fk.id;
+
+			CREATE MATERIALIZED VIEW schema_2.foo_mat_view AS
+				SELECT id, author
+				FROM schema_2.foo;
+			CREATE INDEX foo_mat_view_idx ON schema_2.foo_mat_view (author);
 
 			-- Validate tables are filtered out
 			CREATE TABLE schema_filtered_1.foo_fk(
@@ -232,7 +237,7 @@ var (
 			-- Add a column with a default to test HasMissingValOptimization
 			ALTER TABLE schema_2.foo ADD COLUMN added_col TEXT DEFAULT 'some_default';
 		`},
-			expectedHash: "386c0eb7ee3f4874",
+			expectedHash: "9cf0ecd44fffa7c4",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -402,7 +407,8 @@ var (
 				},
 				Indexes: []Index{
 					{
-						OwningTable:     SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						OwningRelName:   SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						OwningRelKind:   RelKindOrdinaryTable,
 						Name:            "foo_pkey",
 						Columns:         []string{"id", "version"},
 						IsUnique:        true,
@@ -410,35 +416,46 @@ var (
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON schema_2.foo USING btree (id, version)",
 					},
 					{
-						OwningTable:     SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						OwningRelName:   SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						OwningRelKind:   RelKindOrdinaryTable,
 						Name:            "some_idx",
 						Columns:         []string{"created_at", "author"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON schema_2.foo USING btree (created_at DESC, author)",
 					},
 					{
-						OwningTable:     SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						OwningRelName:   SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						OwningRelKind:   RelKindOrdinaryTable,
 						Name:            "some_unique_idx",
 						Columns:         []string{"content"},
 						IsUnique:        true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX some_unique_idx ON schema_2.foo USING btree (content)",
 					},
 					{
-						OwningTable:     SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						OwningRelName:   SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						OwningRelKind:   RelKindOrdinaryTable,
 						Name:            "some_gin_idx",
 						Columns:         []string{"author"},
 						GetIndexDefStmt: "CREATE INDEX some_gin_idx ON schema_2.foo USING gin (author schema_1.gin_trgm_ops)",
 					},
 					{
 						Name: "some_idx",
-						OwningTable: SchemaQualifiedName{
+						OwningRelName: SchemaQualifiedName{
 							SchemaName:  "schema_1",
 							EscapedName: "\"foo_fk\"",
 						},
+						OwningRelKind: RelKindOrdinaryTable,
 						Columns: []string{
 							"id",
 							"version",
 						},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON schema_1.foo_fk USING btree (id, version)",
+					},
+					{
+						OwningRelName:   SchemaQualifiedName{SchemaName: "schema_2", EscapedName: `"foo_mat_view"`},
+						OwningRelKind:   RelKindMaterializedView,
+						Name:            "foo_mat_view_idx",
+						Columns:         []string{"author"},
+						GetIndexDefStmt: "CREATE INDEX foo_mat_view_idx ON schema_2.foo_mat_view USING btree (author)",
 					},
 				},
 				Functions: []Function{
@@ -502,6 +519,22 @@ var (
 								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: `"foo_fk"`},
 								Columns:             []string{"id"},
 							},
+							{
+								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: `"foo"`},
+								Columns:             []string{"author", "id"},
+							},
+						},
+					},
+				},
+				MaterializedViews: []MaterializedView{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{
+							SchemaName:  "schema_2",
+							EscapedName: `"foo_mat_view"`,
+						},
+						ViewDefinition: " SELECT id,\n    author\n   FROM schema_2.foo;",
+						Options:        map[string]string{},
+						TableDependencies: []TableDependency{
 							{
 								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: `"foo"`},
 								Columns:             []string{"author", "id"},
@@ -575,7 +608,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "1f2c44c4589a8d6a",
+			expectedHash: "301808413c59ab76",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -716,97 +749,113 @@ var (
 				},
 				Indexes: []Index{
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
-						Name:        "foo_pkey", Columns: []string{"author", "id"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						OwningRelKind: RelKindPartitionedTable,
+						Name:          "foo_pkey", Columns: []string{"author", "id"}, IsUnique: true,
 						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON ONLY public.foo USING btree (author, id)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
-						Name:        "some_partitioned_idx", Columns: []string{"author"},
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						OwningRelKind: RelKindPartitionedTable,
+						Name:          "some_partitioned_idx", Columns: []string{"author"},
 						GetIndexDefStmt: "CREATE INDEX some_partitioned_idx ON ONLY public.foo USING hash (author)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
-						Name:        "some_unique_partitioned_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						OwningRelKind: RelKindPartitionedTable,
+						Name:          "some_unique_partitioned_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX some_unique_partitioned_idx ON ONLY public.foo USING btree (author, created_at DESC)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
-						Name:        "some_invalid_idx", Columns: []string{"author", "genre"}, IsInvalid: true, IsUnique: false,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						OwningRelKind: RelKindPartitionedTable,
+						Name:          "some_invalid_idx", Columns: []string{"author", "genre"}, IsInvalid: true, IsUnique: false,
 						GetIndexDefStmt: "CREATE INDEX some_invalid_idx ON ONLY public.foo USING btree (author, genre)",
 					},
 					// foo_1 indexes
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
-						Name:        "foo_1_author_idx", Columns: []string{"author"},
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_1_author_idx", Columns: []string{"author"},
 						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_partitioned_idx\""},
 						GetIndexDefStmt: "CREATE INDEX foo_1_author_idx ON public.foo_1 USING hash (author)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
-						Name:        "foo_1_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_1_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
 						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_unique_partitioned_idx\""},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_author_created_at_idx ON public.foo_1 USING btree (author, created_at DESC)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
-						Name:        "foo_1_local_idx", Columns: []string{"author", "content"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_1_local_idx", Columns: []string{"author", "content"}, IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_local_idx ON public.foo_1 USING btree (author, content)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
-						Name:        "foo_1_pkey", Columns: []string{"author", "id"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_1_pkey", Columns: []string{"author", "id"}, IsUnique: true,
 						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_pkey\""},
 						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_pkey ON public.foo_1 USING btree (author, id)",
 					},
 					// foo_2 indexes
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
-						Name:        "foo_2_author_idx", Columns: []string{"author"},
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_2_author_idx", Columns: []string{"author"},
 						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_partitioned_idx\""},
 						GetIndexDefStmt: "CREATE INDEX foo_2_author_idx ON public.foo_2 USING hash (author)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
-						Name:        "foo_2_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_2_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
 						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_unique_partitioned_idx\""},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_author_created_at_idx ON public.foo_2 USING btree (author, created_at DESC)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
-						Name:        "foo_2_local_idx", Columns: []string{"author", "id"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_2_local_idx", Columns: []string{"author", "id"}, IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_local_idx ON public.foo_2 USING btree (author DESC, id)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
-						Name:        "foo_2_pkey", Columns: []string{"author", "id"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_2_pkey", Columns: []string{"author", "id"}, IsUnique: true,
 						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_pkey\""},
 						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_2_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_pkey ON public.foo_2 USING btree (author, id)",
 					},
 					// foo_3 indexes
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
-						Name:        "foo_3_author_idx", Columns: []string{"author"},
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_3_author_idx", Columns: []string{"author"},
 						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_partitioned_idx\""},
 						GetIndexDefStmt: "CREATE INDEX foo_3_author_idx ON public.foo_3 USING hash (author)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
-						Name:        "foo_3_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_3_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
 						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_unique_partitioned_idx\""},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_author_created_at_idx ON public.foo_3 USING btree (author, created_at DESC)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
-						Name:        "foo_3_local_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_3_local_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_local_idx ON public.foo_3 USING btree (author, created_at)",
 					},
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
-						Name:        "foo_3_pkey", Columns: []string{"author", "id"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_3_pkey", Columns: []string{"author", "id"}, IsUnique: true,
 						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_pkey\""},
 						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_3_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_pkey ON public.foo_3 USING btree (author, id)",
@@ -908,8 +957,9 @@ var (
 				},
 				Indexes: []Index{
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
-						Name:        "foo_1_pkey", Columns: []string{"author", "id"}, IsUnique: true,
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_1_pkey", Columns: []string{"author", "id"}, IsUnique: true,
 						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_pkey ON public.foo_1 USING btree (author, id)",
 					},
@@ -1024,8 +1074,9 @@ var (
 				},
 				Indexes: []Index{
 					{
-						OwningTable: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
-						Name:        "foo_value_idx", Columns: []string{"renamed_value"},
+						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_value_idx", Columns: []string{"renamed_value"},
 						GetIndexDefStmt: "CREATE INDEX foo_value_idx ON public.foo USING btree (renamed_value)",
 					},
 				},

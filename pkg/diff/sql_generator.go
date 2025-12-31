@@ -459,7 +459,7 @@ func buildIndexDiff(deps indexDiffConfig, old, new schema.Index) (diff indexDiff
 
 	updatedOld := old
 
-	if _, isOnNewTable := deps.addedTablesByName[new.OwningTable.GetName()]; isOnNewTable {
+	if _, isOnNewTable := deps.addedTablesByName[new.OwningRelName.GetName()]; isOnNewTable {
 		// If the table is new, then it must be re-created (this occurs if the base table has been
 		// re-created). In other words, an index must be re-created if the owning table is re-created
 		return indexDiff{}, true, nil
@@ -543,6 +543,10 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	addedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.adds)
 	functionsInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Functions)
 
+	materializedViewsInNewSchemaByName := buildSchemaObjByNameMap(diff.new.MaterializedViews)
+	deletedMaterializedViewsByName := buildSchemaObjByNameMap(diff.materializedViewDiffs.deletes)
+	addedMaterializedViewsByName := buildSchemaObjByNameMap(diff.materializedViewDiffs.adds)
+
 	namedSchemaStatements, err := diff.namedSchemaDiffs.resolveToSQLGroupedByEffect(&namedSchemaSQLGenerator{})
 	if err != nil {
 		return nil, fmt.Errorf("resolving named schema sql statements: %w", err)
@@ -586,9 +590,14 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	partialGraph = concatPartialGraphs(partialGraph, renameConflictingIndexesPartialGraph)
 
 	indexGenerator := legacyToNewSqlVertexGenerator[schema.Index, indexDiff](&indexSQLVertexGenerator{
-		deletedTablesByName:      deletedTablesByName,
-		addedTablesByName:        addedTablesByName,
-		tablesInNewSchemaByName:  tablesInNewSchemaByName,
+		deletedTablesByName:     deletedTablesByName,
+		addedTablesByName:       addedTablesByName,
+		tablesInNewSchemaByName: tablesInNewSchemaByName,
+
+		deletedMaterializedViewsByName:     deletedMaterializedViewsByName,
+		addedMaterializedViewsByName:       addedMaterializedViewsByName,
+		materializedViewsInNewSchemaByName: materializedViewsInNewSchemaByName,
+
 		indexesInNewSchemaByName: buildSchemaObjByNameMap(diff.new.Indexes),
 
 		renameSQLVertexGenerator:          renameConflictingIndexesGenerator,
@@ -692,7 +701,7 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 func buildIndexesByTableNameMap(indexes []schema.Index) map[string][]schema.Index {
 	var output = make(map[string][]schema.Index)
 	for _, idx := range indexes {
-		output[idx.OwningTable.GetName()] = append(output[idx.OwningTable.GetName()], idx)
+		output[idx.OwningRelName.GetName()] = append(output[idx.OwningRelName.GetName()], idx)
 	}
 	return output
 }
@@ -1590,6 +1599,16 @@ type indexSQLVertexGenerator struct {
 	// tablesInNewSchemaByName is a map of table name to tables (and partitions) in the new schema.
 	// These tables are not necessarily new. This is used to identify if the table is partitioned
 	tablesInNewSchemaByName map[string]schema.Table
+
+	// deletedMaterializedViewsByName is a map of materialized view name to the deleted materialized views
+	deletedMaterializedViewsByName map[string]schema.MaterializedView
+	// addedMaterializedViewsByName is a map of materialized view name to the new materialized views
+	// This is used to identify if hazards are necessary
+	addedMaterializedViewsByName map[string]schema.MaterializedView
+	// materializedViewsInNewSchemaByName is a map of materialized view name to materialized views in the new schema.
+	// These materialized views are not necessarily new.
+	materializedViewsInNewSchemaByName map[string]schema.MaterializedView
+
 	// indexesInNewSchemaByName is a map of index name to the index
 	// This is used to identify the parent index is a primary key
 	indexesInNewSchemaByName map[string]schema.Index
@@ -1602,13 +1621,51 @@ type indexSQLVertexGenerator struct {
 	planOptions *planOptions
 }
 
+// wasOwningRelationDeleted returns true if the owning table or materialized view was deleted.
+// If the owning relation was deleted, the index will be automatically dropped.
+func (isg *indexSQLVertexGenerator) wasOwningRelationDeleted(index schema.Index) bool {
+	switch index.OwningRelKind {
+	case schema.RelKindMaterializedView:
+		_, deleted := isg.deletedMaterializedViewsByName[index.OwningRelName.GetName()]
+		return deleted
+	default:
+		_, deleted := isg.deletedTablesByName[index.OwningRelName.GetName()]
+		return deleted
+	}
+}
+
+// wasOwningRelationAdded returns true if the owning table or materialized view is newly added.
+// Used to determine if index hazards should be stripped (new relations have no data).
+func (isg *indexSQLVertexGenerator) wasOwningRelationAdded(index schema.Index) bool {
+	switch index.OwningRelKind {
+	case schema.RelKindMaterializedView:
+		_, added := isg.addedMaterializedViewsByName[index.OwningRelName.GetName()]
+		return added
+	default:
+		_, added := isg.addedTablesByName[index.OwningRelName.GetName()]
+		return added
+	}
+}
+
+// isOwningRelationInNewSchema returns true if the owning table or materialized view exists in the new schema.
+func (isg *indexSQLVertexGenerator) isOwningRelationInNewSchema(index schema.Index) bool {
+	switch index.OwningRelKind {
+	case schema.RelKindMaterializedView:
+		_, exists := isg.materializedViewsInNewSchemaByName[index.OwningRelName.GetName()]
+		return exists
+	default:
+		_, exists := isg.tablesInNewSchemaByName[index.OwningRelName.GetName()]
+		return exists
+	}
+}
+
 func (isg *indexSQLVertexGenerator) Add(index schema.Index) ([]Statement, error) {
 	stmts, err := isg.addIdxStmtsWithHazards(index)
 	if err != nil {
 		return stmts, err
 	}
 
-	if _, isNewTable := isg.addedTablesByName[index.OwningTable.GetName()]; isNewTable {
+	if isg.wasOwningRelationAdded(index) {
 		stmts = stripMigrationHazards(stmts...)
 	}
 	return stmts, nil
@@ -1632,7 +1689,7 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		//table. We can then concurrently build all of the partitioned indexes and attach them.
 		// Without "ONLY", all the partitioned indexes will be automatically built
 		return []Statement{{
-			DDL:         fmt.Sprintf("ALTER TABLE ONLY %s ADD CONSTRAINT %s %s", index.OwningTable.GetFQEscapedName(), index.Constraint.EscapedConstraintName, index.Constraint.ConstraintDef),
+			DDL:         fmt.Sprintf("ALTER TABLE ONLY %s ADD CONSTRAINT %s %s", index.OwningRelName.GetFQEscapedName(), index.Constraint.EscapedConstraintName, index.Constraint.ConstraintDef),
 			Timeout:     statementTimeoutDefault,
 			LockTimeout: lockTimeoutDefault,
 		}}, nil
@@ -1654,7 +1711,7 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		stmts = append(stmts, addConstraintStmt)
 	}
 
-	if index.ParentIdx != nil && isg.attachPartitionSQLVertexGenerator.isPartitionAlreadyAttachedBeforeIndexBuilds(index.OwningTable) {
+	if index.ParentIdx != nil && isg.attachPartitionSQLVertexGenerator.isPartitionAlreadyAttachedBeforeIndexBuilds(index.OwningRelName) {
 		// Only attach the index if the index is built after the table is partitioned. If the partition
 		// hasn't already been attached, the index/constraint will be automatically attached when the table partition is
 		// attached
@@ -1697,9 +1754,8 @@ func (isg *indexSQLVertexGenerator) buildCreateIndexStatement(index schema.Index
 }
 
 func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, error) {
-	_, tableWasDeleted := isg.deletedTablesByName[index.OwningTable.GetName()]
-	// An index will be dropped if its owning table is dropped.
-	if tableWasDeleted {
+	// An index will be dropped if its owning relation (table or materialized view) is dropped.
+	if isg.wasOwningRelationDeleted(index) {
 		return nil, nil
 	}
 
@@ -1728,7 +1784,7 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 		// the constraint without dropping the index
 		return []Statement{
 			{
-				DDL: dropConstraintDDL(index.OwningTable, escapedConstraintName),
+				DDL: dropConstraintDDL(index.OwningRelName, escapedConstraintName),
 
 				Timeout:     statementTimeoutDefault,
 				LockTimeout: lockTimeoutDefault,
@@ -1801,14 +1857,22 @@ func (isg *indexSQLVertexGenerator) Alter(diff indexDiff) ([]Statement, error) {
 }
 
 func (isg *indexSQLVertexGenerator) isIndexOnPartitionedTable(index schema.Index) (bool, error) {
+	// Materialized views cannot be partitioned
+	if index.OwningRelKind == schema.RelKindMaterializedView {
+		return false, nil
+	}
 	return isIndexOnPartitionedTable(isg.tablesInNewSchemaByName, index)
 }
 
 // Returns true if the table the index belongs too is partitioned. If the table is a partition of a
-// partitioned table, this will always return false
+// partitioned table, this will always return false. Materialized views cannot be partitioned.
 func isIndexOnPartitionedTable(tablesInNewSchemaByName map[string]schema.Table, index schema.Index) (bool, error) {
-	if owningTable, ok := tablesInNewSchemaByName[index.OwningTable.GetName()]; !ok {
-		return false, fmt.Errorf("could not find table in new schema with name %s", index.OwningTable.GetName())
+	// Materialized views cannot be partitioned
+	if index.OwningRelKind == schema.RelKindMaterializedView {
+		return false, nil
+	}
+	if owningTable, ok := tablesInNewSchemaByName[index.OwningRelName.GetName()]; !ok {
+		return false, fmt.Errorf("could not find table in new schema with name %s", index.OwningRelName.GetName())
 	} else {
 		return owningTable.IsPartitioned(), nil
 	}
@@ -1821,7 +1885,7 @@ func (isg *indexSQLVertexGenerator) addIndexConstraint(index schema.Index) (Stat
 	}
 	return Statement{
 		DDL: fmt.Sprintf("%s %s USING INDEX %s",
-			addConstraintPrefix(index.OwningTable, index.Constraint.EscapedConstraintName),
+			addConstraintPrefix(index.OwningRelName, index.Constraint.EscapedConstraintName),
 			sqlConstraintType,
 			index.GetSchemaQualifiedName().EscapedName),
 		Timeout:     statementTimeoutDefault,
@@ -1858,9 +1922,17 @@ func buildIndexVertexId(name schema.SchemaQualifiedName, diffType diffType) sqlV
 
 func (isg *indexSQLVertexGenerator) GetAddAlterDependencies(index, _ schema.Index) ([]dependency, error) {
 	dependencies := []dependency{
-		mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(buildTableVertexId(index.OwningTable, diffTypeAddAlter)),
 		// To allow for online changes to indexes, rename the older version of the index (if it exists) before the new version is added
 		mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(buildRenameConflictingIndexVertexId(index.GetSchemaQualifiedName(), diffTypeAddAlter)),
+	}
+
+	// Add dependency on owning relation based on relation kind
+	if index.OwningRelKind == schema.RelKindMaterializedView {
+		dependencies = append(dependencies,
+			mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(buildMaterializedViewVertexId(index.OwningRelName, diffTypeAddAlter)))
+	} else {
+		dependencies = append(dependencies,
+			mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(buildTableVertexId(index.OwningRelName, diffTypeAddAlter)))
 	}
 
 	if index.ParentIdx != nil {
@@ -1874,9 +1946,17 @@ func (isg *indexSQLVertexGenerator) GetAddAlterDependencies(index, _ schema.Inde
 
 func (isg *indexSQLVertexGenerator) GetDeleteDependencies(index schema.Index) ([]dependency, error) {
 	dependencies := []dependency{
-		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildTableVertexId(index.OwningTable, diffTypeDelete)),
 		// Drop the index after it has been potentially renamed
 		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildRenameConflictingIndexVertexId(index.GetSchemaQualifiedName(), diffTypeAddAlter)),
+	}
+
+	// Add dependency on owning relation based on relation kind
+	if index.OwningRelKind == schema.RelKindMaterializedView {
+		dependencies = append(dependencies,
+			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildMaterializedViewVertexId(index.OwningRelName, diffTypeDelete)))
+	} else {
+		dependencies = append(dependencies,
+			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildTableVertexId(index.OwningRelName, diffTypeDelete)))
 	}
 
 	if index.ParentIdx != nil {
@@ -1885,14 +1965,26 @@ func (isg *indexSQLVertexGenerator) GetDeleteDependencies(index schema.Index) ([
 		dependencies = append(dependencies,
 			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildIndexVertexId(*index.ParentIdx, diffTypeDelete)))
 	}
-	dependencies = append(dependencies, isg.addDepsOnTableAddAlterIfNecessary(index)...)
+	dependencies = append(dependencies, isg.addDepsOnRelationAddAlterIfNecessary(index)...)
 
 	return dependencies, nil
 }
 
-func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index schema.Index) []dependency {
+func (isg *indexSQLVertexGenerator) addDepsOnRelationAddAlterIfNecessary(index schema.Index) []dependency {
+	// Materialized views don't have column-level dependencies or partitioning
+	if index.OwningRelKind == schema.RelKindMaterializedView {
+		if !isg.isOwningRelationInNewSchema(index) {
+			// If the MV is deleted, we don't need dependencies
+			return nil
+		}
+		// For MVs, we just need the index drop to come before MV alterations
+		return []dependency{
+			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).before(buildMaterializedViewVertexId(index.OwningRelName, diffTypeAddAlter)),
+		}
+	}
+
 	// This could be cleaner if start sorting columns separately in the graph
-	parentTable, ok := isg.tablesInNewSchemaByName[index.OwningTable.GetName()]
+	parentTable, ok := isg.tablesInNewSchemaByName[index.OwningRelName.GetName()]
 	if !ok {
 		// If the parent table is deleted, we don't need to worry about making the index statement come
 		// before any alters
@@ -1901,7 +1993,7 @@ func (isg *indexSQLVertexGenerator) addDepsOnTableAddAlterIfNecessary(index sche
 
 	// These dependencies will force the index deletion statement to come before the table AddAlter
 	addAlterColumnDeps := []dependency{
-		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).before(buildTableVertexId(index.OwningTable, diffTypeAddAlter)),
+		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).before(buildTableVertexId(index.OwningRelName, diffTypeAddAlter)),
 	}
 	if parentTable.ParentTable != nil {
 		// If the table is partitioned, columns modifications occur on the base table not the children. Thus, we

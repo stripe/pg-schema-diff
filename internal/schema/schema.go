@@ -315,6 +315,7 @@ func (i GetIndexDefStatement) ToCreateIndexConcurrently() (string, error) {
 
 type (
 	IndexConstraintType string
+	RelKind             string
 
 	// IndexConstraint informally represents a constraint that is always 1:1 with an index, i.e.,
 	// primary and unique constraints. It's easiest to just treat these like a property of the index rather than
@@ -329,11 +330,14 @@ type (
 	Index struct {
 		// Name is the name of the index. We don't store the schema because the schema is just the schema of the table.
 		// Referencing the name is an anti-pattern because it is not qualified. Use should use GetSchemaQualifiedName instead.
-		Name        string
-		OwningTable SchemaQualifiedName
-		Columns     []string
-		IsInvalid   bool
-		IsUnique    bool
+		Name string
+		// OwningRelName refers to the owning table or materialized view.
+		OwningRelName SchemaQualifiedName
+		// OwningRelKind is the relkind of the owning relation.
+		OwningRelKind RelKind
+		Columns       []string
+		IsInvalid     bool
+		IsUnique      bool
 
 		Constraint *IndexConstraint
 
@@ -346,6 +350,10 @@ type (
 
 const (
 	PkIndexConstraintType IndexConstraintType = "p"
+
+	RelKindOrdinaryTable    RelKind = "r"
+	RelKindPartitionedTable RelKind = "p"
+	RelKindMaterializedView RelKind = "m"
 )
 
 func (i Index) GetName() string {
@@ -354,7 +362,7 @@ func (i Index) GetName() string {
 
 func (i Index) GetSchemaQualifiedName() SchemaQualifiedName {
 	return SchemaQualifiedName{
-		SchemaName:  i.OwningTable.SchemaName,
+		SchemaName:  i.OwningRelName.SchemaName,
 		EscapedName: EscapeIdentifier(i.Name),
 	}
 }
@@ -1136,10 +1144,11 @@ func (s *schemaFetcher) buildIndex(rawIndex queries.GetIndexesRow) Index {
 	}
 
 	return Index{
-		OwningTable: SchemaQualifiedName{
+		OwningRelName: SchemaQualifiedName{
 			SchemaName:  rawIndex.TableSchemaName,
 			EscapedName: EscapeIdentifier(rawIndex.TableName),
 		},
+		OwningRelKind:   RelKind(rawIndex.OwningTableRelkind),
 		Name:            rawIndex.IndexName,
 		Columns:         rawIndex.ColumnNames,
 		GetIndexDefStmt: GetIndexDefStatement(rawIndex.DefStmt),
