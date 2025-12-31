@@ -19,8 +19,6 @@ const (
 var (
 	// versionRe matches the version returned by pg_dump.
 	versionRe = regexp.MustCompile(`pg_dump \(PostgreSQL\) (\d+(?:\.\d+)?)`)
-
-	version15 = version.Must(version.NewSemver("15.0"))
 )
 
 // Parameter represents a parameter to be pg_dump. Don't use a type alias for a string slice
@@ -50,8 +48,6 @@ func WithSchemaOnly() Parameter {
 func WithRestrictKey(restrictKey string) Parameter {
 	return Parameter{
 		values: []string{"--restrict-key", restrictKey},
-		// Added in 17.6. https://www.postgresql.org/docs/release/17.6/.
-		minimumVersion: version15,
 	}
 }
 

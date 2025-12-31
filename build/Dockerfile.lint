@@ -1,17 +1,19 @@
-# Use a newer version of go to appease #golangci-lint
-FROM golang:1.20.6-alpine3.18
+FROM golang:1.20-bookworm
 
-RUN apk update && \
-    apk add --no-cache  \
-      make \
-      python3 \
-      py3-pip
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        make \
+        python3 \
+        python3-pip \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install golang-ci-lint
 RUN wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.56.2
-# Install sqlfluff
-RUN pip install wheel # It complains if we attempt to install this in the same command as Cython
-RUN pip install "Cython<3.0" pyyaml --no-build-isolation # Fix for https://github.com/yaml/pyyaml/issues/601
-RUN pip install "sqlfluff==3.3.0"
+
+# Install sqlfluff (use --break-system-packages for Debian 12+)
+RUN pip install --break-system-packages wheel
+RUN pip install --break-system-packages "Cython<3.0" pyyaml --no-build-isolation
+RUN pip install --break-system-packages "sqlfluff==3.3.0"
 
 WORKDIR /pg-schema-diff
 COPY . .

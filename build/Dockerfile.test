@@ -1,15 +1,26 @@
-ARG BASE_IMAGE=golang:1.20.14-alpine3.19
+FROM golang:1.22-bookworm
 
-FROM $BASE_IMAGE
+ARG PG_VERSION=14
 
-ARG POSTGRES_PACKAGE=postgresql14
-RUN apk update && \
-    apk add --no-cache  \
-      build-base \
-      make \
-      $POSTGRES_PACKAGE \
-      $POSTGRES_PACKAGE-contrib \
-      $POSTGRES_PACKAGE-client
+# Install build dependencies and PostgreSQL from official apt repository
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        make \
+        gnupg \
+        wget \
+        ca-certificates \
+        lsb-release \
+    && apt install -y postgresql-common \
+    && YES=yes /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-${PG_VERSION} \
+        postgresql-contrib-${PG_VERSION} \
+        postgresql-client-${PG_VERSION} \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add PostgreSQL bin directory to PATH (Debian installs to /usr/lib/postgresql/<version>/bin/)
+ENV PATH="/usr/lib/postgresql/${PG_VERSION}/bin:${PATH}"
 
 WORKDIR /pg-schema-diff
 
@@ -20,7 +31,7 @@ RUN go mod download
 
 # Run all tests from non-root. This will also prevent Postgres from complaining when
 # we try to launch it within tests
-RUN adduser --disabled-password --gecos '' testrunner
+RUN useradd --create-home testrunner
 USER testrunner
 
 # Run tests serially so logs can be streamed. Set overall timeout to 30m (the default is 10m, which is not enough)

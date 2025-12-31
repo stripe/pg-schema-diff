@@ -1,10 +1,10 @@
-FROM golang:1.20.14-alpine3.19
+FROM golang:1.20-bookworm
 
-RUN apk update && \
-    apk add --no-cache  \
-      build-base \
-      git \
-      make
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+        make \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN go install -tags=nowasm github.com/kyleconroy/sqlc/cmd/sqlc@v1.18.0
 ENTRYPOINT make code_gen
