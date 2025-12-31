@@ -54,8 +54,8 @@ var (
 				},
 				Indexes: []schema.Index{
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
-						Name:        "some_idx", Columns: []string{"foo", "bar"},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:          "some_idx", Columns: []string{"foo", "bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foobar USING btree (foo, bar)",
 						IsUnique:        true, IsInvalid: true,
 					},
@@ -77,8 +77,8 @@ var (
 				Indexes: []schema.Index{
 
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
-						Name:        "some_idx", Columns: []string{"foo", "bar"},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:          "some_idx", Columns: []string{"foo", "bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON public.foobar USING btree (foo, bar)",
 						IsUnique:        true,
 					},
@@ -135,15 +135,15 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
-						Name:        "some_idx", Columns: []string{"foo, bar"},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:          "some_idx", Columns: []string{"foo, bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
 						IsInvalid:       true,
 					},
 					// foobar_1 indexes
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
-						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:          "foobar_1_some_idx", Columns: []string{"foo", "bar"},
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 						IsInvalid:       true,
 					},
@@ -178,14 +178,14 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
-						Name:        "some_idx", Columns: []string{"foo, bar"},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						Name:          "some_idx", Columns: []string{"foo, bar"},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON ONLY public.foobar USING btree (foo, bar)",
 					},
 					// foobar_1 indexes
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
-						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:          "foobar_1_some_idx", Columns: []string{"foo", "bar"},
 						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_idx\""},
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					},
@@ -282,7 +282,7 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						// This index points to its child, which is wrong, but induces a loop
 						Name: "some_idx", Columns: []string{"foo", "bar"},
 						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1_some_idx\""},
@@ -290,8 +290,8 @@ var (
 					},
 					// foobar_1 indexes
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
-						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:          "foobar_1_some_idx", Columns: []string{"foo", "bar"},
 						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_idx\""},
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					},
@@ -326,7 +326,7 @@ var (
 				Indexes: []schema.Index{
 					// foobar indexes
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						// This index points to its child, which is wrong, but induces a loop
 						Name: "some_idx", Columns: []string{"foo", "bar"},
 						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1_some_idx\""},
@@ -334,8 +334,8 @@ var (
 					},
 					// foobar_1 indexes
 					{
-						OwningTable: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
-						Name:        "foobar_1_some_idx", Columns: []string{"foo", "bar"},
+						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
+						Name:          "foobar_1_some_idx", Columns: []string{"foo", "bar"},
 						ParentIdx:       &schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_idx\""},
 						GetIndexDefStmt: "CREATE INDEX foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					},

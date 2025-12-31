@@ -24,3 +24,6 @@ vendor/
 
 # Intellij
 .idea/
+
+# Claude settings
+.claude/settings.local.json

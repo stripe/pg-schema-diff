@@ -465,6 +465,7 @@ SELECT
     c.relname::TEXT AS index_name,
     table_c.relname::TEXT AS table_name,
     table_namespace.nspname::TEXT AS table_schema_name,
+    table_c.relkind::TEXT AS owning_table_relkind,
     pg_catalog.pg_get_indexdef(c.oid)::TEXT AS def_stmt,
     COALESCE(con.conname, '')::TEXT AS constraint_name,
     COALESCE(con.contype, '')::TEXT AS constraint_type,
@@ -526,6 +527,7 @@ type GetIndexesRow struct {
 	IndexName             string
 	TableName             string
 	TableSchemaName       string
+	OwningTableRelkind    string
 	DefStmt               string
 	ConstraintName        string
 	ConstraintType        string
@@ -553,6 +555,7 @@ func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
 			&i.IndexName,
 			&i.TableName,
 			&i.TableSchemaName,
+			&i.OwningTableRelkind,
 			&i.DefStmt,
 			&i.ConstraintName,
 			&i.ConstraintType,

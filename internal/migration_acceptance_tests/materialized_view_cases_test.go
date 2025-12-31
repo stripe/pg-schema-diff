@@ -518,8 +518,8 @@ var materializedViewAcceptanceTestCases = []acceptanceTestCase{
             );
 
             CREATE MATERIALIZED VIEW foobar_view WITH (toast_tuple_target = 2048) AS
-                SELECT id, foo, bar 
-                FROM foobar 
+                SELECT id, foo, bar
+                FROM foobar
                 WHERE buzz = true;
 			`,
 		},
@@ -533,10 +533,80 @@ var materializedViewAcceptanceTestCases = []acceptanceTestCase{
             );
 
             CREATE MATERIALIZED VIEW foobar_view AS
-                SELECT id, foo, bar 
-                FROM foobar 
+                SELECT id, foo, bar
+                FROM foobar
                 WHERE buzz = true;
 			`,
+		},
+	},
+	{
+		name: "Add materialized view with index",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255)
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255)
+            );
+
+            CREATE MATERIALIZED VIEW foobar_view AS
+                SELECT id, foo FROM foobar;
+
+            CREATE INDEX foobar_view_foo_idx ON foobar_view(foo);
+			`,
+		},
+		// No hazards - index build hazard stripped when materialized view is new
+	},
+	{
+		name: "Drop materialized view with index",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255)
+            );
+
+            CREATE MATERIALIZED VIEW foobar_view AS
+                SELECT id, foo FROM foobar;
+
+            CREATE INDEX foobar_view_foo_idx ON foobar_view(foo);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255)
+            );
+			`,
+		},
+		// No IndexDropped hazard - handled by DROP MATERIALIZED VIEW cascade
+	},
+	{
+		name: "Drop materialized view with index and underlying table",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255)
+            );
+
+            CREATE MATERIALIZED VIEW foobar_view AS
+                SELECT id, foo FROM foobar;
+
+            CREATE INDEX foobar_view_foo_idx ON foobar_view(foo);
+			`,
+		},
+		newSchemaDDL: nil,
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
 		},
 	},
 }
