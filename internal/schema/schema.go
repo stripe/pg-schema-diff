@@ -524,9 +524,7 @@ type (
 // via WithIncludeSchemas. If empty, then all schemas are included.
 func WithIncludeSchemas(schemas ...string) GetSchemaOpt {
 	return func(o *getSchemaOptions) {
-		for _, schema := range schemas {
-			o.includeSchemas = append(o.includeSchemas, schema)
-		}
+		o.includeSchemas = append(o.includeSchemas, schemas...)
 	}
 }
 

@@ -135,7 +135,7 @@ func newPolicySQLVertexGenerator(oldTable *schema.Table, table schema.Table) (sq
 	var oldSchemaColumnsByName map[string]schema.Column
 	if oldTable != nil {
 		if oldTable.SchemaQualifiedName != table.SchemaQualifiedName {
-			return nil, fmt.Errorf("old and new tables must have the same schema-qualified name. new=%s, old=%s", table.SchemaQualifiedName.GetFQEscapedName(), oldTable.SchemaQualifiedName.GetFQEscapedName())
+			return nil, fmt.Errorf("old and new tables must have the same schema-qualified name. new=%s, old=%s", table.GetFQEscapedName(), oldTable.GetFQEscapedName())
 		}
 		oldSchemaColumnsByName = buildSchemaObjByNameMap(oldTable.Columns)
 	}

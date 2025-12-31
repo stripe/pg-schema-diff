@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -112,13 +111,11 @@ func failIfHazardsNotAllowed(plan diff.Plan, allowedHazardsTypesStrs []string) e
 
 	}
 	if len(disallowedHazardMsgs) > 0 {
-		return errors.New(fmt.Sprintf(
-			"Prohited hazards found\n"+
-				"These hazards must be allowed via the allow-hazards flag, e.g., --allow-hazards %s\n"+
-				"Prohibited hazards in the following statements:\n%s",
+		return fmt.Errorf("prohited hazards found\n"+
+			"These hazards must be allowed via the allow-hazards flag, e.g., --allow-hazards %s\n"+
+			"Prohibited hazards in the following statements:\n%s",
 			strings.Join(getHazardTypes(plan), ","),
-			strings.Join(disallowedHazardMsgs, "\n"),
-		))
+			strings.Join(disallowedHazardMsgs, "\n"))
 	}
 	return nil
 }
