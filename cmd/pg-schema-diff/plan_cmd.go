@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -382,7 +384,7 @@ func parseTimeoutModifier(val string) (timeoutModifier, error) {
 	}
 
 	if len(fm) > 0 {
-		return timeoutModifier{}, fmt.Errorf("unknown keys %s", keys(fm))
+		return timeoutModifier{}, fmt.Errorf("unknown keys %s", slices.Sorted(maps.Keys(fm)))
 	}
 
 	duration, err := time.ParseDuration(timeoutStr)
@@ -428,7 +430,7 @@ func parseInsertStatementStr(val string) (insertStatement, error) {
 	}
 
 	if len(fm) > 0 {
-		return insertStatement{}, fmt.Errorf("unknown keys %s", keys(fm))
+		return insertStatement{}, fmt.Errorf("unknown keys %s", slices.Sorted(maps.Keys(fm)))
 	}
 
 	index, err := strconv.Atoi(indexStr)
