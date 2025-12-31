@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         ca-certificates \
         lsb-release \
-    && wget -qO - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt install -y postgresql-common \
+    && YES=yes /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         postgresql-${PG_VERSION} \
