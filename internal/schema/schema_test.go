@@ -36,6 +36,9 @@ var (
 	}
 
 	testCases = []*testCase{
+		// Exclude materialized views from the test for now because Postgres 14-15 fully qualify column names while Postgres
+		// 16+ simplify fully qualified names to unqualified. The easiest option will be to create a version specific test
+		// that is skipped for Postgres 14-15.
 		{
 			name: "Simple schema (validate all schema objects and schema name filters)",
 			opts: []GetSchemaOpt{
@@ -193,11 +196,6 @@ var (
 				FROM schema_2.foo
 				JOIN schema_1.foo_fk ON foo.id = foo_fk.id;
 
-			CREATE MATERIALIZED VIEW schema_2.foo_mat_view AS
-				SELECT id, author
-				FROM schema_2.foo;
-			CREATE INDEX foo_mat_view_idx ON schema_2.foo_mat_view (author);
-
 			-- Validate tables are filtered out
 			CREATE TABLE schema_filtered_1.foo_fk(
 				id INT,
@@ -237,7 +235,7 @@ var (
 			-- Add a column with a default to test HasMissingValOptimization
 			ALTER TABLE schema_2.foo ADD COLUMN added_col TEXT DEFAULT 'some_default';
 		`},
-			expectedHash: "9cf0ecd44fffa7c4",
+			expectedHash: "fdff644bbabb9fc",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -450,13 +448,6 @@ var (
 						},
 						GetIndexDefStmt: "CREATE INDEX some_idx ON schema_1.foo_fk USING btree (id, version)",
 					},
-					{
-						OwningRelName:   SchemaQualifiedName{SchemaName: "schema_2", EscapedName: `"foo_mat_view"`},
-						OwningRelKind:   RelKindMaterializedView,
-						Name:            "foo_mat_view_idx",
-						Columns:         []string{"author"},
-						GetIndexDefStmt: "CREATE INDEX foo_mat_view_idx ON schema_2.foo_mat_view USING btree (author)",
-					},
 				},
 				Functions: []Function{
 					{
@@ -519,22 +510,6 @@ var (
 								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: `"foo_fk"`},
 								Columns:             []string{"id"},
 							},
-							{
-								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: `"foo"`},
-								Columns:             []string{"author", "id"},
-							},
-						},
-					},
-				},
-				MaterializedViews: []MaterializedView{
-					{
-						SchemaQualifiedName: SchemaQualifiedName{
-							SchemaName:  "schema_2",
-							EscapedName: `"foo_mat_view"`,
-						},
-						ViewDefinition: " SELECT id,\n    author\n   FROM schema_2.foo;",
-						Options:        map[string]string{},
-						TableDependencies: []TableDependency{
 							{
 								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: `"foo"`},
 								Columns:             []string{"author", "id"},
