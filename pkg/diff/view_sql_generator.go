@@ -3,12 +3,12 @@ package diff
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stripe/pg-schema-diff/internal/schema"
-	"github.com/stripe/pg-schema-diff/internal/util"
 )
 
 type viewDiff struct {
@@ -45,7 +45,7 @@ func buildViewDiff(
 		// It's possible a dependent column was deleted (or recreated).
 		td, ok := tableDiffsByName[t.GetName()]
 		if !ok {
-			return viewDiff{}, false, fmt.Errorf("processing view table dependencies: expected a table diff to exist for %q. have=\n%s", t.GetName(), util.Keys(tableDiffsByName))
+			return viewDiff{}, false, fmt.Errorf("processing view table dependencies: expected a table diff to exist for %q. have=\n%s", t.GetName(), slices.Sorted(maps.Keys(tableDiffsByName)))
 		}
 		deletedColumnsByName := buildSchemaObjByNameMap(td.columnsDiff.deletes)
 		for _, c := range t.Columns {
@@ -85,8 +85,7 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 		}
 		// Sort kvs so the generated DDL is deterministic. This is unnecessarily verbose because the slices
 		// package is not yet available.
-		// // TODO(https://github.com/stripe/pg-schema-diff/issues/227) - Remove this
-		sort.Strings(kvs)
+		slices.Sort(kvs)
 		viewSb.WriteString(fmt.Sprintf(" WITH (%s)", strings.Join(kvs, ", ")))
 	}
 	viewSb.WriteString(" AS\n")
