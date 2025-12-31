@@ -726,9 +726,7 @@ func buildChildrenByPartitionedIndexNameMap(indexes []schema.Index) map[string][
 		rootsByChildIdxName[idx.GetName()] = rootIdx
 
 		// We can now calculate the next level of children for this node
-		for _, child := range childrenByDirectParentIdxName[idx.GetName()] {
-			currentNodes = append(currentNodes, child)
-		}
+		currentNodes = append(currentNodes, childrenByDirectParentIdxName[idx.GetName()]...)
 	}
 
 	// Build a map of all children by the root index name using the result of the previous step
@@ -2150,7 +2148,7 @@ func (*attachPartitionSQLVertexGenerator) Add(table schema.Table) ([]Statement, 
 	}
 
 	return []Statement{{
-		DDL:         fmt.Sprintf("%s ATTACH PARTITION %s %s", alterTablePrefix(*table.ParentTable), table.SchemaQualifiedName.GetFQEscapedName(), table.ForValues),
+		DDL:         fmt.Sprintf("%s ATTACH PARTITION %s %s", alterTablePrefix(*table.ParentTable), table.GetFQEscapedName(), table.ForValues),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}}, nil
@@ -2557,7 +2555,7 @@ func (s sequenceOwnershipSQLVertexGenerator) buildAlterOwnershipStmt(new schema.
 }
 
 func (s sequenceOwnershipSQLVertexGenerator) GetSQLVertexId(seq schema.Sequence, diffType diffType) sqlVertexId {
-	return buildSchemaObjVertexId("sequence_ownership", seq.SchemaQualifiedName.GetFQEscapedName(), diffType)
+	return buildSchemaObjVertexId("sequence_ownership", seq.GetFQEscapedName(), diffType)
 }
 
 func (s sequenceOwnershipSQLVertexGenerator) GetAddAlterDependencies(new schema.Sequence, old schema.Sequence) ([]dependency, error) {

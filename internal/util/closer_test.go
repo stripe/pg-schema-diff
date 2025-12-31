@@ -23,7 +23,6 @@ func TestDoOnErrOrPanicIsCalledOnError(t *testing.T) {
 	})
 
 	err = fmt.Errorf("some error")
-	return
 }
 
 func TestDoOnErrOrPanicIsNotCalledOnNoError(t *testing.T) {
@@ -35,8 +34,6 @@ func TestDoOnErrOrPanicIsNotCalledOnNoError(t *testing.T) {
 	defer util.DoOnErrOrPanic(&err, func() {
 		wasCalled = true
 	})
-
-	return
 }
 
 func TestDoOnErrOrPanicIsCalledOnPanic(t *testing.T) {

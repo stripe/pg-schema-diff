@@ -1,6 +1,6 @@
 module github.com/stripe/pg-schema-diff
 
-go 1.20
+go 1.25.5
 
 require (
 	github.com/go-logfmt/logfmt v0.6.0
@@ -14,7 +14,7 @@ require (
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.8.2
-	golang.org/x/sync v0.10.0
+	golang.org/x/sync v0.18.0
 )
 
 require (
@@ -32,8 +32,8 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
