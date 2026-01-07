@@ -46,6 +46,10 @@ type Statement struct {
 	LockTimeout time.Duration
 	// The hazards this statement poses
 	Hazards []MigrationHazard
+	// SkipValidation indicates that this statement should be skipped during plan validation against a temporary
+	// database instance. This is useful for statements that depend on entities (like roles) that won't exist
+	// in the temp DB.
+	SkipValidation bool
 }
 
 func (s Statement) MarshalJSON() ([]byte, error) {

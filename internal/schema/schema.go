@@ -132,6 +132,9 @@ func normalizeTable(t Table) Table {
 		normPolicies = append(normPolicies, p)
 	}
 	t.Policies = normPolicies
+
+	t.Privileges = sortSchemaObjectsByName(t.Privileges)
+
 	return t
 }
 
@@ -214,6 +217,7 @@ type Table struct {
 	Columns          []Column
 	CheckConstraints []CheckConstraint
 	Policies         []Policy
+	Privileges       []TablePrivilege
 	ReplicaIdentity  ReplicaIdentity
 	RLSEnabled       bool
 	RLSForced        bool
@@ -236,6 +240,24 @@ func (t Table) IsPartitioned() bool {
 // Instead, the fields should be stored under the same struct as a nilable pointer, and this function should be deleted.
 func (t Table) IsPartition() bool {
 	return t.ParentTable != nil
+}
+
+// TablePrivilege represents a privilege granted on a table
+type TablePrivilege struct {
+	// Grantee is the role that has the privilege. Empty string means PUBLIC.
+	Grantee string
+	// Privilege is the type of privilege (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER)
+	Privilege string
+	// IsGrantable indicates if the grantee can grant this privilege to others (WITH GRANT OPTION)
+	IsGrantable bool
+}
+
+func (p TablePrivilege) GetName() string {
+	grantee := p.Grantee
+	if grantee == "" {
+		grantee = "PUBLIC"
+	}
+	return fmt.Sprintf("%s:%s", grantee, p.Privilege)
 }
 
 type ColumnIdentityType string
@@ -926,12 +948,21 @@ func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 		policiesByTable[p.table.GetFQEscapedName()] = append(policiesByTable[p.table.GetFQEscapedName()], p.policy)
 	}
 
+	privileges, err := s.fetchPrivileges(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetchPrivileges(): %w", err)
+	}
+	privilegesByTable := make(map[string][]TablePrivilege)
+	for _, p := range privileges {
+		privilegesByTable[p.table.GetFQEscapedName()] = append(privilegesByTable[p.table.GetFQEscapedName()], p.privilege)
+	}
+
 	goroutineRunner := s.goroutineRunnerFactory()
 	var tableFutures []concurrent.Future[Table]
 	for _, _rawTable := range rawTables {
 		rawTable := _rawTable // Capture loop variables for go routine
 		tableFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() (Table, error) {
-			return s.buildTable(ctx, rawTable, checkConsByTable, policiesByTable)
+			return s.buildTable(ctx, rawTable, checkConsByTable, policiesByTable, privilegesByTable)
 		})
 		if err != nil {
 			return nil, fmt.Errorf("starting table future: %w", err)
@@ -959,6 +990,7 @@ func (s *schemaFetcher) buildTable(
 	table queries.GetTablesRow,
 	checkConsByTable map[string][]CheckConstraint,
 	policiesByTable map[string][]Policy,
+	privilegesByTable map[string][]TablePrivilege,
 ) (Table, error) {
 	rawColumns, err := s.q.GetColumnsForTable(ctx, table.Oid)
 	if err != nil {
@@ -1023,6 +1055,7 @@ func (s *schemaFetcher) buildTable(
 		Columns:             columns,
 		CheckConstraints:    checkConsByTable[schemaQualifiedName.GetFQEscapedName()],
 		Policies:            policiesByTable[schemaQualifiedName.GetFQEscapedName()],
+		Privileges:          privilegesByTable[schemaQualifiedName.GetFQEscapedName()],
 		ReplicaIdentity:     ReplicaIdentity(table.ReplicaIdentity),
 		RLSEnabled:          table.RlsEnabled,
 		RLSForced:           table.RlsForced,
@@ -1343,6 +1376,11 @@ type policyAndTable struct {
 	table  SchemaQualifiedName
 }
 
+type privilegeAndTable struct {
+	privilege TablePrivilege
+	table     SchemaQualifiedName
+}
+
 func (s *schemaFetcher) fetchPolicies(ctx context.Context) ([]policyAndTable, error) {
 	rawPolicies, err := s.q.GetPolicies(ctx)
 	if err != nil {
@@ -1377,6 +1415,43 @@ func (s *schemaFetcher) fetchPolicies(ctx context.Context) ([]policyAndTable, er
 	)
 
 	return policies, nil
+}
+
+func (s *schemaFetcher) fetchPrivileges(ctx context.Context) ([]privilegeAndTable, error) {
+	rawPrivileges, err := s.q.GetTablePrivileges(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetTablePrivileges: %w", err)
+	}
+
+	var privileges []privilegeAndTable
+	for _, rp := range rawPrivileges {
+		// Handle the is_grantable field which may be returned as interface{}
+		isGrantable := false
+		if rp.IsGrantable != nil {
+			if b, ok := rp.IsGrantable.(bool); ok {
+				isGrantable = b
+			}
+		}
+
+		privileges = append(privileges, privilegeAndTable{
+			privilege: TablePrivilege{
+				Grantee:     rp.Grantee,
+				Privilege:   rp.Privilege,
+				IsGrantable: isGrantable,
+			},
+			table: buildNameFromUnescaped(rp.PaTableName, rp.PaTableSchemaName),
+		})
+	}
+
+	privileges = filterSliceByName(
+		privileges,
+		func(p privilegeAndTable) SchemaQualifiedName {
+			return p.table
+		},
+		s.nameFilter,
+	)
+
+	return privileges, nil
 }
 
 func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {

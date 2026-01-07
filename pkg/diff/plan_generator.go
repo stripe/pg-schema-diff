@@ -279,7 +279,24 @@ func schemaFromTempDb(ctx context.Context, db *tempdb.Database, plan *planOption
 	return schema.GetSchema(ctx, db.ConnPool, append(plan.getSchemaOpts, db.ExcludeMetadataOptions...)...)
 }
 
+// clearTablePrivileges returns a copy of the schema with all table privileges cleared.
+// This is used during plan validation because privilege statements are skipped (roles don't exist in temp DB).
+func clearTablePrivileges(s schema.Schema) schema.Schema {
+	tables := make([]schema.Table, len(s.Tables))
+	for i, t := range s.Tables {
+		t.Privileges = nil
+		tables[i] = t
+	}
+	s.Tables = tables
+	return s
+}
+
 func assertMigratedSchemaMatchesTarget(migratedSchema, targetSchema schema.Schema, planOptions *planOptions) error {
+	// Clear privileges from both schemas since privilege statements are skipped during validation
+	// (roles don't exist in temp DB). We make copies to avoid modifying the original schemas.
+	migratedSchema = clearTablePrivileges(migratedSchema)
+	targetSchema = clearTablePrivileges(targetSchema)
+
 	toTargetSchemaStmts, err := generateMigrationStatements(migratedSchema, targetSchema, planOptions)
 	if err != nil {
 		return fmt.Errorf("building schema diff between migrated database and new schema: %w", err)
@@ -316,8 +333,13 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, stat
 	// must be executed within its own transaction block. Postgres will error if you try to set a TRANSACTION-level
 	// timeout for it. SESSION-level statement_timeouts are respected by `ADD INDEX CONCURRENTLY`
 	for _, stmt := range statements {
+		if stmt.SkipValidation {
+			// Skip statements that cannot be validated in temp DB (e.g., GRANT/REVOKE which reference roles
+			// that don't exist in the temp DB)
+			continue
+		}
 		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
-			return fmt.Errorf("executing migration statement: %s: %w", stmt, err)
+			return fmt.Errorf("executing migration statement: %s: %w", stmt.DDL, err)
 		}
 	}
 	return nil

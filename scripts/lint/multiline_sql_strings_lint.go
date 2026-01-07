@@ -119,7 +119,11 @@ func processFile(filePath string, fix bool) (bool, error) {
 	}
 
 	if err := writer.Flush(); err != nil {
-		return false, fmt.Errorf("lush buffer: %w", err)
+		return false, fmt.Errorf("flush buffer: %w", err)
+	}
+
+	if !fix {
+		return changesRequired, nil
 	}
 
 	return changesRequired, os.Rename(tempFile.Name(), filePath)
