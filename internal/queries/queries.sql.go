@@ -1004,6 +1004,86 @@ func (q *Queries) GetSequences(ctx context.Context) ([]GetSequencesRow, error) {
 	return items, nil
 }
 
+const getTablePrivileges = `-- name: GetTablePrivileges :many
+WITH parsed_acl AS (
+    SELECT
+        c.oid AS table_oid,
+        c.relname AS table_name,
+        n.nspname AS table_schema_name,
+        c.relowner AS owner_oid,
+        (ACLEXPLODE(c.relacl)).grantee AS grantee_oid,
+        (ACLEXPLODE(c.relacl)).privilege_type AS privilege_type,
+        (ACLEXPLODE(c.relacl)).is_grantable AS is_grantable
+    FROM pg_catalog.pg_class AS c
+    INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
+    WHERE
+        n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND n.nspname !~ '^pg_toast'
+        AND n.nspname !~ '^pg_temp'
+        AND (c.relkind = 'r' OR c.relkind = 'p')
+        AND c.relacl IS NOT null
+        -- Exclude tables owned by extensions
+        AND NOT EXISTS (
+            SELECT depend.objid
+            FROM pg_catalog.pg_depend AS depend
+            WHERE
+                depend.classid = 'pg_class'::REGCLASS
+                AND depend.objid = c.oid
+                AND depend.deptype = 'e'
+        )
+)
+
+SELECT
+    pa.table_name::TEXT,
+    pa.table_schema_name::TEXT,
+    COALESCE(grantee_role.rolname, '')::TEXT AS grantee,
+    pa.privilege_type::TEXT AS privilege,
+    pa.is_grantable
+FROM parsed_acl AS pa
+LEFT JOIN pg_catalog.pg_roles AS grantee_role
+    ON pa.grantee_oid = grantee_role.oid
+WHERE pa.grantee_oid != pa.owner_oid OR pa.grantee_oid = 0
+ORDER BY pa.table_schema_name, pa.table_name, grantee, pa.privilege_type
+`
+
+type GetTablePrivilegesRow struct {
+	PaTableName       string
+	PaTableSchemaName string
+	Grantee           string
+	Privilege         string
+	IsGrantable       interface{}
+}
+
+// Exclude privileges granted to the table owner (these are implicit)
+func (q *Queries) GetTablePrivileges(ctx context.Context) ([]GetTablePrivilegesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getTablePrivileges)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTablePrivilegesRow
+	for rows.Next() {
+		var i GetTablePrivilegesRow
+		if err := rows.Scan(
+			&i.PaTableName,
+			&i.PaTableSchemaName,
+			&i.Grantee,
+			&i.Privilege,
+			&i.IsGrantable,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTables = `-- name: GetTables :many
 SELECT
     c.oid,

@@ -150,7 +150,7 @@ func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig
 			return fmt.Errorf("setting lock timeout: %w", err)
 		}
 		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
-			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt, err)
+			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt.DDL, err)
 		}
 		cmdPrintf(cmd, "Finished executing statement. Duration: %s\n", time.Since(start))
 	}
