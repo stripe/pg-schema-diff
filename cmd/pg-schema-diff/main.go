@@ -13,6 +13,7 @@ func buildRootCmd() *cobra.Command {
 	}
 	rootCmd.AddCommand(buildPlanCmd())
 	rootCmd.AddCommand(buildApplyCmd())
+	rootCmd.AddCommand(buildDumpCmd())
 	rootCmd.AddCommand(buildVersionCmd())
 	return rootCmd
 }
