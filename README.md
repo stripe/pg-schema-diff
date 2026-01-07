@@ -138,7 +138,12 @@ echo "CREATE TABLE bar (id varchar(255), message TEXT NOT NULL);" > schema/bar.s
 Apply the schema to a fresh database. [The connection string spec can be found here](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
 Setting the `PGPASSWORD` env var will override any password set in the connection string and is recommended.
 ```bash
-pg-schema-diff apply --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir schema 
+pg-schema-diff apply --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir schema
+```
+
+Alternatively, if you have an existing database, you can dump its schema to use as a starting point:
+```bash
+mkdir -p schema && pg-schema-diff dump --dsn "postgres://postgres:postgres@localhost:5432/postgres" > schema/schema.sql
 ```
 
 ## 2. Updating schema
