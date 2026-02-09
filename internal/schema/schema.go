@@ -449,6 +449,9 @@ type Function struct {
 	// can track the dependencies of the function (or not)
 	Language           string
 	DependsOnFunctions []SchemaQualifiedName
+
+	// TableDependencies is a list of tables the function depends on.
+	TableDependencies []TableDependency
 }
 
 type Procedure struct {
@@ -1320,11 +1323,17 @@ func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.G
 		return Function{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
 	}
 
+	tableDependencies, err := parseJSONTableDependencies(rawFunction.TableDependencies)
+	if err != nil {
+		return Function{}, fmt.Errorf("parsing table dependencies JSON: %w", err)
+	}
+
 	return Function{
 		SchemaQualifiedName: buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
 		FunctionDef:         rawFunction.FuncDef,
 		Language:            rawFunction.FuncLang,
 		DependsOnFunctions:  dependsOnFunctions,
+		TableDependencies:   tableDependencies,
 	}, nil
 }
 
