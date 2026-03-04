@@ -543,6 +543,38 @@ var viewAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 	},
+	{
+		name: "Recreate view due to dependent column type change",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255),
+                price NUMERIC(10,2)
+            );
+
+            CREATE VIEW foobar_view AS
+                SELECT id, foo, price
+                FROM foobar;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255),
+                price INTEGER
+            );
+
+            CREATE VIEW foobar_view AS
+                SELECT id, foo, price
+                FROM foobar;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+	},
 }
 
 func TestViewTestCases(t *testing.T) {
