@@ -13,6 +13,7 @@ import (
 
 type viewDiff struct {
 	oldAndNew[schema.View]
+	privilegesDiff listDiff[schema.TablePrivilege, privilegeDiff]
 }
 
 func buildViewDiff(
@@ -56,8 +57,24 @@ func buildViewDiff(
 		}
 	}
 
+	privilegesDiff, err := diffLists(
+		old.Privileges,
+		new.Privileges,
+		func(old, new schema.TablePrivilege, _, _ int) (privilegeDiff, bool, error) {
+			// Recreate the privilege if IsGrantable changes
+			recreate := old.IsGrantable != new.IsGrantable
+			return privilegeDiff{oldAndNew[schema.TablePrivilege]{old: old, new: new}}, recreate, nil
+		},
+	)
+	if err != nil {
+		return viewDiff{}, false, fmt.Errorf("diffing privileges: %w", err)
+	}
+
 	// Recreate if the view SQL generator cannot alter the view.
-	d := viewDiff{oldAndNew: oldAndNew[schema.View]{old: old, new: new}}
+	d := viewDiff{
+		oldAndNew:      oldAndNew[schema.View]{old: old, new: new},
+		privilegesDiff: privilegesDiff,
+	}
 	if _, err := newViewSQLVertexGenerator().Alter(d); err != nil {
 		if errors.Is(err, ErrNotImplemented) {
 			// The SQL generator cannot alter the view, so add and delete it.
@@ -91,6 +108,22 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 	viewSb.WriteString(" AS\n")
 	viewSb.WriteString(v.ViewDefinition)
 
+	stmts := []Statement{{
+		DDL:         viewSb.String(),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+	}}
+
+	privilegeGenerator := &privilegeSQLVertexGenerator{tableName: v.SchemaQualifiedName}
+	for _, privilege := range v.Privileges {
+		addPrivilegeStmts, err := privilegeGenerator.Add(privilege)
+		if err != nil {
+			return partialSQLGraph{}, fmt.Errorf("generating add privilege statements for privilege %s: %w", privilege.GetName(), err)
+		}
+		// Remove hazards from statements since the view is brand new
+		stmts = append(stmts, stripMigrationHazards(addPrivilegeStmts...)...)
+	}
+
 	addVertexId := buildTableVertexId(v.SchemaQualifiedName, diffTypeAddAlter)
 
 	var deps []dependency
@@ -106,13 +139,9 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:       addVertexId,
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         viewSb.String(),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			}},
+			id:         addVertexId,
+			priority:   sqlPrioritySooner,
+			statements: stmts,
 		}},
 		dependencies: deps,
 	}, nil
@@ -143,11 +172,23 @@ func (vsg *viewSQLGenerator) Delete(v schema.View) (partialSQLGraph, error) {
 }
 
 func (vsg *viewSQLGenerator) Alter(vd viewDiff) (partialSQLGraph, error) {
-	// In the initial MVP, we will not support altering.
-	if !cmp.Equal(vd.old, vd.new) {
+	// Compare old and new views ignoring the Privileges field, which is handled separately.
+	oldWithoutPrivileges := vd.old
+	oldWithoutPrivileges.Privileges = nil
+	newWithoutPrivileges := vd.new
+	newWithoutPrivileges.Privileges = nil
+
+	if !cmp.Equal(oldWithoutPrivileges, newWithoutPrivileges) {
 		return partialSQLGraph{}, ErrNotImplemented
 	}
-	return partialSQLGraph{}, nil
+
+	privilegeGenerator := newPrivilegeSQLVertexGenerator(vd.new.SchemaQualifiedName)
+	privilegesPartialGraph, err := generatePartialGraph(privilegeGenerator, vd.privilegesDiff)
+	if err != nil {
+		return partialSQLGraph{}, fmt.Errorf("resolving privilege sql: %w", err)
+	}
+
+	return privilegesPartialGraph, nil
 }
 
 func buildViewVertexId(n schema.SchemaQualifiedName, d diffType) sqlVertexId {
