@@ -30,12 +30,14 @@ func (f *functionSQLVertexGenerator) Add(function schema.Function) ([]Statement,
 				"created/altered before this statement.",
 		})
 	}
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         function.FunctionDef,
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     hazards,
-	}}, nil
+	}}
+	stmts = append(stmts, commentDDLForAdd(commentTargetFunction(function.SchemaQualifiedName), function.Description)...)
+	return stmts, nil
 }
 
 func (f *functionSQLVertexGenerator) Delete(function schema.Function) ([]Statement, error) {
@@ -63,7 +65,25 @@ func (f *functionSQLVertexGenerator) Alter(diff functionDiff) ([]Statement, erro
 	if cmp.Equal(diff.old, diff.new) {
 		return nil, nil
 	}
-	return f.Add(diff.new)
+
+	// Comment-only diff: don't `CREATE OR REPLACE`, just emit a COMMENT statement.
+	oldCopy := diff.old
+	oldCopy.Description = diff.new.Description
+	if cmp.Equal(oldCopy, diff.new) {
+		return commentDDLForAlter(commentTargetFunction(diff.new.SchemaQualifiedName), diff.old.Description, diff.new.Description), nil
+	}
+
+	// Add() emits CREATE OR REPLACE plus the COMMENT statement (if Description is non-empty
+	// in the new schema). For ALTER we additionally need to emit `COMMENT ON ... IS NULL`
+	// when Description was removed.
+	stmts, err := f.Add(diff.new)
+	if err != nil {
+		return nil, err
+	}
+	if diff.new.Description == "" && diff.old.Description != "" {
+		stmts = append(stmts, commentOnStatement(commentTargetFunction(diff.new.SchemaQualifiedName), ""))
+	}
+	return stmts, nil
 }
 
 func canFunctionDependenciesBeTracked(function schema.Function) bool {

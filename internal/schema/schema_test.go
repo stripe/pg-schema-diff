@@ -239,10 +239,10 @@ var (
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
 		`},
-			expectedHash: "4c2174e2cac3956b",
+			expectedHash: "64ef09172f9f5924",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 					{Name: "schema_1"},
 					{Name: "schema_2"},
 				},
@@ -252,14 +252,16 @@ var (
 							SchemaName:  "schema_1",
 							EscapedName: EscapeIdentifier("pg_trgm"),
 						},
-						Version: "1.6",
+						Version:     "1.6",
+						Description: "text similarity measurement and index searching based on trigrams",
 					},
 					{
 						SchemaQualifiedName: SchemaQualifiedName{
 							SchemaName:  "public",
 							EscapedName: EscapeIdentifier("pg_stat_statements"),
 						},
-						Version: "1.9",
+						Version:     "1.9",
+						Description: "track planning and execution statistics of all SQL statements executed",
 					},
 				},
 				Enums: []Enum{
@@ -591,10 +593,10 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "32c5a9c52dcfb15e",
+			expectedHash: "9cec6881c66436cb",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 				},
 				Tables: []Table{
 					{
@@ -913,7 +915,7 @@ var (
 		`},
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 				},
 				Tables: []Table{
 					{
@@ -970,7 +972,7 @@ var (
 		`},
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 				},
 				Tables: []Table{
 					{
@@ -1043,7 +1045,7 @@ var (
 		`},
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 				},
 				Tables: []Table{
 					{
@@ -1077,7 +1079,7 @@ var (
 		   `},
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 				},
 				Tables: []Table{
 					{
@@ -1105,7 +1107,7 @@ var (
 		   `},
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 				},
 				Tables: []Table{
 					{
@@ -1130,7 +1132,7 @@ var (
 		   `},
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 					{Name: "schema_1"},
 				},
 				Tables: []Table{
@@ -1173,10 +1175,10 @@ var (
 				CREATE TYPE pg_temp.color AS ENUM ('red', 'green', 'blue');
 			`},
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash: "9c413c6ad2f4a042",
+			expectedHash: "586c891bd7a36300",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 				},
 			},
 		},
@@ -1189,7 +1191,7 @@ var (
 		`},
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 				},
 				Tables: []Table{
 					{
@@ -1217,7 +1219,7 @@ var (
 			`},
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "public"},
+					{Name: "public", Description: "standard public schema"},
 					{Name: "schema_2"},
 				},
 				Tables: []Table{

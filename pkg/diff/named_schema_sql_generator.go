@@ -11,11 +11,13 @@ import (
 type namedSchemaSQLGenerator struct{}
 
 func (n *namedSchemaSQLGenerator) Add(s schema.NamedSchema) ([]Statement, error) {
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         fmt.Sprintf("CREATE SCHEMA %s", schema.EscapeIdentifier(s.Name)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
-	}}, nil
+	}}
+	stmts = append(stmts, commentDDLForAdd(commentTargetSchema(s.Name), s.Description)...)
+	return stmts, nil
 }
 
 func (n *namedSchemaSQLGenerator) Delete(s schema.NamedSchema) ([]Statement, error) {
@@ -26,6 +28,6 @@ func (n *namedSchemaSQLGenerator) Delete(s schema.NamedSchema) ([]Statement, err
 	}}, nil
 }
 
-func (n *namedSchemaSQLGenerator) Alter(_ namedSchemaDiff) ([]Statement, error) {
-	return nil, nil
+func (n *namedSchemaSQLGenerator) Alter(d namedSchemaDiff) ([]Statement, error) {
+	return commentDDLForAlter(commentTargetSchema(d.new.Name), d.old.Description, d.new.Description), nil
 }

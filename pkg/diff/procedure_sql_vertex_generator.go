@@ -39,22 +39,25 @@ func (p procedureSQLVertexGenerator) Add(s schema.Procedure) (partialSQLGraph, e
 		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
+	stmts := []Statement{{
+		DDL:         s.Def,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards: []MigrationHazard{{
+			Type: MigrationHazardTypeHasUntrackableDependencies,
+			Message: "Dependencies of procedures are not tracked by Postgres. " +
+				"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
+				"this statement. For adds, this means you need to ensure that all objects this function depends on " +
+				"are added before this statement.",
+		}},
+	}}
+	stmts = append(stmts, commentDDLForAdd(commentTargetProcedure(s.SchemaQualifiedName), s.Description)...)
+
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:       buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter),
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         s.Def,
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-				Hazards: []MigrationHazard{{
-					Type: MigrationHazardTypeHasUntrackableDependencies,
-					Message: "Dependencies of procedures are not tracked by Postgres. " +
-						"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
-						"this statement. For adds, this means you need to ensure that all objects this function depends on " +
-						"are added before this statement.",
-				}},
-			}},
+			id:         buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter),
+			priority:   sqlPrioritySooner,
+			statements: stmts,
 		}},
 		dependencies: deps,
 	}, nil
@@ -108,8 +111,38 @@ func (p procedureSQLVertexGenerator) Alter(d procedureDiff) (partialSQLGraph, er
 	if cmp.Equal(d.old, d.new) {
 		return partialSQLGraph{}, nil
 	}
-	// New adds or replaces the procedure.
-	return p.Add(d.new)
+
+	// Comment-only diff: don't recreate, emit a COMMENT statement only.
+	oldCopy := d.old
+	oldCopy.Description = d.new.Description
+	if cmp.Equal(oldCopy, d.new) {
+		commentStmts := commentDDLForAlter(commentTargetProcedure(d.new.SchemaQualifiedName), d.old.Description, d.new.Description)
+		if len(commentStmts) == 0 {
+			return partialSQLGraph{}, nil
+		}
+		return partialSQLGraph{
+			vertices: []sqlVertex{{
+				id:         buildProcedureVertexId(d.new.SchemaQualifiedName, diffTypeAddAlter),
+				priority:   sqlPrioritySooner,
+				statements: commentStmts,
+			}},
+		}, nil
+	}
+
+	// New adds or replaces the procedure (Add() also re-emits the COMMENT for the new schema).
+	graph, err := p.Add(d.new)
+	if err != nil {
+		return partialSQLGraph{}, err
+	}
+	// Add() didn't emit anything when Description == "" — but if the old schema had a
+	// description and the new one doesn't, we still need to clear it explicitly.
+	if d.new.Description == "" && d.old.Description != "" {
+		for i := range graph.vertices {
+			graph.vertices[i].statements = append(graph.vertices[i].statements,
+				commentOnStatement(commentTargetProcedure(d.new.SchemaQualifiedName), ""))
+		}
+	}
+	return graph, nil
 }
 
 func buildProcedureVertexId(name schema.SchemaQualifiedName, diffType diffType) sqlVertexId {

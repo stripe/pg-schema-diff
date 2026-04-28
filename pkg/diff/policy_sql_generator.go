@@ -178,12 +178,14 @@ func (psg *policySQLVertexGenerator) Add(p schema.Policy) ([]Statement, error) {
 		hazard = migrationHazardPermissivePolicyAdded
 	}
 
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         sb.String(),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     []MigrationHazard{hazard},
-	}}, nil
+	}}
+	stmts = append(stmts, commentDDLForAdd(commentTargetPolicy(p.EscapedName, psg.table.SchemaQualifiedName), p.Description)...)
+	return stmts, nil
 }
 
 func policyCharToSQL(c schema.PolicyCmd) (string, error) {
@@ -218,6 +220,9 @@ func (psg *policySQLVertexGenerator) Delete(p schema.Policy) ([]Statement, error
 
 func (psg *policySQLVertexGenerator) Alter(diff policyDiff) ([]Statement, error) {
 	oldCopy := diff.old
+	// Mask Description: a comment-only diff is altered via an explicit COMMENT statement
+	// emitted at the end. Without masking it would trip the unsupported-diff check below.
+	oldCopy.Description = diff.new.Description
 
 	// alterPolicyParts represents the set of strings to include in the ALTER POLICY ... ON TABLE ... statement
 	var alterPolicyParts []string
@@ -241,25 +246,29 @@ func (psg *policySQLVertexGenerator) Alter(diff policyDiff) ([]Statement, error)
 	}
 	oldCopy.Columns = diff.new.Columns
 
-	if diff := cmp.Diff(oldCopy, diff.new); diff != "" {
-		return nil, fmt.Errorf("unsupported diff %s: %w", diff, ErrNotImplemented)
+	if d := cmp.Diff(oldCopy, diff.new); d != "" {
+		return nil, fmt.Errorf("unsupported diff %s: %w", d, ErrNotImplemented)
 	}
 
+	commentStmts := commentDDLForAlter(commentTargetPolicy(diff.new.EscapedName, psg.table.SchemaQualifiedName), diff.old.Description, diff.new.Description)
+
 	if len(alterPolicyParts) == 0 {
-		// There is no diff
-		return nil, nil
+		// No structural diff — return the comment-only diff (possibly empty).
+		return commentStmts, nil
 	}
 
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("ALTER POLICY %s ON %s\n\t", diff.new.EscapedName, psg.table.GetFQEscapedName()))
 	sb.WriteString(strings.Join(alterPolicyParts, "\n\t"))
 
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         sb.String(),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     []MigrationHazard{migrationHazardPolicyAltered},
-	}}, nil
+	}}
+	stmts = append(stmts, commentStmts...)
+	return stmts, nil
 }
 
 func (psg *policySQLVertexGenerator) GetSQLVertexId(p schema.Policy, diffType diffType) sqlVertexId {

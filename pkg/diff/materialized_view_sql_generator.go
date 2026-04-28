@@ -109,15 +109,18 @@ func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (parti
 		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
+	stmts := []Statement{{
+		DDL:         materializedViewSb.String(),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+	}}
+	stmts = append(stmts, commentDDLForAdd(commentTargetMaterializedView(mv.SchemaQualifiedName), mv.Description)...)
+
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:       addVertexId,
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         materializedViewSb.String(),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			}},
+			id:         addVertexId,
+			priority:   sqlPrioritySooner,
+			statements: stmts,
 		}},
 		dependencies: deps,
 	}, nil
@@ -148,11 +151,25 @@ func (mvsg *materializedViewSQLGenerator) Delete(mv schema.MaterializedView) (pa
 }
 
 func (mvsg *materializedViewSQLGenerator) Alter(mvd materializedViewDiff) (partialSQLGraph, error) {
-	// In the initial MVP, we will not support altering.
-	if !cmp.Equal(mvd.old, mvd.new) {
+	// Mask Description: a comment-only diff is altered via an explicit COMMENT statement.
+	oldCopy := mvd.old
+	oldCopy.Description = mvd.new.Description
+	if !cmp.Equal(oldCopy, mvd.new) {
+		// In the initial MVP, we don't support altering anything other than the comment.
 		return partialSQLGraph{}, ErrNotImplemented
 	}
-	return partialSQLGraph{}, nil
+
+	commentStmts := commentDDLForAlter(commentTargetMaterializedView(mvd.new.SchemaQualifiedName), mvd.old.Description, mvd.new.Description)
+	if len(commentStmts) == 0 {
+		return partialSQLGraph{}, nil
+	}
+	return partialSQLGraph{
+		vertices: []sqlVertex{{
+			id:         buildMaterializedViewVertexId(mvd.new.SchemaQualifiedName, diffTypeAddAlter),
+			priority:   sqlPrioritySooner,
+			statements: commentStmts,
+		}},
+	}, nil
 }
 
 func buildMaterializedViewVertexId(n schema.SchemaQualifiedName, d diffType) sqlVertexId {
