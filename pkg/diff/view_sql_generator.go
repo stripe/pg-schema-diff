@@ -104,6 +104,11 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
+	// Run after any functions the view calls are added/altered.
+	for _, f := range v.DependsOnFunctions {
+		deps = append(deps, mustRun(addVertexId).after(buildFunctionVertexId(f, diffTypeAddAlter)))
+	}
+
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
 			id:       addVertexId,
