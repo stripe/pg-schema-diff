@@ -331,6 +331,8 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing views: %w", err)
 	}
+	// Cascade: if a view depends on a recreated view, it must also be recreated.
+	viewDiffs = propagateViewRecreation(viewDiffs)
 
 	materializedViewDiffs, err := diffLists(old.MaterializedViews, new.MaterializedViews, func(old, new schema.MaterializedView, _, _ int) (diff materializedViewDiff, requiresRecreation bool, error error) {
 		return buildMaterializedViewDiff(deletedTablesByName, tableDiffsByName, old, new)
@@ -338,6 +340,8 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing materialized views: %w", err)
 	}
+	// Cascade: if a matview depends on a recreated view, it must also be recreated.
+	materializedViewDiffs = propagateMaterializedViewRecreation(materializedViewDiffs, viewDiffs)
 
 	return schemaDiff{
 		oldAndNew: oldAndNew[schema.Schema]{

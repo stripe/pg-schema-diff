@@ -3,7 +3,6 @@ package diff
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 
@@ -45,7 +44,9 @@ func buildViewDiff(
 		// It's possible a dependent column was deleted (or recreated).
 		td, ok := tableDiffsByName[t.GetName()]
 		if !ok {
-			return viewDiff{}, false, fmt.Errorf("processing view table dependencies: expected a table diff to exist for %q. have=\n%s", t.GetName(), slices.Sorted(maps.Keys(tableDiffsByName)))
+			// Not a table (e.g. a view dependency). View column changes are
+			// driven by their underlying tables, which are tracked separately.
+			continue
 		}
 		deletedColumnsByName := buildSchemaObjByNameMap(td.columnsDiff.deletes)
 		for _, c := range t.Columns {
@@ -104,6 +105,11 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
+	// Run after any functions the view calls are added/altered.
+	for _, f := range v.DependsOnFunctions {
+		deps = append(deps, mustRun(addVertexId).after(buildFunctionVertexId(f, diffTypeAddAlter)))
+	}
+
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
 			id:       addVertexId,
@@ -152,4 +158,89 @@ func (vsg *viewSQLGenerator) Alter(vd viewDiff) (partialSQLGraph, error) {
 
 func buildViewVertexId(n schema.SchemaQualifiedName, d diffType) sqlVertexId {
 	return buildSchemaObjVertexId("view", n.GetFQEscapedName(), d)
+}
+
+// propagateViewRecreation cascades recreation to views that depend on other recreated views.
+// Iterates until no more cascades are found (handles chains like view_a → view_b → view_c).
+func propagateViewRecreation(diffs listDiff[schema.View, viewDiff]) listDiff[schema.View, viewDiff] {
+	for {
+		recreatedViews := make(map[string]bool)
+		for _, d := range diffs.deletes {
+			recreatedViews[d.GetName()] = true
+		}
+		if len(recreatedViews) == 0 {
+			return diffs
+		}
+
+		var newAlters []viewDiff
+		changed := false
+		for _, a := range diffs.alters {
+			needsRecreation := false
+			for _, t := range a.old.TableDependencies {
+				if recreatedViews[t.GetName()] {
+					needsRecreation = true
+					break
+				}
+			}
+			if needsRecreation {
+				diffs.deletes = append(diffs.deletes, a.old)
+				diffs.adds = append(diffs.adds, a.new)
+				changed = true
+			} else {
+				newAlters = append(newAlters, a)
+			}
+		}
+		diffs.alters = newAlters
+		if !changed {
+			return diffs
+		}
+	}
+}
+
+// propagateMaterializedViewRecreation cascades recreation to matviews that depend on recreated views or matviews.
+func propagateMaterializedViewRecreation(
+	mvDiffs listDiff[schema.MaterializedView, materializedViewDiff],
+	viewDiffs listDiff[schema.View, viewDiff],
+) listDiff[schema.MaterializedView, materializedViewDiff] {
+	recreatedViews := make(map[string]bool)
+	for _, d := range viewDiffs.deletes {
+		recreatedViews[d.GetName()] = true
+	}
+
+	for {
+		// Include recreated matviews in the set to check
+		recreated := make(map[string]bool)
+		for k, v := range recreatedViews {
+			recreated[k] = v
+		}
+		for _, d := range mvDiffs.deletes {
+			recreated[d.GetName()] = true
+		}
+		if len(recreated) == 0 {
+			return mvDiffs
+		}
+
+		var newAlters []materializedViewDiff
+		changed := false
+		for _, a := range mvDiffs.alters {
+			needsRecreation := false
+			for _, t := range a.old.TableDependencies {
+				if recreated[t.GetName()] {
+					needsRecreation = true
+					break
+				}
+			}
+			if needsRecreation {
+				mvDiffs.deletes = append(mvDiffs.deletes, a.old)
+				mvDiffs.adds = append(mvDiffs.adds, a.new)
+				changed = true
+			} else {
+				newAlters = append(newAlters, a)
+			}
+		}
+		mvDiffs.alters = newAlters
+		if !changed {
+			return mvDiffs
+		}
+	}
 }

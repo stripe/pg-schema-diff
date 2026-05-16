@@ -51,6 +51,10 @@ type Engine struct {
 	process  *os.Process
 	dbPath   string
 	sockPath string
+
+	// external mode: connect to existing PG instance
+	connOpts ConnectionOptions
+	external bool
 }
 
 const (
@@ -68,14 +72,44 @@ var (
 	}
 )
 
-// StartEngine starts a postgres instance. This is useful for testing, where Postgres databases need to be spun up.
-// "postgres" must be on the system's PATH, and the binary must be located in a directory containing "initdb"
+// StartEngine starts a postgres instance or connects to an existing one.
+// If PGSD_ENGINE_DSN is set (e.g. "host=localhost port=5488 user=postgres password=odie dbname=postgres sslmode=disable"),
+// it connects to that instance instead of running initdb/pg_ctl.
+// Otherwise, "postgres" must be on the system's PATH, and the binary must be located in a directory containing "initdb".
 func StartEngine() (*Engine, error) {
+	if dsn := os.Getenv("PGSD_ENGINE_DSN"); dsn != "" {
+		return startExternalEngine(dsn)
+	}
 	postgresPath, err := exec.LookPath("postgres")
 	if err != nil {
 		return nil, errors.New("postgres executable not found in path")
 	}
 	return StartEngineUsingPgDir(path.Dir(postgresPath))
+}
+
+// startExternalEngine connects to an existing PG instance via DSN (key=value pairs).
+func startExternalEngine(dsn string) (*Engine, error) {
+	connOpts := parseConnOptsDSN(dsn)
+	e := &Engine{
+		superuser: connOpts[ConnectionOptionUser],
+		connOpts:  connOpts,
+		external:  true,
+	}
+	if err := e.waitTillServingTraffic(defaultMaxConnAttemptsAtStartup, defaultWaitBetweenStartupConnAttempt); err != nil {
+		return nil, fmt.Errorf("connecting to external PG: %w", err)
+	}
+	return e, nil
+}
+
+func parseConnOptsDSN(dsn string) ConnectionOptions {
+	opts := make(ConnectionOptions)
+	for _, pair := range strings.Fields(dsn) {
+		k, v, ok := strings.Cut(pair, "=")
+		if ok {
+			opts[ConnectionOption(k)] = v
+		}
+	}
+	return opts
 }
 
 func StartEngineUsingPgDir(pgDir string) (_ *Engine, retErr error) {
@@ -192,6 +226,9 @@ func (e *Engine) testIfInstanceServingTraffic() error {
 }
 
 func (e *Engine) GetPostgresDatabaseConnOpts() ConnectionOptions {
+	if e.external {
+		return e.connOpts
+	}
 	result := make(map[ConnectionOption]string)
 	result[ConnectionOptionDatabase] = "postgres"
 	result[ConnectionOptionHost] = e.sockPath
@@ -207,6 +244,9 @@ func (e *Engine) GetPostgresDatabaseDSN() string {
 }
 
 func (e *Engine) Close() error {
+	if e.external {
+		return nil
+	}
 	// Make best effort attempt to clean up everything
 	e.process.Signal(os.Interrupt)
 	e.process.Wait()
