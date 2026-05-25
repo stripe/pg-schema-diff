@@ -279,9 +279,17 @@ func schemaFromTempDb(ctx context.Context, db *tempdb.Database, plan *planOption
 	return schema.GetSchema(ctx, db.ConnPool, append(plan.getSchemaOpts, db.ExcludeMetadataOptions...)...)
 }
 
-// clearTablePrivileges returns a copy of the schema with all table privileges cleared.
+// clearSkippedPrivileges returns a copy of the schema with all privileges cleared that are emitted as
+// SkipValidation statements.
 // This is used during plan validation because privilege statements are skipped (roles don't exist in temp DB).
-func clearTablePrivileges(s schema.Schema) schema.Schema {
+func clearSkippedPrivileges(s schema.Schema) schema.Schema {
+	namedSchemas := make([]schema.NamedSchema, len(s.NamedSchemas))
+	for i, namedSchema := range s.NamedSchemas {
+		namedSchema.Privileges = nil
+		namedSchemas[i] = namedSchema
+	}
+	s.NamedSchemas = namedSchemas
+
 	tables := make([]schema.Table, len(s.Tables))
 	for i, t := range s.Tables {
 		t.Privileges = nil
@@ -294,8 +302,8 @@ func clearTablePrivileges(s schema.Schema) schema.Schema {
 func assertMigratedSchemaMatchesTarget(migratedSchema, targetSchema schema.Schema, planOptions *planOptions) error {
 	// Clear privileges from both schemas since privilege statements are skipped during validation
 	// (roles don't exist in temp DB). We make copies to avoid modifying the original schemas.
-	migratedSchema = clearTablePrivileges(migratedSchema)
-	targetSchema = clearTablePrivileges(targetSchema)
+	migratedSchema = clearSkippedPrivileges(migratedSchema)
+	targetSchema = clearSkippedPrivileges(targetSchema)
 
 	toTargetSchemaStmts, err := generateMigrationStatements(migratedSchema, targetSchema, planOptions)
 	if err != nil {

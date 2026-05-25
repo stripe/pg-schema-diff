@@ -88,6 +88,11 @@ func (o oldAndNew[S]) GetOld() S {
 type (
 	namedSchemaDiff struct {
 		oldAndNew[schema.NamedSchema]
+		privilegesDiff listDiff[schema.SchemaPrivilege, schemaPrivilegeDiff]
+	}
+
+	schemaPrivilegeDiff struct {
+		oldAndNew[schema.SchemaPrivilege]
 	}
 
 	enumDiff struct {
@@ -196,11 +201,25 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		old.NamedSchemas,
 		new.NamedSchemas,
 		func(old, new schema.NamedSchema, _, _ int) (namedSchemaDiff, bool, error) {
+			privilegesDiff, err := diffLists(
+				old.Privileges,
+				new.Privileges,
+				func(old, new schema.SchemaPrivilege, _, _ int) (schemaPrivilegeDiff, bool, error) {
+					// Recreate the privilege if IsGrantable changes
+					recreate := old.IsGrantable != new.IsGrantable
+					return schemaPrivilegeDiff{oldAndNew[schema.SchemaPrivilege]{old: old, new: new}}, recreate, nil
+				},
+			)
+			if err != nil {
+				return namedSchemaDiff{}, false, fmt.Errorf("diffing schema privileges: %w", err)
+			}
+
 			return namedSchemaDiff{
 				oldAndNew[schema.NamedSchema]{
 					old: old,
 					new: new,
 				},
+				privilegesDiff,
 			}, false, nil
 		})
 	if err != nil {

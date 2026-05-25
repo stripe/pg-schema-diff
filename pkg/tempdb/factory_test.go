@@ -175,6 +175,11 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	suite.Equal(internalschema.Schema{
 		NamedSchemas: []internalschema.NamedSchema{{
 			Name: "public",
+			Privileges: []internalschema.SchemaPrivilege{{
+				Grantee:     "",
+				Privilege:   "USAGE",
+				IsGrantable: false,
+			}},
 		}},
 	}, schema)
 

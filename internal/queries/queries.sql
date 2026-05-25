@@ -15,6 +15,42 @@ WHERE
             AND depend.deptype = 'e'
     );
 
+-- name: GetSchemaPrivileges :many
+WITH parsed_acl AS (
+    SELECT
+        n.nspname AS schema_name,
+        n.nspowner AS owner_oid,
+        (ACLEXPLODE(n.nspacl)).grantee AS grantee_oid,
+        (ACLEXPLODE(n.nspacl)).privilege_type AS privilege_type,
+        (ACLEXPLODE(n.nspacl)).is_grantable AS is_grantable
+    FROM pg_catalog.pg_namespace AS n
+    WHERE
+        n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND n.nspname !~ '^pg_toast'
+        AND n.nspname !~ '^pg_temp'
+        -- Exclude schemas owned by extensions
+        AND NOT EXISTS (
+            SELECT depend.objid
+            FROM pg_catalog.pg_depend AS depend
+            WHERE
+                depend.classid = 'pg_namespace'::REGCLASS
+                AND depend.objid = n.oid
+                AND depend.deptype = 'e'
+        )
+)
+
+SELECT
+    pa.schema_name::TEXT AS schema_name,
+    COALESCE(grantee_role.rolname, '')::TEXT AS grantee,
+    pa.privilege_type::TEXT AS privilege,
+    pa.is_grantable
+FROM parsed_acl AS pa
+LEFT JOIN pg_catalog.pg_roles AS grantee_role
+    ON pa.grantee_oid = grantee_role.oid
+-- Exclude privileges granted to the schema owner (these are implicit)
+WHERE pa.grantee_oid != pa.owner_oid OR pa.grantee_oid = 0
+ORDER BY pa.schema_name, grantee, pa.privilege_type;
+
 -- name: GetTables :many
 SELECT
     c.oid,
