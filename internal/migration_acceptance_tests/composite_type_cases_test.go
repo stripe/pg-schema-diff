@@ -67,6 +67,54 @@ var compositeTypeAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name:         "create composite types before functions that use them in signatures",
+		oldSchemaDDL: []string{},
+		newSchemaDDL: []string{`
+			CREATE SCHEMA casino_wager_stats;
+			CREATE TYPE casino_wager_stats.peak_source_row AS (
+				id bigint,
+				round_id bigint
+			);
+			CREATE TYPE casino_wager_stats.peak_candidate_row AS (
+				metric_code text,
+				round_id bigint
+			);
+			CREATE FUNCTION casino_wager_stats.project_peak_candidates(p_peak_sources casino_wager_stats.peak_source_row[])
+				RETURNS SETOF casino_wager_stats.peak_candidate_row
+				LANGUAGE sql
+				STABLE
+				AS 'SELECT ''payout''::text AS metric_code, source$.round_id FROM pg_catalog.unnest(p_peak_sources) AS source$';
+			CREATE FUNCTION casino_wager_stats.refresh_peaks(p_peak_sources casino_wager_stats.peak_source_row[])
+				RETURNS void
+				LANGUAGE plpgsql
+				AS $$
+				DECLARE
+					v_candidates casino_wager_stats.peak_candidate_row[];
+				BEGIN
+					SELECT COALESCE(array_agg(candidate$), ARRAY[]::casino_wager_stats.peak_candidate_row[])
+					INTO v_candidates
+					FROM casino_wager_stats.project_peak_candidates(p_peak_sources) candidate$;
+				END;
+				$$;
+		`},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeHasUntrackableDependencies,
+		},
+		expectedPlanDDL: []string{
+			`CREATE SCHEMA "casino_wager_stats"`,
+			`CREATE TYPE "casino_wager_stats"."peak_candidate_row" AS (
+	"metric_code" text COLLATE "pg_catalog"."default",
+	"round_id" bigint
+)`,
+			`CREATE TYPE "casino_wager_stats"."peak_source_row" AS (
+	"id" bigint,
+	"round_id" bigint
+)`,
+			"CREATE OR REPLACE FUNCTION casino_wager_stats.project_peak_candidates(p_peak_sources casino_wager_stats.peak_source_row[])\n RETURNS SETOF casino_wager_stats.peak_candidate_row\n LANGUAGE sql\n STABLE\nAS $function$SELECT 'payout'::text AS metric_code, source$.round_id FROM pg_catalog.unnest(p_peak_sources) AS source$$function$\n",
+			"CREATE OR REPLACE FUNCTION casino_wager_stats.refresh_peaks(p_peak_sources casino_wager_stats.peak_source_row[])\n RETURNS void\n LANGUAGE plpgsql\nAS $function$\n\t\t\t\tDECLARE\n\t\t\t\t\tv_candidates casino_wager_stats.peak_candidate_row[];\n\t\t\t\tBEGIN\n\t\t\t\t\tSELECT COALESCE(array_agg(candidate$), ARRAY[]::casino_wager_stats.peak_candidate_row[])\n\t\t\t\t\tINTO v_candidates\n\t\t\t\t\tFROM casino_wager_stats.project_peak_candidates(p_peak_sources) candidate$;\n\t\t\t\tEND;\n\t\t\t\t$function$\n",
+		},
+	},
+	{
 		name: "drop composite type after dropping function that used it",
 		oldSchemaDDL: []string{`
 			CREATE TYPE pair AS (a int, b text);
