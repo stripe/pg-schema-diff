@@ -20,6 +20,7 @@ SELECT
     c.oid,
     c.relname::TEXT AS table_name,
     table_namespace.nspname::TEXT AS table_schema_name,
+    c.relpersistence = 'u' AS is_unlogged,
     c.relreplident::TEXT AS replica_identity,
     c.relrowsecurity AS rls_enabled,
     c.relforcerowsecurity AS rls_forced,

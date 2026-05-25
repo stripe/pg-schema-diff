@@ -99,6 +99,52 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Set table unlogged",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE UNLOGGED TABLE foobar(
+                id INT PRIMARY KEY
+            );
+			`,
+		},
+		expectedPlanDDL: []string{
+			`ALTER TABLE "public"."foobar" SET UNLOGGED`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+	},
+	{
+		name: "Set table logged",
+		oldSchemaDDL: []string{
+			`
+            CREATE UNLOGGED TABLE foobar(
+                id INT PRIMARY KEY
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
+			`,
+		},
+		expectedPlanDDL: []string{
+			`ALTER TABLE "public"."foobar" SET LOGGED`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+	},
+	{
 		name:         "Create table with RLS enabled",
 		oldSchemaDDL: nil,
 		newSchemaDDL: []string{
