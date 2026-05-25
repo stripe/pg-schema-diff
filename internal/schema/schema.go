@@ -200,7 +200,9 @@ const (
 // NamedSchema represents a schema in the database. We call it NamedSchema to distinguish it from the Postgres Database
 // schema
 type NamedSchema struct {
-	Name       string
+	Name string
+	// Owner is used to classify implicit owner privileges; schema ownership changes are not generated.
+	Owner      string
 	Privileges []SchemaPrivilege
 }
 
@@ -866,7 +868,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 }
 
 func (s *schemaFetcher) fetchNamedSchemas(ctx context.Context) ([]NamedSchema, error) {
-	schemaNames, err := s.q.GetSchemas(ctx)
+	schemaRows, err := s.q.GetSchemas(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetSchemas(): %w", err)
 	}
@@ -881,10 +883,11 @@ func (s *schemaFetcher) fetchNamedSchemas(ctx context.Context) ([]NamedSchema, e
 	}
 
 	var schemas []NamedSchema
-	for _, schemaName := range schemaNames {
+	for _, schemaRow := range schemaRows {
 		schemas = append(schemas, NamedSchema{
-			Name:       schemaName,
-			Privileges: privilegesBySchema[schemaName],
+			Name:       schemaRow.SchemaName,
+			Owner:      schemaRow.Owner,
+			Privileges: privilegesBySchema[schemaRow.SchemaName],
 		})
 	}
 

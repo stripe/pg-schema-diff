@@ -35,10 +35,14 @@ var (
 		SchemaName:  "pg_catalog",
 	}
 	publicSchema = NamedSchema{
-		Name: "public",
+		Name:  "public",
+		Owner: "pg_database_owner",
 		Privileges: []SchemaPrivilege{
 			{Grantee: "", Privilege: "USAGE", IsGrantable: false},
 		},
+	}
+	postgresOwnedSchema = func(name string) NamedSchema {
+		return NamedSchema{Name: name, Owner: "postgres"}
 	}
 
 	testCases = []*testCase{
@@ -245,12 +249,12 @@ var (
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
 		`},
-			expectedHash: "a0499c8e1fd53d5c",
+			expectedHash: "b8bd15ebe3d99c4b",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					publicSchema,
-					{Name: "schema_1"},
-					{Name: "schema_2"},
+					postgresOwnedSchema("schema_1"),
+					postgresOwnedSchema("schema_2"),
 				},
 				Extensions: []Extension{
 					{
@@ -597,7 +601,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "6311cce58fe5b822",
+			expectedHash: "bb1cdc1ffff18ddd",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					publicSchema,
@@ -1137,7 +1141,7 @@ var (
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					publicSchema,
-					{Name: "schema_1"},
+					postgresOwnedSchema("schema_1"),
 				},
 				Tables: []Table{
 					{
@@ -1179,7 +1183,7 @@ var (
 				CREATE TYPE pg_temp.color AS ENUM ('red', 'green', 'blue');
 			`},
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash: "e6f12e89e218f000",
+			expectedHash: "bfda373852505980",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					publicSchema,
@@ -1224,7 +1228,7 @@ var (
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					publicSchema,
-					{Name: "schema_2"},
+					postgresOwnedSchema("schema_2"),
 				},
 				Tables: []Table{
 					{
@@ -1254,7 +1258,7 @@ var (
 			`},
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
-					{Name: "schema_1"},
+					postgresOwnedSchema("schema_1"),
 				},
 				Tables: []Table{
 					{

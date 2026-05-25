@@ -1,6 +1,10 @@
 -- name: GetSchemas :many
-SELECT nspname::TEXT AS schema_name
+SELECT
+    pg_namespace.nspname::TEXT AS schema_name,
+    owner_role.rolname::TEXT AS owner
 FROM pg_catalog.pg_namespace
+INNER JOIN pg_catalog.pg_roles AS owner_role
+    ON pg_namespace.nspowner = owner_role.oid
 WHERE
     nspname NOT IN ('pg_catalog', 'information_schema')
     AND nspname !~ '^pg_toast'

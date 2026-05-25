@@ -84,6 +84,41 @@ var namedSchemaAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeAuthzUpdate,
 		},
 	},
+	{
+		name:  "Revoke create when target only grants usage",
+		roles: []string{"app_user"},
+		oldSchemaDDL: []string{`
+            CREATE SCHEMA app_schema;
+            GRANT USAGE, CREATE ON SCHEMA app_schema TO app_user;
+		`},
+		newSchemaDDL: []string{`
+            CREATE SCHEMA app_schema;
+            GRANT USAGE ON SCHEMA app_schema TO app_user;
+		`},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+		expectedPlanDDL: []string{
+			`REVOKE CREATE ON SCHEMA "app_schema" FROM "app_user"`,
+		},
+	},
+	{
+		name:  "Do not grant usage to existing schema owner",
+		roles: []string{"service"},
+		oldSchemaDDL: []string{`
+            CREATE SCHEMA casino_wager_stats AUTHORIZATION service;
+            GRANT USAGE, CREATE ON SCHEMA casino_wager_stats TO service;
+		`},
+		newSchemaDDL: []string{`
+            CREATE SCHEMA casino_wager_stats;
+            GRANT USAGE ON SCHEMA casino_wager_stats TO service;
+		`},
+		expectedDBSchemaDDL: []string{`
+            CREATE SCHEMA casino_wager_stats AUTHORIZATION service;
+            GRANT USAGE, CREATE ON SCHEMA casino_wager_stats TO service;
+		`},
+		expectEmptyPlan: true,
+	},
 }
 
 func TestNamedSchemaTestCases(t *testing.T) {
