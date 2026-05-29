@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/stripe/pg-schema-diff/internal/schema"
@@ -101,11 +102,14 @@ type sqlVertexGenerator[S schema.Object, Diff diff[S]] interface {
 }
 
 // generatePartialGraph generates a partial for the given schema object list diff using the inutted generator.
-func generatePartialGraph[S schema.Object, Diff diff[S]](generator sqlVertexGenerator[S, Diff], listDiff listDiff[S, Diff]) (partialSQLGraph, error) {
+func generatePartialGraph[S schema.Object, Diff diff[S]](generator sqlVertexGenerator[S, Diff], listDiff listDiff[S, Diff], skipNotImplemented bool) (partialSQLGraph, error) {
 	var partialGraphs []partialSQLGraph
 	for _, a := range listDiff.adds {
 		v, err := generator.Add(a)
 		if err != nil {
+			if skipNotImplemented && errors.Is(err, ErrNotImplemented) {
+				continue
+			}
 			return partialSQLGraph{}, fmt.Errorf("generating add statements for %s: %w", a.GetName(), err)
 		}
 		partialGraphs = append(partialGraphs, v)
@@ -113,6 +117,9 @@ func generatePartialGraph[S schema.Object, Diff diff[S]](generator sqlVertexGene
 	for _, d := range listDiff.deletes {
 		v, err := generator.Delete(d)
 		if err != nil {
+			if skipNotImplemented && errors.Is(err, ErrNotImplemented) {
+				continue
+			}
 			return partialSQLGraph{}, fmt.Errorf("generating delete statements for %s: %w", d.GetName(), err)
 		}
 		partialGraphs = append(partialGraphs, v)
@@ -120,6 +127,9 @@ func generatePartialGraph[S schema.Object, Diff diff[S]](generator sqlVertexGene
 	for _, a := range listDiff.alters {
 		v, err := generator.Alter(a)
 		if err != nil {
+			if skipNotImplemented && errors.Is(err, ErrNotImplemented) {
+				continue
+			}
 			return partialSQLGraph{}, fmt.Errorf("generating alter statements for %s: %w", a.GetNew().GetName(), err)
 		}
 		partialGraphs = append(partialGraphs, v)

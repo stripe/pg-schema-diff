@@ -36,6 +36,7 @@ type (
 		getSchemaOpts           []schema.GetSchemaOpt
 		randReader              io.Reader
 		noConcurrentIndexOps    bool
+		skipNotImplemented      bool
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -110,6 +111,14 @@ func WithRandReader(randReader io.Reader) PlanOpt {
 func WithNoConcurrentIndexOps() PlanOpt {
 	return func(opts *planOptions) {
 		opts.noConcurrentIndexOps = true
+	}
+}
+
+// WithSkipNotImplemented configures plan generation to silently skip any diff operations that are not yet
+// implemented rather than failing the entire plan.
+func WithSkipNotImplemented() PlanOpt {
+	return func(opts *planOptions) {
+		opts.skipNotImplemented = true
 	}
 }
 
