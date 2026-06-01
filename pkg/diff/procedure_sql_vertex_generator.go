@@ -39,22 +39,25 @@ func (p procedureSQLVertexGenerator) Add(s schema.Procedure) (partialSQLGraph, e
 		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
+	stmts := []Statement{{
+		DDL:         s.Def,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards: []MigrationHazard{{
+			Type: MigrationHazardTypeHasUntrackableDependencies,
+			Message: "Dependencies of procedures are not tracked by Postgres. " +
+				"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
+				"this statement. For adds, this means you need to ensure that all objects this function depends on " +
+				"are added before this statement.",
+		}},
+	}}
+	stmts = append(stmts, ownerDDLForAdd(ownershipTarget("PROCEDURE", s.SchemaQualifiedName), s.Owner)...)
+
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:       buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter),
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         s.Def,
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-				Hazards: []MigrationHazard{{
-					Type: MigrationHazardTypeHasUntrackableDependencies,
-					Message: "Dependencies of procedures are not tracked by Postgres. " +
-						"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
-						"this statement. For adds, this means you need to ensure that all objects this function depends on " +
-						"are added before this statement.",
-				}},
-			}},
+			id:         buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter),
+			priority:   sqlPrioritySooner,
+			statements: stmts,
 		}},
 		dependencies: deps,
 	}, nil
@@ -105,11 +108,36 @@ func (p procedureSQLVertexGenerator) Delete(s schema.Procedure) (partialSQLGraph
 }
 
 func (p procedureSQLVertexGenerator) Alter(d procedureDiff) (partialSQLGraph, error) {
+	oldCopy := d.old
+	oldCopy.Owner = d.new.Owner
+	if cmp.Equal(oldCopy, d.new) {
+		stmts := ownerDDLForAlter(ownershipTarget("PROCEDURE", d.new.SchemaQualifiedName), d.old.Owner, d.new.Owner)
+		if len(stmts) == 0 {
+			return partialSQLGraph{}, nil
+		}
+		return partialSQLGraph{
+			vertices: []sqlVertex{{
+				id:         buildProcedureVertexId(d.new.SchemaQualifiedName, diffTypeAddAlter),
+				priority:   sqlPrioritySooner,
+				statements: stmts,
+			}},
+		}, nil
+	}
 	if cmp.Equal(d.old, d.new) {
 		return partialSQLGraph{}, nil
 	}
 	// New adds or replaces the procedure.
-	return p.Add(d.new)
+	newForAlter := d.new
+	newForAlter.Owner = ""
+	graph, err := p.Add(newForAlter)
+	if err != nil {
+		return partialSQLGraph{}, err
+	}
+	for i := range graph.vertices {
+		graph.vertices[i].statements = append(graph.vertices[i].statements,
+			ownerDDLForAlter(ownershipTarget("PROCEDURE", d.new.SchemaQualifiedName), d.old.Owner, d.new.Owner)...)
+	}
+	return graph, nil
 }
 
 func buildProcedureVertexId(name schema.SchemaQualifiedName, diffType diffType) sqlVertexId {

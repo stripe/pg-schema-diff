@@ -109,15 +109,18 @@ func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (parti
 		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
+	stmts := []Statement{{
+		DDL:         materializedViewSb.String(),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+	}}
+	stmts = append(stmts, ownerDDLForAdd(ownershipTarget("MATERIALIZED VIEW", mv.SchemaQualifiedName), mv.Owner)...)
+
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:       addVertexId,
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         materializedViewSb.String(),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			}},
+			id:         addVertexId,
+			priority:   sqlPrioritySooner,
+			statements: stmts,
 		}},
 		dependencies: deps,
 	}, nil
@@ -149,10 +152,22 @@ func (mvsg *materializedViewSQLGenerator) Delete(mv schema.MaterializedView) (pa
 
 func (mvsg *materializedViewSQLGenerator) Alter(mvd materializedViewDiff) (partialSQLGraph, error) {
 	// In the initial MVP, we will not support altering.
-	if !cmp.Equal(mvd.old, mvd.new) {
+	oldCopy := mvd.old
+	oldCopy.Owner = mvd.new.Owner
+	if !cmp.Equal(oldCopy, mvd.new) {
 		return partialSQLGraph{}, ErrNotImplemented
 	}
-	return partialSQLGraph{}, nil
+	stmts := ownerDDLForAlter(ownershipTarget("MATERIALIZED VIEW", mvd.new.SchemaQualifiedName), mvd.old.Owner, mvd.new.Owner)
+	if len(stmts) == 0 {
+		return partialSQLGraph{}, nil
+	}
+	return partialSQLGraph{
+		vertices: []sqlVertex{{
+			id:         buildMaterializedViewVertexId(mvd.new.SchemaQualifiedName, diffTypeAddAlter),
+			priority:   sqlPrioritySooner,
+			statements: stmts,
+		}},
+	}, nil
 }
 
 func buildMaterializedViewVertexId(n schema.SchemaQualifiedName, d diffType) sqlVertexId {

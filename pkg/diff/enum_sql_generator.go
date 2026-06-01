@@ -19,13 +19,15 @@ func (e *enumSQLGenerator) Add(enum schema.Enum) ([]Statement, error) {
 	for _, val := range enum.Labels {
 		escapedEnumVals = append(escapedEnumVals, fmt.Sprintf("'%s'", val))
 	}
-	return []Statement{
+	stmts := []Statement{
 		{
 			DDL:         fmt.Sprintf("CREATE TYPE %s AS ENUM (%s)", enum.GetFQEscapedName(), strings.Join(escapedEnumVals, ", ")),
 			Timeout:     statementTimeoutDefault,
 			LockTimeout: lockTimeoutDefault,
 		},
-	}, nil
+	}
+	stmts = append(stmts, ownerDDLForAdd(ownershipTarget("TYPE", enum.SchemaQualifiedName), enum.Owner)...)
+	return stmts, nil
 }
 
 func (e *enumSQLGenerator) Delete(enum schema.Enum) ([]Statement, error) {
@@ -87,6 +89,8 @@ func (e *enumSQLGenerator) Alter(diff enumDiff) ([]Statement, error) {
 		})
 	}
 	oldCopy.Labels = diff.new.Labels
+	stmts = append(stmts, ownerDDLForAlter(ownershipTarget("TYPE", diff.new.SchemaQualifiedName), diff.old.Owner, diff.new.Owner)...)
+	oldCopy.Owner = diff.new.Owner
 
 	if diff := cmp.Diff(oldCopy, diff.new); diff != "" {
 		return nil, fmt.Errorf("unable to resolve the diff %s: %w", diff, ErrNotImplemented)
