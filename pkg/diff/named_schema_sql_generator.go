@@ -12,7 +12,7 @@ type namedSchemaSQLGenerator struct{}
 
 func (n *namedSchemaSQLGenerator) Add(s schema.NamedSchema) ([]Statement, error) {
 	stmts := []Statement{{
-		DDL:         fmt.Sprintf("CREATE SCHEMA %s", schema.EscapeIdentifier(s.Name)),
+		DDL:         buildCreateSchemaDDL(s),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}}
@@ -28,6 +28,14 @@ func (n *namedSchemaSQLGenerator) Add(s schema.NamedSchema) ([]Statement, error)
 	}
 
 	return stmts, nil
+}
+
+func buildCreateSchemaDDL(s schema.NamedSchema) string {
+	ddl := fmt.Sprintf("CREATE SCHEMA %s", schema.EscapeIdentifier(s.Name))
+	if s.Owner != "" {
+		ddl += fmt.Sprintf(" AUTHORIZATION %s", schema.EscapeIdentifier(s.Owner))
+	}
+	return ddl
 }
 
 func (n *namedSchemaSQLGenerator) Delete(s schema.NamedSchema) ([]Statement, error) {
@@ -48,6 +56,21 @@ func (n *namedSchemaSQLGenerator) Alter(diff namedSchemaDiff) ([]Statement, erro
 	var stmts []Statement
 	stmts = append(stmts, privilegeStatements.Deletes...)
 	stmts = append(stmts, privilegeStatements.Alters...)
+	if diff.old.Owner != diff.new.Owner && diff.new.Owner != "" {
+		stmts = append(stmts, buildAlterSchemaOwnerStatement(diff.new.Name, diff.new.Owner))
+	}
 	stmts = append(stmts, privilegeStatements.Adds...)
 	return stmts, nil
+}
+
+func buildAlterSchemaOwnerStatement(schemaName, owner string) Statement {
+	return Statement{
+		DDL:         fmt.Sprintf("ALTER SCHEMA %s OWNER TO %s", schema.EscapeIdentifier(schemaName), schema.EscapeIdentifier(owner)),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards: []MigrationHazard{{
+			Type:    MigrationHazardTypeAuthzUpdate,
+			Message: "Changing schema ownership changes implicit privileges for the old and new owners.",
+		}},
+	}
 }

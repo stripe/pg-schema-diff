@@ -202,7 +202,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		new.NamedSchemas,
 		func(old, new schema.NamedSchema, _, _ int) (namedSchemaDiff, bool, error) {
 			oldPrivileges := filterSchemaOwnerPrivileges(old.Privileges, old.Owner)
-			newPrivileges := filterSchemaOwnerPrivileges(new.Privileges, old.Owner)
+			newPrivileges := filterSchemaOwnerPrivileges(new.Privileges, new.Owner)
 			privilegesDiff, err := diffLists(
 				oldPrivileges,
 				newPrivileges,

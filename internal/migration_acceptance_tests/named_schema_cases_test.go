@@ -110,7 +110,7 @@ var namedSchemaAcceptanceTestCases = []acceptanceTestCase{
             GRANT USAGE, CREATE ON SCHEMA casino_wager_stats TO service;
 		`},
 		newSchemaDDL: []string{`
-            CREATE SCHEMA casino_wager_stats;
+            CREATE SCHEMA casino_wager_stats AUTHORIZATION service;
             GRANT USAGE ON SCHEMA casino_wager_stats TO service;
 		`},
 		expectedDBSchemaDDL: []string{`
@@ -118,6 +118,20 @@ var namedSchemaAcceptanceTestCases = []acceptanceTestCase{
             GRANT USAGE, CREATE ON SCHEMA casino_wager_stats TO service;
 		`},
 		expectEmptyPlan: true,
+	},
+	{
+		name:  "Change schema owner",
+		roles: []string{"owner_a", "owner_b"},
+		oldSchemaDDL: []string{`
+            CREATE SCHEMA app_schema AUTHORIZATION owner_a;
+		`},
+		newSchemaDDL: []string{`
+            CREATE SCHEMA app_schema AUTHORIZATION owner_b;
+		`},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+		expectedPlanDDL: []string{`ALTER SCHEMA "app_schema" OWNER TO "owner_b"`},
 	},
 }
 
