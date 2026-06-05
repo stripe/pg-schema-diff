@@ -111,8 +111,8 @@ func buildPlanCmd() *cobra.Command {
 type (
 	// parsePlanOptionsFlags stores the flags that are parsed into planOptions.
 	planOptionsFlags struct {
-		includeSchemas []string
-		excludeSchemas []string
+		includeSchemas       []string
+		excludeSchemas       []string
 		excludeTablePatterns []string
 
 		dataPackNewTables     bool
