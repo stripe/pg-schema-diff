@@ -96,3 +96,42 @@ func buildExcludeTablesFilter(patterns []string) (nameFilter, error) {
 		return true
 	}, nil
 }
+
+// excludeTables removes tables for which keepTable returns false from the schema, along with partitions of excluded
+// tables (transitively) and any objects owned by excluded tables (indexes, foreign key constraints, triggers). Check
+// constraints, policies, and privileges are stored on the Table struct, so they are removed with their table.
+//
+// Foreign keys owned by kept tables that reference an excluded table are kept, consistent with how cross-schema
+// foreign keys behave with WithExcludeSchemas (see the nameFilter docstring on schemaFetcher about dependency
+// validation).
+func excludeTables(s Schema, keepTable nameFilter) Schema {
+	excludedTables := make(map[string]bool)
+	// Iterate until a fixed point is reached to handle multi-level partitioning, where a partition's parent is
+	// itself a partition of an excluded table.
+	for {
+		changed := false
+		for _, table := range s.Tables {
+			fqName := table.GetFQEscapedName()
+			if excludedTables[fqName] {
+				continue
+			}
+			parentIsExcluded := table.ParentTable != nil && excludedTables[table.ParentTable.GetFQEscapedName()]
+			if parentIsExcluded || !keepTable(table.SchemaQualifiedName) {
+				excludedTables[fqName] = true
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+
+	keepOwningRel := func(owningRel SchemaQualifiedName) bool {
+		return !excludedTables[owningRel.GetFQEscapedName()]
+	}
+	s.Tables = filterSliceByName(s.Tables, func(t Table) SchemaQualifiedName { return t.SchemaQualifiedName }, keepOwningRel)
+	s.Indexes = filterSliceByName(s.Indexes, func(idx Index) SchemaQualifiedName { return idx.OwningRelName }, keepOwningRel)
+	s.ForeignKeyConstraints = filterSliceByName(s.ForeignKeyConstraints, func(fk ForeignKeyConstraint) SchemaQualifiedName { return fk.OwningTable }, keepOwningRel)
+	s.Triggers = filterSliceByName(s.Triggers, func(t Trigger) SchemaQualifiedName { return t.OwningTable }, keepOwningRel)
+	return s
+}

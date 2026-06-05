@@ -257,3 +257,66 @@ func TestBuildExcludeTablesFilterEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, filter)
 }
+
+func TestExcludeTables(t *testing.T) {
+	fooTable := SchemaQualifiedName{SchemaName: "public", EscapedName: `"foo"`}
+	tmpTable := SchemaQualifiedName{SchemaName: "public", EscapedName: `"tmp_bar"`}
+	partitionedTable := SchemaQualifiedName{SchemaName: "public", EscapedName: `"tmp_events"`}
+	// The partition and sub-partition names do not match the exclude pattern; they must be excluded because their
+	// (transitive) parent is excluded.
+	partition := SchemaQualifiedName{SchemaName: "public", EscapedName: `"events_p1"`}
+	subPartition := SchemaQualifiedName{SchemaName: "public", EscapedName: `"events_p1_sub"`}
+
+	input := Schema{
+		Tables: []Table{
+			{SchemaQualifiedName: fooTable},
+			{SchemaQualifiedName: tmpTable},
+			{SchemaQualifiedName: partitionedTable, PartitionKeyDef: "RANGE (id)"},
+			{SchemaQualifiedName: partition, ParentTable: &partitionedTable, PartitionKeyDef: "RANGE (id)"},
+			{SchemaQualifiedName: subPartition, ParentTable: &partition},
+		},
+		Indexes: []Index{
+			{Name: "foo_idx", OwningRelName: fooTable},
+			{Name: "tmp_bar_idx", OwningRelName: tmpTable},
+			{Name: "events_p1_idx", OwningRelName: partition},
+		},
+		ForeignKeyConstraints: []ForeignKeyConstraint{
+			{EscapedName: `"foo_fk"`, OwningTable: fooTable, ForeignTable: tmpTable},
+			{EscapedName: `"tmp_bar_fk"`, OwningTable: tmpTable, ForeignTable: fooTable},
+		},
+		Triggers: []Trigger{
+			{EscapedName: `"foo_trigger"`, OwningTable: fooTable},
+			{EscapedName: `"tmp_bar_trigger"`, OwningTable: tmpTable},
+		},
+	}
+
+	filter, err := buildExcludeTablesFilter([]string{"tmp_.*"})
+	require.NoError(t, err)
+	output := excludeTables(input, filter)
+
+	var tableNames []string
+	for _, table := range output.Tables {
+		tableNames = append(tableNames, table.GetFQEscapedName())
+	}
+	assert.ElementsMatch(t, []string{fooTable.GetFQEscapedName()}, tableNames)
+
+	var indexNames []string
+	for _, idx := range output.Indexes {
+		indexNames = append(indexNames, idx.Name)
+	}
+	assert.ElementsMatch(t, []string{"foo_idx"}, indexNames)
+
+	// The FK owned by the kept table is kept even though it references an excluded table. This is consistent with
+	// how cross-schema FKs behave with WithExcludeSchemas.
+	var fkNames []string
+	for _, fk := range output.ForeignKeyConstraints {
+		fkNames = append(fkNames, fk.EscapedName)
+	}
+	assert.ElementsMatch(t, []string{`"foo_fk"`}, fkNames)
+
+	var triggerNames []string
+	for _, trigger := range output.Triggers {
+		triggerNames = append(triggerNames, trigger.EscapedName)
+	}
+	assert.ElementsMatch(t, []string{`"foo_trigger"`}, triggerNames)
+}
