@@ -268,12 +268,14 @@ func TestExcludeTables(t *testing.T) {
 	subPartition := SchemaQualifiedName{SchemaName: "public", EscapedName: `"events_p1_sub"`}
 
 	input := Schema{
+		// Children are listed before their parents so the fixed-point loop must take multiple passes to exclude the
+		// transitive partition chain. This guards against a regression that "optimizes" excludeTables to a single pass.
 		Tables: []Table{
+			{SchemaQualifiedName: subPartition, ParentTable: &partition},
+			{SchemaQualifiedName: partition, ParentTable: &partitionedTable, PartitionKeyDef: "RANGE (id)"},
+			{SchemaQualifiedName: partitionedTable, PartitionKeyDef: "RANGE (id)"},
 			{SchemaQualifiedName: fooTable},
 			{SchemaQualifiedName: tmpTable},
-			{SchemaQualifiedName: partitionedTable, PartitionKeyDef: "RANGE (id)"},
-			{SchemaQualifiedName: partition, ParentTable: &partitionedTable, PartitionKeyDef: "RANGE (id)"},
-			{SchemaQualifiedName: subPartition, ParentTable: &partition},
 		},
 		Indexes: []Index{
 			{Name: "foo_idx", OwningRelName: fooTable},
