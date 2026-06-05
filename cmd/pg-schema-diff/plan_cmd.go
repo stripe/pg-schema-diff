@@ -113,6 +113,7 @@ type (
 	planOptionsFlags struct {
 		includeSchemas []string
 		excludeSchemas []string
+		excludeTablePatterns []string
 
 		dataPackNewTables     bool
 		disablePlanValidation bool
@@ -221,6 +222,9 @@ func createPlanOptionsFlags(cmd *cobra.Command) *planOptionsFlags {
 
 	cmd.Flags().StringArrayVar(&flags.includeSchemas, "include-schema", nil, "Include the specified schema in the plan")
 	cmd.Flags().StringArrayVar(&flags.excludeSchemas, "exclude-schema", nil, "Exclude the specified schema in the plan")
+	cmd.Flags().StringArrayVar(&flags.excludeTablePatterns, "exclude-table", nil,
+		"Exclude tables matching this Go regexp. The pattern is matched (fully anchored) against both the table "+
+			"name and the schema-qualified name, e.g., 'tmp_.*' or 'public\\.tmp_.*'. Can be repeated.")
 
 	cmd.Flags().BoolVar(&flags.dataPackNewTables, "data-pack-new-tables", true, "If set, will data pack new tables in the plan to minimize table size (re-arranges columns).")
 	cmd.Flags().BoolVar(&flags.disablePlanValidation, "disable-plan-validation", false, "If set, will disable plan validation. Plan validation runs the migration against a temporary"+
@@ -314,10 +318,26 @@ func dsnSchemaSource(connConfig *pgx.ConnConfig) schemaSourceFactory {
 	}
 }
 
+// validateExcludeTablePatterns fail-fast validates regexes before any database work is done. The patterns are
+// compiled for real inside schema.GetSchema; this exists purely for a clean CLI error.
+func validateExcludeTablePatterns(patterns []string) error {
+	for _, pattern := range patterns {
+		if _, err := regexp.Compile(pattern); err != nil {
+			return fmt.Errorf("invalid --exclude-table pattern %q: %w", pattern, err)
+		}
+	}
+	return nil
+}
+
 func parsePlanOptions(p planOptionsFlags) (planOptions, error) {
+	if err := validateExcludeTablePatterns(p.excludeTablePatterns); err != nil {
+		return planOptions{}, err
+	}
+
 	opts := []diff.PlanOpt{
 		diff.WithIncludeSchemas(p.includeSchemas...),
 		diff.WithExcludeSchemas(p.excludeSchemas...),
+		diff.WithExcludeTablePatterns(p.excludeTablePatterns...),
 	}
 
 	if p.dataPackNewTables {
