@@ -566,6 +566,17 @@ func WithExcludeSchemas(schemas ...string) GetSchemaOpt {
 	}
 }
 
+// WithExcludeTables filters the schema to exclude tables whose unescaped name or schema-qualified name (e.g.,
+// "public.foobar") fully matches any of the given regex patterns (patterns are anchored, i.e., evaluated as
+// ^(?:pattern)$). Objects owned by an excluded table (indexes, constraints, triggers, policies, privileges) and
+// partitions of an excluded table are also excluded. This unions with any patterns already provided via
+// WithExcludeTables. If empty, then no tables are excluded.
+func WithExcludeTables(patterns ...string) GetSchemaOpt {
+	return func(o *getSchemaOptions) {
+		o.excludeTablePatterns = append(o.excludeTablePatterns, patterns...)
+	}
+}
+
 type getSchemaOptions struct {
 	// includeSchemas is a list of schemas to include in the schema. If empty, then all schemas are included.
 	// We could have built a more complex set of options using the nameFilter system (nested unions and intersections);
@@ -573,6 +584,9 @@ type getSchemaOptions struct {
 	includeSchemas []string
 	// excludeSchemas is the exclude analog of includeSchemas.
 	excludeSchemas []string
+	// excludeTablePatterns is a list of anchored regex patterns of tables to exclude from the schema, matched
+	// against both the bare table name and the schema-qualified name.
+	excludeTablePatterns []string
 }
 
 // GetSchema fetches the database schema. It is a non-atomic operation.
@@ -599,10 +613,16 @@ func GetSchema(ctx context.Context, db queries.DBTX, opts ...GetSchemaOpt) (Sche
 		return Schema{}, fmt.Errorf("building name filter: %w", err)
 	}
 
+	excludeTablesFilter, err := buildExcludeTablesFilter(options.excludeTablePatterns)
+	if err != nil {
+		return Schema{}, fmt.Errorf("building exclude tables filter: %w", err)
+	}
+
 	return (&schemaFetcher{
 		q:                      queries.New(db),
 		goroutineRunnerFactory: goroutineRunnerFactory,
 		nameFilter:             nameFilter,
+		excludeTablesFilter:    excludeTablesFilter,
 	}).getSchema(ctx)
 }
 
@@ -675,6 +695,13 @@ type (
 		// Examples of dependencies that could be filtered out include the functions used by triggers and the parent
 		// tables of partitions.
 		nameFilter nameFilter
+		// excludeTablesFilter excludes tables (and the objects they own) from the fetched schema. It is applied to the
+		// assembled schema at the end of getSchema, rather than per-fetch, so that partitions of excluded tables and
+		// the objects owned by those partitions are excluded as well. Nil if no table exclusions were requested.
+		//
+		// The same dependency-validation caveat as nameFilter applies: e.g., a foreign key on a kept table that
+		// references an excluded table is kept, and plans involving it may be invalid.
+		excludeTablesFilter nameFilter
 	}
 )
 
@@ -825,7 +852,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("getting materialized views: %w", err)
 	}
 
-	return Schema{
+	fetchedSchema := Schema{
 		NamedSchemas:          schemas,
 		Extensions:            extensions,
 		Enums:                 enums,
@@ -838,7 +865,13 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		Triggers:              triggers,
 		Views:                 views,
 		MaterializedViews:     materializedViews,
-	}, nil
+	}
+
+	if s.excludeTablesFilter != nil {
+		fetchedSchema = excludeTables(fetchedSchema, s.excludeTablesFilter)
+	}
+
+	return fetchedSchema, nil
 }
 
 func (s *schemaFetcher) fetchNamedSchemas(ctx context.Context) ([]NamedSchema, error) {
