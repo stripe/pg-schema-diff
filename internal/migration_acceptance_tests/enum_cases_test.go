@@ -118,6 +118,88 @@ var enumAcceptanceTestCases = []acceptanceTestCase{
 		// as a validation error. In the future, we can identify this in the actual plan generation stage.
 		expectedPlanErrorContains: errValidatingPlan.Error(),
 	},
+	{
+		// Exercises the CREATE TYPE ... AS ENUM path with labels containing single
+		// quotes. Verifies the generated DDL is correctly escaped, executes against
+		// Postgres, and stores the labels verbatim.
+		name: "create enum with single-quote labels",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foo();
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TYPE quote_enum AS ENUM ('O''Brien', 'it''s', 'plain');
+            CREATE TABLE foo(
+                val quote_enum DEFAULT 'plain'
+            );
+			`,
+		},
+	},
+	{
+		// Exercises the ALTER TYPE ... ADD VALUE path (value appended at the end)
+		// with a label containing a single quote.
+		name: "add value with single-quote label",
+		oldSchemaDDL: []string{
+			`
+            CREATE TYPE quote_enum AS ENUM ('a', 'b');
+            CREATE TABLE foo(
+                val quote_enum
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TYPE quote_enum AS ENUM ('a', 'b', 'won''t');
+            CREATE TABLE foo(
+                val quote_enum
+            );
+			`,
+		},
+	},
+	{
+		// Exercises the ALTER TYPE ... ADD VALUE ... BEFORE path. The new value is
+		// inserted in the middle, so a BEFORE clause is emitted referencing a
+		// following label that contains a single quote.
+		name: "add value before a single-quote label",
+		oldSchemaDDL: []string{
+			`
+            CREATE TYPE quote_enum AS ENUM ('a', 'it''s');
+            CREATE TABLE foo(
+                val quote_enum
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TYPE quote_enum AS ENUM ('a', 'mid', 'it''s');
+            CREATE TABLE foo(
+                val quote_enum
+            );
+			`,
+		},
+	},
+	{
+		// Regression test for the enum-label SQL injection: a label crafted as an
+		// injection payload must be stored inertly, not executed. If escaping ever
+		// regresses, applying the generated plan would attempt to DROP the table and
+		// the pg_dump comparison would fail.
+		name: "enum label with sql injection payload",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foo();
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TYPE evil AS ENUM ('x''); DROP TABLE foo; --');
+            CREATE TABLE foo(
+                val evil
+            );
+			`,
+		},
+	},
 }
 
 func TestEnumTestCases(t *testing.T) {

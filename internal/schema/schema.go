@@ -1608,6 +1608,14 @@ func EscapeIdentifier(name string) string {
 	return pgx.Identifier{name}.Sanitize()
 }
 
+// EscapeLiteral returns a safely escaped SQL string literal, enclosed in single
+// quotes. Single quotes within the value are doubled per the SQL standard, and
+// null bytes are stripped as they are not valid in PostgreSQL string literals.
+func EscapeLiteral(val string) string {
+	val = strings.ReplaceAll(val, string([]byte{0}), "")
+	return "'" + strings.ReplaceAll(val, "'", "''") + "'"
+}
+
 // relOptionsToMap converts pg_catalog.pg_class.reloptions to a map.
 func relOptionsToMap(vals []string) (map[string]string, error) {
 	out := make(map[string]string)
