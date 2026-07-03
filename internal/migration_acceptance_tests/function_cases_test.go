@@ -573,6 +573,50 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
+	{
+		name:         "Create function with name containing double quote",
+		oldSchemaDDL: nil,
+		newSchemaDDL: []string{
+			`
+            CREATE FUNCTION "evil""func"(a integer) RETURNS integer
+                LANGUAGE SQL
+                IMMUTABLE
+                RETURNS NULL ON NULL INPUT
+                RETURN a + 1;
+			`,
+		},
+	},
+	{
+		name: "Drop function with name containing double quote",
+		oldSchemaDDL: []string{
+			`
+            CREATE FUNCTION "evil""func"(a integer) RETURNS integer
+                LANGUAGE SQL
+                IMMUTABLE
+                RETURNS NULL ON NULL INPUT
+                RETURN a + 1;
+			`,
+		},
+		newSchemaDDL: nil,
+	},
+	{
+		name: "Create function with SQL injection in name",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foo(id integer);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foo(id integer);
+            CREATE FUNCTION "x""; DROP TABLE foo; --"(a integer) RETURNS integer
+                LANGUAGE SQL
+                IMMUTABLE
+                RETURNS NULL ON NULL INPUT
+                RETURN a;
+			`,
+		},
+	},
 }
 
 func TestFunctionTestCases(t *testing.T) {
