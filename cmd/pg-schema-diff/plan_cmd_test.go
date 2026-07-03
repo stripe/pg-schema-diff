@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func (suite *cmdTestSuite) TestPlanCmd() {
@@ -123,6 +125,15 @@ func (suite *cmdTestSuite) TestPlanCmd() {
 				tempDsnDArg(suite.pgEngine, "to-dsn", []string{"CREATE TABLE foobar()"}),
 			},
 			expectErrContains: []string{"invalid output format"},
+		},
+		{
+			name: "invalid exclude-table pattern",
+			args: []string{"--exclude-table", "["},
+			dynamicArgs: []dArgGenerator{
+				tempDsnDArg(suite.pgEngine, "from-dsn", nil),
+				tempDsnDArg(suite.pgEngine, "to-dsn", nil),
+			},
+			expectErrContains: []string{"invalid --exclude-table pattern"},
 		},
 	} {
 		suite.Run(tc.name, func() {
@@ -244,4 +255,12 @@ func (suite *cmdTestSuite) TestParseInsertStatementStr() {
 			suite.Equal(tc.expectedInsertStmt, insertStatement)
 		})
 	}
+}
+
+func TestParsePlanOptionsExcludeTablePatterns(t *testing.T) {
+	_, err := parsePlanOptions(planOptionsFlags{excludeTablePatterns: []string{"tmp_.*"}})
+	require.NoError(t, err)
+
+	_, err = parsePlanOptions(planOptionsFlags{excludeTablePatterns: []string{"["}})
+	require.ErrorContains(t, err, `invalid --exclude-table pattern "["`)
 }
