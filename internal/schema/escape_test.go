@@ -58,3 +58,41 @@ func TestEscapeLiteral(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildProcName(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		procName        string
+		identityArgs    string
+		schemaName      string
+		expectedEscaped string
+	}{
+		{
+			name:            "simple function",
+			procName:        "add",
+			identityArgs:    "integer, integer",
+			schemaName:      "public",
+			expectedEscaped: `"add"(integer, integer)`,
+		},
+		{
+			name:            "function name with embedded double quote",
+			procName:        `evil"func`,
+			identityArgs:    "integer",
+			schemaName:      "public",
+			expectedEscaped: `"evil""func"(integer)`,
+		},
+		{
+			name:            "injection attempt via double quote",
+			procName:        `x"; DROP TABLE foo; --`,
+			identityArgs:    "",
+			schemaName:      "public",
+			expectedEscaped: `"x""; DROP TABLE foo; --"()`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := buildProcName(tc.procName, tc.identityArgs, tc.schemaName)
+			assert.Equal(t, tc.schemaName, result.SchemaName)
+			assert.Equal(t, tc.expectedEscaped, result.EscapedName)
+		})
+	}
+}

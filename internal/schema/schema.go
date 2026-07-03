@@ -1588,7 +1588,7 @@ func parseJSONTableDependencies(vals []string) ([]TableDependency, error) {
 func buildProcName(name, identityArguments, schemaName string) SchemaQualifiedName {
 	return SchemaQualifiedName{
 		SchemaName:  schemaName,
-		EscapedName: fmt.Sprintf("\"%s\"(%s)", name, identityArguments),
+		EscapedName: fmt.Sprintf("%s(%s)", EscapeIdentifier(name), identityArguments),
 	}
 }
 

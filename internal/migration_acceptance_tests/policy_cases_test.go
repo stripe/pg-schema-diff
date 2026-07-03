@@ -658,6 +658,84 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 
 		expectedPlanErrorIs: diff.ErrNotImplemented,
 	},
+	{
+		name: "Create policy with role containing double quote",
+		roles: []string{
+			`"evil""role"`,
+		},
+		oldSchemaDDL: []string{
+			`
+                CREATE TABLE foobar();
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+                CREATE TABLE foobar();
+                CREATE POLICY foobar_policy ON foobar
+                    AS PERMISSIVE
+                    FOR ALL
+                    TO "evil""role"
+                    USING (true)
+                    WITH CHECK (true);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+	},
+	{
+		name: "Alter policy with role containing SQL injection payload",
+		roles: []string{
+			`"x""; DROP TABLE foobar; --"`,
+		},
+		oldSchemaDDL: []string{
+			`
+                CREATE TABLE foobar();
+                CREATE POLICY foobar_policy ON foobar
+                    AS PERMISSIVE
+                    FOR ALL
+                    TO PUBLIC
+                    USING (true)
+                    WITH CHECK (true);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+                CREATE TABLE foobar();
+                CREATE POLICY foobar_policy ON foobar
+                    AS PERMISSIVE
+                    FOR ALL
+                    TO "x""; DROP TABLE foobar; --"
+                    USING (true)
+                    WITH CHECK (true);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+	},
+	{
+		name: "Create policy with PUBLIC keyword unquoted",
+		oldSchemaDDL: []string{
+			`
+                CREATE TABLE foobar();
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+                CREATE TABLE foobar();
+                CREATE POLICY foobar_policy ON foobar
+                    AS PERMISSIVE
+                    FOR ALL
+                    TO PUBLIC
+                    USING (true)
+                    WITH CHECK (true);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+	},
 }
 
 func TestPolicyCases(t *testing.T) {

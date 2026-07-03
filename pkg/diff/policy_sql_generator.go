@@ -100,6 +100,20 @@ func unforceRLSForTable(t schema.Table) Statement {
 	}
 }
 
+// escapeRoleNames escapes role names for use in SQL policy statements.
+// PUBLIC is a SQL keyword (not an identifier) and must not be quoted.
+func escapeRoleNames(roles []string) []string {
+	escaped := make([]string, len(roles))
+	for i, role := range roles {
+		if role == "PUBLIC" {
+			escaped[i] = role
+		} else {
+			escaped[i] = schema.EscapeIdentifier(role)
+		}
+	}
+	return escaped
+}
+
 type policyDiff struct {
 	oldAndNew[schema.Policy]
 }
@@ -164,7 +178,7 @@ func (psg *policySQLVertexGenerator) Add(p schema.Policy) ([]Statement, error) {
 	}
 	sb.WriteString(fmt.Sprintf("\n\tFOR %s", cmdSQL))
 
-	sb.WriteString(fmt.Sprintf("\n\tTO %s", strings.Join(p.AppliesTo, ", ")))
+	sb.WriteString(fmt.Sprintf("\n\tTO %s", strings.Join(escapeRoleNames(p.AppliesTo), ", ")))
 
 	if p.UsingExpression != "" {
 		sb.WriteString(fmt.Sprintf("\n\tUSING (%s)", p.UsingExpression))
@@ -223,7 +237,7 @@ func (psg *policySQLVertexGenerator) Alter(diff policyDiff) ([]Statement, error)
 	var alterPolicyParts []string
 
 	if !cmp.Equal(oldCopy.AppliesTo, diff.new.AppliesTo) {
-		alterPolicyParts = append(alterPolicyParts, fmt.Sprintf("TO %s", strings.Join(diff.new.AppliesTo, ", ")))
+		alterPolicyParts = append(alterPolicyParts, fmt.Sprintf("TO %s", strings.Join(escapeRoleNames(diff.new.AppliesTo), ", ")))
 		oldCopy.AppliesTo = diff.new.AppliesTo
 	}
 
