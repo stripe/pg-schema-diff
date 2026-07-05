@@ -543,6 +543,105 @@ var viewAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 	},
+	{
+		name: "Recreate view due to dependent column type change",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255),
+                price NUMERIC(10,2)
+            );
+
+            CREATE VIEW foobar_view AS
+                SELECT id, foo, price
+                FROM foobar;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255),
+                price INTEGER
+            );
+
+            CREATE VIEW foobar_view AS
+                SELECT id, foo, price
+                FROM foobar;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeImpactsDatabasePerformance,
+		},
+	},
+	{
+		name: "Recreate view due to multiple dependent column type changes",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE plans(
+                id INT PRIMARY KEY,
+                annual_fee NUMERIC(10,2),
+                monthly_fee NUMERIC(10,2)
+            );
+
+            CREATE VIEW plans_view AS
+                SELECT id, annual_fee, monthly_fee
+                FROM plans;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE plans(
+                id INT PRIMARY KEY,
+                annual_fee INTEGER,
+                monthly_fee INTEGER
+            );
+
+            CREATE VIEW plans_view AS
+                SELECT id, annual_fee, monthly_fee
+                FROM plans;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeImpactsDatabasePerformance,
+		},
+	},
+	{
+		name: "No view recreate when non-dependent column type changes",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255),
+                bar NUMERIC(10,2)
+            );
+
+            CREATE VIEW foobar_view AS
+                SELECT id, foo
+                FROM foobar;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255),
+                bar INTEGER
+            );
+
+            CREATE VIEW foobar_view AS
+                SELECT id, foo
+                FROM foobar;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeImpactsDatabasePerformance,
+		},
+	},
 }
 
 func TestViewTestCases(t *testing.T) {
