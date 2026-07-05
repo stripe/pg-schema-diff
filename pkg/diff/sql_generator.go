@@ -1927,11 +1927,19 @@ func (isg *indexSQLVertexGenerator) addIndexConstraint(index schema.Index) (Stat
 	if err != nil {
 		return Statement{}, fmt.Errorf("getting constraint type as SQL: %w", err)
 	}
+	ddl := fmt.Sprintf("%s %s USING INDEX %s",
+		addConstraintPrefix(index.OwningRelName, index.Constraint.EscapedConstraintName),
+		sqlConstraintType,
+		index.GetSchemaQualifiedName().EscapedName)
+	if index.Constraint.IsDeferrable {
+		if index.Constraint.IsInitiallyDeferred {
+			ddl += " DEFERRABLE INITIALLY DEFERRED"
+		} else {
+			ddl += " DEFERRABLE INITIALLY IMMEDIATE"
+		}
+	}
 	return Statement{
-		DDL: fmt.Sprintf("%s %s USING INDEX %s",
-			addConstraintPrefix(index.OwningRelName, index.Constraint.EscapedConstraintName),
-			sqlConstraintType,
-			index.GetSchemaQualifiedName().EscapedName),
+		DDL:         ddl,
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}, nil
