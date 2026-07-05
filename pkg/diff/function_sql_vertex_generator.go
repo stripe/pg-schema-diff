@@ -11,11 +11,13 @@ type functionSQLVertexGenerator struct {
 	// functionsInNewSchemaByName is a map of function name to functions in the new schema.
 	// These functions are not necessarily new
 	functionsInNewSchemaByName map[string]schema.Function
+	newSchema                  schema.Schema
 }
 
-func newFunctionSqlVertexGenerator(functionsInNewSchemaByName map[string]schema.Function) sqlVertexGenerator[schema.Function, functionDiff] {
+func newFunctionSqlVertexGenerator(functionsInNewSchemaByName map[string]schema.Function, newSchema schema.Schema) sqlVertexGenerator[schema.Function, functionDiff] {
 	return legacyToNewSqlVertexGenerator[schema.Function, functionDiff](&functionSQLVertexGenerator{
 		functionsInNewSchemaByName: functionsInNewSchemaByName,
+		newSchema:                  newSchema,
 	})
 }
 
@@ -86,6 +88,9 @@ func (f *functionSQLVertexGenerator) GetAddAlterDependencies(newFunction, oldFun
 	for _, depFunction := range newFunction.DependsOnFunctions {
 		deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).after(buildFunctionVertexId(depFunction, diffTypeAddAlter)))
 	}
+	if canFunctionDependenciesBeTracked(newFunction) {
+		deps = append(deps, f.getRelationAddAlterDependencies(newFunction)...)
+	}
 
 	if !cmp.Equal(oldFunction, schema.Function{}) {
 		// If the function is being altered:
@@ -105,4 +110,21 @@ func (f *functionSQLVertexGenerator) GetDeleteDependencies(function schema.Funct
 		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeDelete)).before(buildFunctionVertexId(depFunction, diffTypeDelete)))
 	}
 	return deps, nil
+}
+
+func (f *functionSQLVertexGenerator) getRelationAddAlterDependencies(function schema.Function) []dependency {
+	var deps []dependency
+
+	// SQL functions validate table and sequence references in their body at
+	// CREATE time, but PostgreSQL does not expose those body relation references
+	// as pg_proc -> pg_class dependencies in pg_depend. Keep this deliberately
+	// broad, mirroring the procedure generator's best-effort relation ordering.
+	for _, table := range f.newSchema.Tables {
+		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeAddAlter)).after(buildTableVertexId(table.SchemaQualifiedName, diffTypeAddAlter)))
+	}
+	for _, seq := range f.newSchema.Sequences {
+		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeAddAlter)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
+	}
+
+	return deps
 }
