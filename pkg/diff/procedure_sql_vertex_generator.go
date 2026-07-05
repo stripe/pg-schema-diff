@@ -40,22 +40,18 @@ func (p procedureSQLVertexGenerator) Add(s schema.Procedure) (partialSQLGraph, e
 	}
 
 	return partialSQLGraph{
-		vertices: []sqlVertex{{
-			id:       buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter),
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         s.Def,
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-				Hazards: []MigrationHazard{{
-					Type: MigrationHazardTypeHasUntrackableDependencies,
-					Message: "Dependencies of procedures are not tracked by Postgres. " +
-						"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
-						"this statement. For adds, this means you need to ensure that all objects this function depends on " +
-						"are added before this statement.",
-				}},
+		vertices: []sqlVertex{newSqlVertex(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter), sqlPrioritySooner, []Statement{{
+			DDL:         s.Def,
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+			Hazards: []MigrationHazard{{
+				Type: MigrationHazardTypeHasUntrackableDependencies,
+				Message: "Dependencies of procedures are not tracked by Postgres. " +
+					"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
+					"this statement. For adds, this means you need to ensure that all objects this function depends on " +
+					"are added before this statement.",
 			}},
-		}},
+		}})},
 		dependencies: deps,
 	}, nil
 }
@@ -84,22 +80,18 @@ func (p procedureSQLVertexGenerator) Delete(s schema.Procedure) (partialSQLGraph
 	}
 
 	return partialSQLGraph{
-		vertices: []sqlVertex{{
-			id:       buildProcedureVertexId(s.SchemaQualifiedName, diffTypeDelete),
-			priority: sqlPriorityLater,
-			statements: []Statement{{
-				DDL:         fmt.Sprintf("DROP PROCEDURE %s", s.GetFQEscapedName()),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-				Hazards: []MigrationHazard{{
-					Type: MigrationHazardTypeHasUntrackableDependencies,
-					Message: "Dependencies of procedures are not tracked by Postgres. " +
-						"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
-						"this statement. For drops, this means you need to ensure that all objects this function depends on " +
-						"are dropped after this statement.",
-				}},
+		vertices: []sqlVertex{newSqlVertex(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeDelete), sqlPriorityLater, []Statement{{
+			DDL:         fmt.Sprintf("DROP PROCEDURE %s", s.GetFQEscapedName()),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+			Hazards: []MigrationHazard{{
+				Type: MigrationHazardTypeHasUntrackableDependencies,
+				Message: "Dependencies of procedures are not tracked by Postgres. " +
+					"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
+					"this statement. For drops, this means you need to ensure that all objects this function depends on " +
+					"are dropped after this statement.",
 			}},
-		}},
+		}})},
 		dependencies: deps,
 	}, nil
 }

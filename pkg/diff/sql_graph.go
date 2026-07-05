@@ -48,6 +48,10 @@ type sqlVertex struct {
 	// id is used to identify the sql vertex
 	id sqlVertexId
 
+	// idStr is the pre-computed string representation of id, cached to avoid
+	// repeated fmt.Sprintf calls (e.g., during topological sort comparisons)
+	idStr string
+
 	// priority is used to determine if the sql vertex should be included sooner or later in the topological
 	// sort of the graph
 	priority sqlPriority
@@ -56,8 +60,17 @@ type sqlVertex struct {
 	statements []Statement
 }
 
+func newSqlVertex(id sqlVertexId, priority sqlPriority, statements []Statement) sqlVertex {
+	return sqlVertex{
+		id:         id,
+		idStr:      id.String(),
+		priority:   priority,
+		statements: statements,
+	}
+}
+
 func (s sqlVertex) GetId() string {
-	return s.id.String()
+	return s.idStr
 }
 
 func (s sqlVertex) GetPriority() int {
@@ -114,7 +127,7 @@ func newSqlGraph() *sqlGraph {
 }
 
 func (s *sqlGraph) toOrderedStatements() ([]Statement, error) {
-	vertices, err := s.TopologicallySortWithPriority(graph.IsLowerPriorityFromGetPriority(func(v sqlVertex) int {
+	vertices, err := s.TopologicallySortWithPriorityFast(graph.IsLowerPriorityFromGetPriority(func(v sqlVertex) int {
 		return v.GetPriority()
 	}))
 	if err != nil {

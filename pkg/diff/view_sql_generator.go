@@ -105,15 +105,11 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 	}
 
 	return partialSQLGraph{
-		vertices: []sqlVertex{{
-			id:       addVertexId,
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         viewSb.String(),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			}},
-		}},
+		vertices: []sqlVertex{newSqlVertex(addVertexId, sqlPrioritySooner, []Statement{{
+			DDL:         viewSb.String(),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		}})},
 		dependencies: deps,
 	}, nil
 }
@@ -129,15 +125,11 @@ func (vsg *viewSQLGenerator) Delete(v schema.View) (partialSQLGraph, error) {
 	}
 
 	return partialSQLGraph{
-		vertices: []sqlVertex{{
-			id:       deleteVertexId,
-			priority: sqlPriorityLater,
-			statements: []Statement{{
-				DDL:         fmt.Sprintf("DROP VIEW %s", v.GetFQEscapedName()),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			}},
-		}},
+		vertices: []sqlVertex{newSqlVertex(deleteVertexId, sqlPriorityLater, []Statement{{
+			DDL:         fmt.Sprintf("DROP VIEW %s", v.GetFQEscapedName()),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		}})},
 		dependencies: deps,
 	}, nil
 }
