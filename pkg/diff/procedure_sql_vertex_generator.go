@@ -39,22 +39,32 @@ func (p procedureSQLVertexGenerator) Add(s schema.Procedure) (partialSQLGraph, e
 		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
+	stmts := []Statement{{
+		DDL:         s.Def,
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards: []MigrationHazard{{
+			Type: MigrationHazardTypeHasUntrackableDependencies,
+			Message: "Dependencies of procedures are not tracked by Postgres. " +
+				"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
+				"this statement. For adds, this means you need to ensure that all objects this function depends on " +
+				"are added before this statement.",
+		}},
+	}}
+	privilegeStmts, err := exactRoutinePrivilegeStatements(
+		newProcedurePrivilegeSQLVertexGenerator(s.SchemaQualifiedName),
+		s.Privileges,
+	)
+	if err != nil {
+		return partialSQLGraph{}, fmt.Errorf("generating procedure privilege statements: %w", err)
+	}
+	stmts = append(stmts, privilegeStmts...)
+
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:       buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter),
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         s.Def,
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-				Hazards: []MigrationHazard{{
-					Type: MigrationHazardTypeHasUntrackableDependencies,
-					Message: "Dependencies of procedures are not tracked by Postgres. " +
-						"As a result, we cannot guarantee that this procedure's dependencies are ordered properly relative to " +
-						"this statement. For adds, this means you need to ensure that all objects this function depends on " +
-						"are added before this statement.",
-				}},
-			}},
+			id:         buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter),
+			priority:   sqlPrioritySooner,
+			statements: stmts,
 		}},
 		dependencies: deps,
 	}, nil
@@ -105,11 +115,28 @@ func (p procedureSQLVertexGenerator) Delete(s schema.Procedure) (partialSQLGraph
 }
 
 func (p procedureSQLVertexGenerator) Alter(d procedureDiff) (partialSQLGraph, error) {
-	if cmp.Equal(d.old, d.new) {
-		return partialSQLGraph{}, nil
+	oldWithoutPrivileges := d.old
+	oldWithoutPrivileges.Privileges = nil
+	newWithoutPrivileges := d.new
+	newWithoutPrivileges.Privileges = nil
+
+	var partialGraph partialSQLGraph
+	if !cmp.Equal(oldWithoutPrivileges, newWithoutPrivileges) {
+		addPartialGraph, err := p.Add(d.new)
+		if err != nil {
+			return partialSQLGraph{}, err
+		}
+		partialGraph = concatPartialGraphs(partialGraph, addPartialGraph)
 	}
-	// New adds or replaces the procedure.
-	return p.Add(d.new)
+
+	privilegesPartialGraph, err := generatePartialGraph(
+		newProcedurePrivilegeSQLVertexGenerator(d.new.SchemaQualifiedName),
+		d.privilegesDiff,
+	)
+	if err != nil {
+		return partialSQLGraph{}, fmt.Errorf("resolving procedure privilege sql: %w", err)
+	}
+	return concatPartialGraphs(partialGraph, privilegesPartialGraph), nil
 }
 
 func buildProcedureVertexId(name schema.SchemaQualifiedName, diffType diffType) sqlVertexId {

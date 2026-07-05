@@ -34,6 +34,7 @@ var (
 		EscapedName: `"C"`,
 		SchemaName:  "pg_catalog",
 	}
+	defaultExecutePrivileges = []Privilege{{Privilege: "EXECUTE"}}
 
 	testCases = []*testCase{
 		// Exclude materialized views from the test for now because Postgres 14-15 fully qualify column names while Postgres
@@ -239,7 +240,7 @@ var (
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
 		`},
-			expectedHash: "4c2174e2cac3956b",
+			expectedHash: "228b09af8d579433",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -466,26 +467,31 @@ var (
 							{EscapedName: "\"add\"(a integer, b integer)", SchemaName: "schema_filtered_1"},
 							{EscapedName: "\"increment\"(i integer)", SchemaName: "schema_1"},
 						},
+						Privileges: defaultExecutePrivileges,
 					},
 					{
 						SchemaQualifiedName: SchemaQualifiedName{EscapedName: "\"increment\"(i integer)", SchemaName: "schema_1"},
 						FunctionDef:         "CREATE OR REPLACE FUNCTION schema_1.increment(i integer)\n RETURNS integer\n LANGUAGE plpgsql\nAS $function$\n\t\t\t\t\tBEGIN\n\t\t\t\t\t\t\tRETURN i + 1;\n\t\t\t\t\tEND;\n\t\t\t$function$\n",
 						Language:            "plpgsql",
+						Privileges:          defaultExecutePrivileges,
 					},
 					{
 						SchemaQualifiedName: SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
 						FunctionDef:         "CREATE OR REPLACE FUNCTION public.increment_version()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\n\t\t\t\tBEGIN\n\t\t\t\t\tNEW.version = OLD.version + 1;\n\t\t\t\t\tRETURN NEW;\n\t\t\t\tEND;\n\t\t\t$function$\n",
 						Language:            "plpgsql",
+						Privileges:          defaultExecutePrivileges,
 					},
 				},
 				Procedures: []Procedure{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_plpgsql_procedure\"(IN foobar numeric)"},
 						Def:                 "CREATE OR REPLACE PROCEDURE public.some_plpgsql_procedure(IN foobar numeric)\n LANGUAGE plpgsql\nAS $procedure$\n\t\t\t\tBEGIN\n\t\t\t\t\tRAISE NOTICE 'some notice';\n\t\t\t\tEND\n\t\t\t\t$procedure$\n",
+						Privileges:          defaultExecutePrivileges,
 					},
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"some_insert_procedure\"(IN a integer, IN b integer)"},
 						Def:                 "CREATE OR REPLACE PROCEDURE schema_2.some_insert_procedure(IN a integer, IN b integer)\n LANGUAGE sql\nBEGIN ATOMIC\n INSERT INTO schema_2.foo DEFAULT VALUES;\nEND\n",
+						Privileges:          defaultExecutePrivileges,
 					},
 				},
 				Triggers: []Trigger{
@@ -591,7 +597,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "32c5a9c52dcfb15e",
+			expectedHash: "85d661d829e05ae1",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -881,6 +887,7 @@ var (
 						SchemaQualifiedName: SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
 						FunctionDef:         "CREATE OR REPLACE FUNCTION public.increment_version()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\n\t\t\t\tBEGIN\n\t\t\t\t\tNEW.version = OLD.version + 1;\n\t\t\t\t\tRETURN NEW;\n\t\t\t\tEND;\n\t\t\t$function$\n",
 						Language:            "plpgsql",
+						Privileges:          defaultExecutePrivileges,
 					},
 				},
 				Triggers: []Trigger{
