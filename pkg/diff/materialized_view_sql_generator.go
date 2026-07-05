@@ -3,7 +3,6 @@ package diff
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 
@@ -45,9 +44,7 @@ func buildMaterializedViewDiff(
 		// It's possible a dependent column was deleted (or recreated).
 		td, ok := tableDiffsByName[t.GetName()]
 		if !ok {
-			return materializedViewDiff{}, false, fmt.Errorf("processing materialized view table dependencies: expected a table diff to exist for %q. have=\n%s", t.GetName(),
-				slices.Sorted(maps.Keys(tableDiffsByName)),
-			)
+			continue
 		}
 		deletedColumnsByName := buildSchemaObjByNameMap(td.columnsDiff.deletes)
 		for _, c := range t.Columns {
@@ -104,9 +101,17 @@ func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (parti
 	deps = append(deps, mustRun(addVertexId).after(buildMaterializedViewVertexId(mv.SchemaQualifiedName, diffTypeDelete)))
 
 	// Run after any dependent tables are added/altered.
+	// Also emit matview vertex edges — TableDependencies may contain matviews.
 	for _, t := range mv.TableDependencies {
 		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)))
 		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(addVertexId).after(buildMaterializedViewVertexId(t.SchemaQualifiedName, diffTypeDelete)))
+		deps = append(deps, mustRun(addVertexId).after(buildMaterializedViewVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+	}
+
+	// Run after any functions the matview calls are added/altered.
+	for _, f := range mv.DependsOnFunctions {
+		deps = append(deps, mustRun(addVertexId).after(buildFunctionVertexId(f, diffTypeAddAlter)))
 	}
 
 	return partialSQLGraph{
@@ -126,11 +131,13 @@ func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (parti
 func (mvsg *materializedViewSQLGenerator) Delete(mv schema.MaterializedView) (partialSQLGraph, error) {
 	deleteVertexId := buildMaterializedViewVertexId(mv.SchemaQualifiedName, diffTypeDelete)
 
-	// Run before any dependent tables are deleted or added/altered.
+	// Run before any dependent tables/matviews are deleted or added/altered.
 	var deps []dependency
 	for _, t := range mv.TableDependencies {
 		deps = append(deps, mustRun(deleteVertexId).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)))
 		deps = append(deps, mustRun(deleteVertexId).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(deleteVertexId).before(buildMaterializedViewVertexId(t.SchemaQualifiedName, diffTypeDelete)))
+		deps = append(deps, mustRun(deleteVertexId).before(buildMaterializedViewVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
 	return partialSQLGraph{

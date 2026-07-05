@@ -622,11 +622,11 @@ SELECT
             )
         ))
     FROM pg_catalog.pg_depend AS d
-    INNER JOIN pg_catalog.pg_rewrite AS r ON d.objid = r.oid
+    INNER JOIN pg_catalog.pg_rewrite AS r ON d.objid = r.oid AND r.ev_class = c.oid
     INNER JOIN pg_catalog.pg_depend AS d2 ON r.oid = d2.objid
     INNER JOIN
         pg_catalog.pg_class AS dep_c
-        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p')
+        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p', 'v', 'm') AND dep_c.oid != c.oid
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
@@ -635,6 +635,16 @@ SELECT
     -- Instead, they must be unmarshalled as string arrays.
     -- https://github.com/lib/pq/pull/466
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
+    (SELECT ARRAY_AGG(DISTINCT
+        proc_ns.nspname || '.' || pg_proc.proname || '(' ||
+        pg_catalog.pg_get_function_identity_arguments(pg_proc.oid) || ')')
+    FROM pg_catalog.pg_depend AS fd
+    INNER JOIN pg_catalog.pg_rewrite AS fr ON fd.objid = fr.oid AND fr.ev_class = c.oid
+    INNER JOIN pg_catalog.pg_depend AS fd2 ON fr.oid = fd2.objid
+    INNER JOIN pg_catalog.pg_proc AS pg_proc ON fd2.refobjid = pg_proc.oid AND fd2.refclassid = 'pg_proc'::REGCLASS
+    INNER JOIN pg_catalog.pg_namespace AS proc_ns ON pg_proc.pronamespace = proc_ns.oid
+    WHERE fd.refobjid = c.oid AND fd2.deptype = 'n' AND proc_ns.nspname NOT IN ('pg_catalog', 'information_schema')
+    )::TEXT [] AS function_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
@@ -655,12 +665,13 @@ WHERE
 `
 
 type GetMaterializedViewsRow struct {
-	SchemaName        string
-	ViewName          string
-	RelOptions        []string
-	TablespaceName    string
-	TableDependencies []string
-	ViewDefinition    string
+	SchemaName           string
+	ViewName             string
+	RelOptions           []string
+	TablespaceName       string
+	TableDependencies    []string
+	FunctionDependencies []string
+	ViewDefinition       string
 }
 
 func (q *Queries) GetMaterializedViews(ctx context.Context) ([]GetMaterializedViewsRow, error) {
@@ -678,6 +689,7 @@ func (q *Queries) GetMaterializedViews(ctx context.Context) ([]GetMaterializedVi
 			pq.Array(&i.RelOptions),
 			&i.TablespaceName,
 			pq.Array(&i.TableDependencies),
+			pq.Array(&i.FunctionDependencies),
 			&i.ViewDefinition,
 		); err != nil {
 			return nil, err
@@ -800,7 +812,33 @@ SELECT
     pg_catalog.pg_get_function_identity_arguments(
         pg_proc.oid
     ) AS func_identity_arguments,
-    pg_catalog.pg_get_functiondef(pg_proc.oid) AS func_def
+    pg_catalog.pg_get_functiondef(pg_proc.oid) AS func_def,
+    (
+        -- Find composite types of a table or a view used by this function
+        SELECT
+            ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
+                'schema', depend_namespace.nspname::TEXT,
+                'name', depend_class.relname::TEXT,
+                'columns', ARRAY[]::TEXT[]
+            ))
+        FROM pg_catalog.pg_depend AS depend
+        INNER JOIN
+            pg_catalog.pg_type AS depend_type
+            ON depend.refobjid = depend_type.oid
+        INNER JOIN
+            pg_catalog.pg_class AS depend_class
+            ON depend_type.typrelid = depend_class.oid
+        INNER JOIN
+            pg_catalog.pg_namespace AS depend_namespace
+            ON depend_class.relnamespace = depend_namespace.oid
+            AND depend_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+            AND depend_namespace.nspname !~ '^pg_toast'
+            AND depend_namespace.nspname !~ '^pg_temp'
+        WHERE
+            depend.classid = 'pg_proc'::REGCLASS
+            AND depend.objid = pg_proc.oid
+            AND depend.deptype = 'n'
+    )::TEXT [] AS table_dependencies
 FROM pg_catalog.pg_proc
 INNER JOIN
     pg_catalog.pg_namespace AS proc_namespace
@@ -831,6 +869,7 @@ type GetProcsRow struct {
 	FuncLang              string
 	FuncIdentityArguments string
 	FuncDef               string
+	TableDependencies     []string
 }
 
 func (q *Queries) GetProcs(ctx context.Context, prokind interface{}) ([]GetProcsRow, error) {
@@ -849,6 +888,7 @@ func (q *Queries) GetProcs(ctx context.Context, prokind interface{}) ([]GetProcs
 			&i.FuncLang,
 			&i.FuncIdentityArguments,
 			&i.FuncDef,
+			pq.Array(&i.TableDependencies),
 		); err != nil {
 			return nil, err
 		}
@@ -1290,11 +1330,11 @@ SELECT
             )
         ))
     FROM pg_catalog.pg_depend AS d
-    INNER JOIN pg_catalog.pg_rewrite AS r ON d.objid = r.oid
+    INNER JOIN pg_catalog.pg_rewrite AS r ON d.objid = r.oid AND r.ev_class = c.oid
     INNER JOIN pg_catalog.pg_depend AS d2 ON r.oid = d2.objid
     INNER JOIN
         pg_catalog.pg_class AS dep_c
-        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p')
+        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p', 'v', 'm') AND dep_c.oid != c.oid
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
@@ -1303,6 +1343,16 @@ SELECT
     -- Instead, they must be unmarshalled as string arrays.
     -- https://github.com/lib/pq/pull/466
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
+    (SELECT ARRAY_AGG(DISTINCT
+        proc_ns.nspname || '.' || pg_proc.proname || '(' ||
+        pg_catalog.pg_get_function_identity_arguments(pg_proc.oid) || ')')
+    FROM pg_catalog.pg_depend AS fd
+    INNER JOIN pg_catalog.pg_rewrite AS fr ON fd.objid = fr.oid AND fr.ev_class = c.oid
+    INNER JOIN pg_catalog.pg_depend AS fd2 ON fr.oid = fd2.objid
+    INNER JOIN pg_catalog.pg_proc AS pg_proc ON fd2.refobjid = pg_proc.oid AND fd2.refclassid = 'pg_proc'::REGCLASS
+    INNER JOIN pg_catalog.pg_namespace AS proc_ns ON pg_proc.pronamespace = proc_ns.oid
+    WHERE fd.refobjid = c.oid AND fd2.deptype = 'n' AND proc_ns.nspname NOT IN ('pg_catalog', 'information_schema')
+    )::TEXT [] AS function_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
@@ -1326,6 +1376,7 @@ type GetViewsRow struct {
 	ViewName          string
 	RelOptions        []string
 	TableDependencies []string
+	FunctionDependencies []string
 	ViewDefinition    string
 }
 
@@ -1343,6 +1394,7 @@ func (q *Queries) GetViews(ctx context.Context) ([]GetViewsRow, error) {
 			&i.ViewName,
 			pq.Array(&i.RelOptions),
 			pq.Array(&i.TableDependencies),
+			pq.Array(&i.FunctionDependencies),
 			&i.ViewDefinition,
 		); err != nil {
 			return nil, err
