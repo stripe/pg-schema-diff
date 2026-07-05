@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/log"
