@@ -239,7 +239,7 @@ var (
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
 		`},
-			expectedHash: "4c2174e2cac3956b",
+			expectedHash: "e045c528fd265b07",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -591,7 +591,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "32c5a9c52dcfb15e",
+			expectedHash: "a8c17a395024ffde",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -1343,13 +1343,14 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 		require.NoError(t, err)
 	}
 
-	expectedNormalized := testCase.expectedSchema.Normalize()
+	expectedSchema := fillDefaultObjectOwners(testCase.expectedSchema)
+	expectedNormalized := expectedSchema.Normalize()
 	fetchedNormalized := fetchedSchema.Normalize()
 	assert.Equal(t, expectedNormalized, fetchedNormalized, "expected=\n%# v \n fetched=%# v\n", pretty.Formatter(expectedNormalized), pretty.Formatter(fetchedNormalized))
 
 	fetchedSchemaHash, err := fetchedSchema.Hash()
 	require.NoError(t, err)
-	expectedSchemaHash, err := testCase.expectedSchema.Hash()
+	expectedSchemaHash, err := expectedSchema.Hash()
 	require.NoError(t, err)
 	// same schemas should have the same hashes
 	assert.Equal(t, expectedSchemaHash, fetchedSchemaHash, "hash of expected schema should match fetched hash")
@@ -1357,6 +1358,45 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 		// Optionally assert that the hash matches the expected hash
 		assert.Equal(t, testCase.expectedHash, fetchedSchemaHash)
 	}
+}
+
+func fillDefaultObjectOwners(s Schema) Schema {
+	for i := range s.Enums {
+		if s.Enums[i].Owner == "" {
+			s.Enums[i].Owner = "postgres"
+		}
+	}
+	for i := range s.Tables {
+		if s.Tables[i].Owner == "" {
+			s.Tables[i].Owner = "postgres"
+		}
+	}
+	for i := range s.Sequences {
+		if s.Sequences[i].RoleOwner == "" {
+			s.Sequences[i].RoleOwner = "postgres"
+		}
+	}
+	for i := range s.Functions {
+		if s.Functions[i].Owner == "" {
+			s.Functions[i].Owner = "postgres"
+		}
+	}
+	for i := range s.Procedures {
+		if s.Procedures[i].Owner == "" {
+			s.Procedures[i].Owner = "postgres"
+		}
+	}
+	for i := range s.Views {
+		if s.Views[i].Owner == "" {
+			s.Views[i].Owner = "postgres"
+		}
+	}
+	for i := range s.MaterializedViews {
+		if s.MaterializedViews[i].Owner == "" {
+			s.MaterializedViews[i].Owner = "postgres"
+		}
+	}
+	return s
 }
 
 func TestIdxDefStmtToCreateIdxConcurrently(t *testing.T) {
