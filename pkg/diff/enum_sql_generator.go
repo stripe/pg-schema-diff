@@ -19,13 +19,15 @@ func (e *enumSQLGenerator) Add(enum schema.Enum) ([]Statement, error) {
 	for _, val := range enum.Labels {
 		escapedEnumVals = append(escapedEnumVals, schema.EscapeLiteral(val))
 	}
-	return []Statement{
+	stmts := []Statement{
 		{
 			DDL:         fmt.Sprintf("CREATE TYPE %s AS ENUM (%s)", enum.GetFQEscapedName(), strings.Join(escapedEnumVals, ", ")),
 			Timeout:     statementTimeoutDefault,
 			LockTimeout: lockTimeoutDefault,
 		},
-	}, nil
+	}
+	stmts = append(stmts, commentDDLForAdd(commentTargetType(enum.SchemaQualifiedName), enum.Description)...)
+	return stmts, nil
 }
 
 func (e *enumSQLGenerator) Delete(enum schema.Enum) ([]Statement, error) {
@@ -40,6 +42,9 @@ func (e *enumSQLGenerator) Delete(enum schema.Enum) ([]Statement, error) {
 
 func (e *enumSQLGenerator) Alter(diff enumDiff) ([]Statement, error) {
 	oldCopy := diff.old
+	// Mask Description: a comment-only diff is handled by an explicit COMMENT statement
+	// emitted at the end, so it must not trip the final cmp.Diff equality check.
+	oldCopy.Description = diff.new.Description
 	oldVals := set.NewSet(diff.old.Labels...)
 	newVals := set.NewSet(diff.new.Labels...)
 	if len(set.Difference(oldVals, newVals)) > 0 {
@@ -88,9 +93,10 @@ func (e *enumSQLGenerator) Alter(diff enumDiff) ([]Statement, error) {
 	}
 	oldCopy.Labels = diff.new.Labels
 
-	if diff := cmp.Diff(oldCopy, diff.new); diff != "" {
-		return nil, fmt.Errorf("unable to resolve the diff %s: %w", diff, ErrNotImplemented)
+	if d := cmp.Diff(oldCopy, diff.new); d != "" {
+		return nil, fmt.Errorf("unable to resolve the diff %s: %w", d, ErrNotImplemented)
 	}
 
+	stmts = append(stmts, commentDDLForAlter(commentTargetType(diff.new.SchemaQualifiedName), diff.old.Description, diff.new.Description)...)
 	return stmts, nil
 }

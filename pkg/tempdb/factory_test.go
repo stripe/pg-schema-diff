@@ -174,7 +174,8 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	suite.Require().NoError(err)
 	suite.Equal(internalschema.Schema{
 		NamedSchemas: []internalschema.NamedSchema{{
-			Name: "public",
+			Name:        "public",
+			Description: "standard public schema",
 		}},
 	}, schema)
 

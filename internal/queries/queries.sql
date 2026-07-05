@@ -1,5 +1,9 @@
 -- name: GetSchemas :many
-SELECT nspname::TEXT AS schema_name
+SELECT
+    nspname::TEXT AS schema_name,
+    COALESCE(
+        pg_catalog.obj_description(pg_namespace.oid, 'pg_namespace'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_namespace
 WHERE
     nspname NOT IN ('pg_catalog', 'information_schema')
@@ -33,7 +37,10 @@ SELECT
     (CASE
         WHEN c.relispartition THEN pg_catalog.pg_get_expr(c.relpartbound, c.oid)
         ELSE ''
-    END)::TEXT AS partition_for_values
+    END)::TEXT AS partition_for_values,
+    COALESCE(
+        pg_catalog.obj_description(c.oid, 'pg_class'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_class AS c
 INNER JOIN
     pg_catalog.pg_namespace AS table_namespace
@@ -115,7 +122,10 @@ SELECT
         END, ''
     )::TEXT AS generation_expression,
     (a.attgenerated = 's') AS is_generated,
-    pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type
+    pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type,
+    COALESCE(
+        pg_catalog.col_description(a.attrelid, a.attnum), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_attribute AS a
 LEFT JOIN
     pg_catalog.pg_attrdef AS d
@@ -164,7 +174,13 @@ SELECT
             pg_catalog.pg_attribute AS att
             ON att.attrelid = table_c.oid AND indkey_ord.attnum = att.attnum
     )::TEXT [] AS column_names,
-    COALESCE(con.conislocal, false) AS constraint_is_local
+    COALESCE(con.conislocal, false) AS constraint_is_local,
+    COALESCE(
+        pg_catalog.obj_description(c.oid, 'pg_class'), ''
+    )::TEXT AS description,
+    COALESCE(
+        pg_catalog.obj_description(con.oid, 'pg_constraint'), ''
+    )::TEXT AS constraint_description
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_index AS i ON (c.oid = i.indexrelid)
 INNER JOIN pg_catalog.pg_class AS table_c ON (i.indrelid = table_c.oid)
@@ -216,7 +232,10 @@ SELECT
     pg_constraint.connoinherit AS is_not_inheritable,
     pg_catalog.pg_get_expr(
         pg_constraint.conbin, pg_constraint.conrelid
-    ) AS constraint_expression
+    ) AS constraint_expression,
+    COALESCE(
+        pg_catalog.obj_description(pg_constraint.oid, 'pg_constraint'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_constraint
 INNER JOIN pg_catalog.pg_class ON pg_constraint.conrelid = pg_class.oid
 INNER JOIN
@@ -237,7 +256,10 @@ SELECT
     foreign_table_c.relname::TEXT AS foreign_table_name,
     foreign_table_namespace.nspname::TEXT AS foreign_table_schema_name,
     pg_constraint.convalidated AS is_valid,
-    pg_catalog.pg_get_constraintdef(pg_constraint.oid) AS constraint_def
+    pg_catalog.pg_get_constraintdef(pg_constraint.oid) AS constraint_def,
+    COALESCE(
+        pg_catalog.obj_description(pg_constraint.oid, 'pg_constraint'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_constraint
 INNER JOIN
     pg_catalog.pg_class AS constraint_c
@@ -266,7 +288,10 @@ SELECT
     pg_catalog.pg_get_function_identity_arguments(
         pg_proc.oid
     ) AS func_identity_arguments,
-    pg_catalog.pg_get_functiondef(pg_proc.oid) AS func_def
+    pg_catalog.pg_get_functiondef(pg_proc.oid) AS func_def,
+    COALESCE(
+        pg_catalog.obj_description(pg_proc.oid, 'pg_proc'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_proc
 INNER JOIN
     pg_catalog.pg_namespace AS proc_namespace
@@ -320,7 +345,10 @@ SELECT
         pg_proc.oid
     ) AS func_identity_arguments,
     pg_catalog.pg_get_triggerdef(trig.oid) AS trigger_def,
-    trig.tgconstraint != 0 AS is_constraint
+    trig.tgconstraint != 0 AS is_constraint,
+    COALESCE(
+        pg_catalog.obj_description(trig.oid, 'pg_trigger'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_trigger AS trig
 INNER JOIN pg_catalog.pg_class AS owning_c ON trig.tgrelid = owning_c.oid
 INNER JOIN
@@ -350,7 +378,10 @@ SELECT
     pg_seq.seqmin AS min_value,
     pg_seq.seqcache AS cache_size,
     pg_seq.seqcycle AS is_cycle,
-    FORMAT_TYPE(pg_seq.seqtypid, null) AS data_type
+    FORMAT_TYPE(pg_seq.seqtypid, null) AS data_type,
+    COALESCE(
+        pg_catalog.obj_description(pg_seq.seqrelid, 'pg_class'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_sequence AS pg_seq
 INNER JOIN pg_catalog.pg_class AS seq_c ON pg_seq.seqrelid = seq_c.oid
 INNER JOIN pg_catalog.pg_namespace AS seq_ns ON seq_c.relnamespace = seq_ns.oid
@@ -390,7 +421,10 @@ SELECT
     ext.oid,
     ext.extname::TEXT AS extension_name,
     ext.extversion AS extension_version,
-    extension_namespace.nspname::TEXT AS schema_name
+    extension_namespace.nspname::TEXT AS schema_name,
+    COALESCE(
+        pg_catalog.obj_description(ext.oid, 'pg_extension'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_namespace AS extension_namespace
 INNER JOIN
     pg_catalog.pg_extension AS ext
@@ -411,7 +445,10 @@ SELECT
             ORDER BY pg_enum.enumsortorder
         )
     FROM pg_catalog.pg_enum
-    WHERE pg_enum.enumtypid = pg_type.oid)::TEXT [] AS enum_labels
+    WHERE pg_enum.enumtypid = pg_type.oid)::TEXT [] AS enum_labels,
+    COALESCE(
+        pg_catalog.obj_description(pg_type.oid, 'pg_type'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_type AS pg_type
 INNER JOIN
     pg_catalog.pg_namespace AS type_namespace
@@ -473,7 +510,10 @@ SELECT
             AND d.refclassid = 'pg_class'::REGCLASS
             AND a.attrelid = table_c.oid
             AND NOT a.attisdropped
-    )::TEXT [] AS column_names
+    )::TEXT [] AS column_names,
+    COALESCE(
+        pg_catalog.obj_description(pol.oid, 'pg_policy'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_policy AS pol
 INNER JOIN pg_catalog.pg_class AS table_c ON pol.polrelid = table_c.oid
 INNER JOIN
@@ -536,7 +576,10 @@ SELECT
     -- Instead, they must be unmarshalled as string arrays.
     -- https://github.com/lib/pq/pull/466
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
-    PG_GET_VIEWDEF(c.oid, true) AS view_definition
+    PG_GET_VIEWDEF(c.oid, true) AS view_definition,
+    COALESCE(
+        pg_catalog.obj_description(c.oid, 'pg_class'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
 WHERE
@@ -607,7 +650,10 @@ SELECT
     -- Instead, they must be unmarshalled as string arrays.
     -- https://github.com/lib/pq/pull/466
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
-    PG_GET_VIEWDEF(c.oid, true) AS view_definition
+    PG_GET_VIEWDEF(c.oid, true) AS view_definition,
+    COALESCE(
+        pg_catalog.obj_description(c.oid, 'pg_class'), ''
+    )::TEXT AS description
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
 LEFT JOIN pg_catalog.pg_tablespace AS ts ON c.reltablespace = ts.oid
