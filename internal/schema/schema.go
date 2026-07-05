@@ -69,7 +69,12 @@ type Schema struct {
 // Normalize normalizes the schema (alphabetically sorts tables and columns in tables).
 // Useful for hashing and testing.
 func (s Schema) Normalize() Schema {
-	s.NamedSchemas = sortSchemaObjectsByName(s.NamedSchemas)
+	var normNamedSchemas []NamedSchema
+	for _, namedSchema := range sortSchemaObjectsByName(s.NamedSchemas) {
+		namedSchema.Privileges = sortSchemaObjectsByName(namedSchema.Privileges)
+		normNamedSchemas = append(normNamedSchemas, namedSchema)
+	}
+	s.NamedSchemas = normNamedSchemas
 	s.Extensions = sortSchemaObjectsByName(s.Extensions)
 	s.Enums = sortSchemaObjectsByName(s.Enums)
 
@@ -196,10 +201,31 @@ const (
 // schema
 type NamedSchema struct {
 	Name string
+	// Owner is used for ownership diffs and for filtering the owner's implicit schema privileges.
+	Owner      string
+	Privileges []SchemaPrivilege
 }
 
 func (n NamedSchema) GetName() string {
 	return n.Name
+}
+
+// SchemaPrivilege represents a privilege granted on a schema.
+type SchemaPrivilege struct {
+	// Grantee is the role that has the privilege. Empty string means PUBLIC.
+	Grantee string
+	// Privilege is the type of privilege (USAGE, CREATE)
+	Privilege string
+	// IsGrantable indicates if the grantee can grant this privilege to others (WITH GRANT OPTION)
+	IsGrantable bool
+}
+
+func (p SchemaPrivilege) GetName() string {
+	grantee := p.Grantee
+	if grantee == "" {
+		grantee = "PUBLIC"
+	}
+	return fmt.Sprintf("%s:%s", grantee, p.Privilege)
 }
 
 type Extension struct {
@@ -842,15 +868,26 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 }
 
 func (s *schemaFetcher) fetchNamedSchemas(ctx context.Context) ([]NamedSchema, error) {
-	schemaNames, err := s.q.GetSchemas(ctx)
+	schemaRows, err := s.q.GetSchemas(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetSchemas(): %w", err)
 	}
 
+	schemaPrivileges, err := s.fetchSchemaPrivileges(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetchSchemaPrivileges(): %w", err)
+	}
+	privilegesBySchema := make(map[string][]SchemaPrivilege)
+	for _, p := range schemaPrivileges {
+		privilegesBySchema[p.schemaName] = append(privilegesBySchema[p.schemaName], p.privilege)
+	}
+
 	var schemas []NamedSchema
-	for _, schemaName := range schemaNames {
+	for _, schemaRow := range schemaRows {
 		schemas = append(schemas, NamedSchema{
-			Name: schemaName,
+			Name:       schemaRow.SchemaName,
+			Owner:      schemaRow.Owner,
+			Privileges: privilegesBySchema[schemaRow.SchemaName],
 		})
 	}
 
@@ -1379,6 +1416,51 @@ type policyAndTable struct {
 type privilegeAndTable struct {
 	privilege TablePrivilege
 	table     SchemaQualifiedName
+}
+
+type privilegeAndSchema struct {
+	privilege  SchemaPrivilege
+	schemaName string
+}
+
+func (s *schemaFetcher) fetchSchemaPrivileges(ctx context.Context) ([]privilegeAndSchema, error) {
+	rawPrivileges, err := s.q.GetSchemaPrivileges(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetSchemaPrivileges: %w", err)
+	}
+
+	var privileges []privilegeAndSchema
+	for _, rp := range rawPrivileges {
+		// Handle the is_grantable field which may be returned as interface{}
+		isGrantable := false
+		if rp.IsGrantable != nil {
+			if b, ok := rp.IsGrantable.(bool); ok {
+				isGrantable = b
+			}
+		}
+
+		privileges = append(privileges, privilegeAndSchema{
+			privilege: SchemaPrivilege{
+				Grantee:     rp.Grantee,
+				Privilege:   rp.Privilege,
+				IsGrantable: isGrantable,
+			},
+			schemaName: rp.SchemaName,
+		})
+	}
+
+	privileges = filterSliceByName(
+		privileges,
+		func(p privilegeAndSchema) SchemaQualifiedName {
+			return SchemaQualifiedName{
+				SchemaName:  p.schemaName,
+				EscapedName: EscapeIdentifier(p.schemaName),
+			}
+		},
+		s.nameFilter,
+	)
+
+	return privileges, nil
 }
 
 func (s *schemaFetcher) fetchPolicies(ctx context.Context) ([]policyAndTable, error) {

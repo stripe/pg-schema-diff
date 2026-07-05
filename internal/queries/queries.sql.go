@@ -863,9 +863,85 @@ func (q *Queries) GetProcs(ctx context.Context, prokind interface{}) ([]GetProcs
 	return items, nil
 }
 
+const getSchemaPrivileges = `-- name: GetSchemaPrivileges :many
+WITH parsed_acl AS (
+    SELECT
+        n.nspname AS schema_name,
+        n.nspowner AS owner_oid,
+        (ACLEXPLODE(n.nspacl)).grantee AS grantee_oid,
+        (ACLEXPLODE(n.nspacl)).privilege_type AS privilege_type,
+        (ACLEXPLODE(n.nspacl)).is_grantable AS is_grantable
+    FROM pg_catalog.pg_namespace AS n
+    WHERE
+        n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND n.nspname !~ '^pg_toast'
+        AND n.nspname !~ '^pg_temp'
+        -- Exclude schemas owned by extensions
+        AND NOT EXISTS (
+            SELECT depend.objid
+            FROM pg_catalog.pg_depend AS depend
+            WHERE
+                depend.classid = 'pg_namespace'::REGCLASS
+                AND depend.objid = n.oid
+                AND depend.deptype = 'e'
+        )
+)
+
+SELECT
+    pa.schema_name::TEXT AS schema_name,
+    COALESCE(grantee_role.rolname, '')::TEXT AS grantee,
+    pa.privilege_type::TEXT AS privilege,
+    pa.is_grantable
+FROM parsed_acl AS pa
+LEFT JOIN pg_catalog.pg_roles AS grantee_role
+    ON pa.grantee_oid = grantee_role.oid
+WHERE pa.grantee_oid != pa.owner_oid OR pa.grantee_oid = 0
+ORDER BY pa.schema_name, grantee, pa.privilege_type
+`
+
+type GetSchemaPrivilegesRow struct {
+	SchemaName  string
+	Grantee     string
+	Privilege   string
+	IsGrantable interface{}
+}
+
+// Exclude privileges granted to the schema owner (these are implicit)
+func (q *Queries) GetSchemaPrivileges(ctx context.Context) ([]GetSchemaPrivilegesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getSchemaPrivileges)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSchemaPrivilegesRow
+	for rows.Next() {
+		var i GetSchemaPrivilegesRow
+		if err := rows.Scan(
+			&i.SchemaName,
+			&i.Grantee,
+			&i.Privilege,
+			&i.IsGrantable,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSchemas = `-- name: GetSchemas :many
-SELECT nspname::TEXT AS schema_name
+SELECT
+    pg_namespace.nspname::TEXT AS schema_name,
+    owner_role.rolname::TEXT AS owner
 FROM pg_catalog.pg_namespace
+INNER JOIN pg_catalog.pg_roles AS owner_role
+    ON pg_namespace.nspowner = owner_role.oid
 WHERE
     nspname NOT IN ('pg_catalog', 'information_schema')
     AND nspname !~ '^pg_toast'
@@ -881,19 +957,24 @@ WHERE
     )
 `
 
-func (q *Queries) GetSchemas(ctx context.Context) ([]string, error) {
+type GetSchemasRow struct {
+	SchemaName string
+	Owner      string
+}
+
+func (q *Queries) GetSchemas(ctx context.Context) ([]GetSchemasRow, error) {
 	rows, err := q.db.QueryContext(ctx, getSchemas)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []GetSchemasRow
 	for rows.Next() {
-		var schema_name string
-		if err := rows.Scan(&schema_name); err != nil {
+		var i GetSchemasRow
+		if err := rows.Scan(&i.SchemaName, &i.Owner); err != nil {
 			return nil, err
 		}
-		items = append(items, schema_name)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

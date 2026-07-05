@@ -174,7 +174,13 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	suite.Require().NoError(err)
 	suite.Equal(internalschema.Schema{
 		NamedSchemas: []internalschema.NamedSchema{{
-			Name: "public",
+			Name:  "public",
+			Owner: "pg_database_owner",
+			Privileges: []internalschema.SchemaPrivilege{{
+				Grantee:     "",
+				Privilege:   "USAGE",
+				IsGrantable: false,
+			}},
 		}},
 	}, schema)
 
