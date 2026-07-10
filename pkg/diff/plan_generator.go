@@ -3,23 +3,18 @@ package diff
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kr/pretty"
 	"github.com/stripe/pg-schema-diff/internal/schema"
 	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 
 	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
-)
-
-const (
-	tempDbMaxConnections = 5
 )
 
 var (
@@ -220,10 +215,6 @@ func assertValidPlan(ctx context.Context,
 			planOptions.logger.Errorf("an error occurred while dropping the temp database: %s", err)
 		}
 	}(tempDb.ContextualCloser)
-	// Set a max connections if a user has not set one. This is to prevent us from exploding the number of connections
-	// on the database.
-	setMaxConnectionsIfNotSet(tempDb.ConnPool, tempDbMaxConnections)
-
 	if err := setSchemaForEmptyDatabase(ctx, tempDb, currentSchema, planOptions); err != nil {
 		return fmt.Errorf("inserting schema in temporary database: %w", err)
 	}
@@ -238,12 +229,6 @@ func assertValidPlan(ctx context.Context,
 	}
 
 	return assertMigratedSchemaMatchesTarget(migratedSchema, newSchema, planOptions)
-}
-
-func setMaxConnectionsIfNotSet(db *sql.DB, defaultMax int) {
-	if db.Stats().MaxOpenConnections <= 0 {
-		db.SetMaxOpenConns(defaultMax)
-	}
 }
 
 func setSchemaForEmptyDatabase(ctx context.Context, emptyDb *tempdb.Database, targetSchema schema.Schema, options *planOptions) error {
@@ -313,20 +298,20 @@ func assertMigratedSchemaMatchesTarget(migratedSchema, targetSchema schema.Schem
 	return nil
 }
 
-// executeStatementsIgnoreTimeouts executes the statements using the sql connection but ignores any provided timeouts.
+// executeStatementsIgnoreTimeouts executes the statements using a single connection but ignores any provided timeouts.
 // This function is currently used to validate migration plans.
-func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, statements []Statement) error {
-	conn, err := connPool.Conn(ctx)
+func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *pgxpool.Pool, statements []Statement) error {
+	conn, err := connPool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("getting connection from pool: %w", err)
 	}
-	defer conn.Close()
+	defer conn.Release()
 
 	// Set a session-level statement_timeout to bound the execution of the migration plan.
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", (10*time.Second).Milliseconds())); err != nil {
+	if _, err := conn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", (10*time.Second).Milliseconds())); err != nil {
 		return fmt.Errorf("setting statement timeout: %w", err)
 	}
-	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
+	// When a statement_timeout is set for the session, it will not reset
 	// by default when it's returned to the pool.
 	//
 	// We can't set the timeout at the TRANSACTION-level (for each transaction) because `ADD INDEX CONCURRENTLY`
@@ -338,7 +323,7 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, stat
 			// that don't exist in the temp DB)
 			continue
 		}
-		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
+		if _, err := conn.Exec(ctx, stmt.ToSQL()); err != nil {
 			return fmt.Errorf("executing migration statement: %s: %w", stmt.DDL, err)
 		}
 	}

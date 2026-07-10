@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/go-logfmt/logfmt"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 )
 
@@ -14,9 +14,9 @@ type connectionFlags struct {
 	dsn         string
 	dsnFlagName string
 
-	// isEmptyDsnUsingPq indicates to connect via DSN using the pq environment variables and defaults.
-	isEmptyDsnUsingPq         bool
-	isEmptyDsnUsingPqFlagName string
+	// isEmptyDsnUsingEnv indicates to connect via DSN using PostgreSQL environment variables and defaults.
+	isEmptyDsnUsingEnv         bool
+	isEmptyDsnUsingEnvFlagName string
 }
 
 func createConnectionFlags(cmd *cobra.Command, prefix string, additionalHelp string) *connectionFlags {
@@ -29,25 +29,25 @@ func createConnectionFlags(cmd *cobra.Command, prefix string, additionalHelp str
 	}
 	cmd.Flags().StringVar(&c.dsn, c.dsnFlagName, "", dsnFlagHelp)
 
-	c.isEmptyDsnUsingPqFlagName = prefix + "empty-dsn"
-	isEmptyDsnUsingPqFlagHelp := "Connect with an empty DSN using the pq environment variables and defaults."
+	c.isEmptyDsnUsingEnvFlagName = prefix + "empty-dsn"
+	isEmptyDsnUsingEnvFlagHelp := "Connect with an empty DSN using PostgreSQL environment variables and defaults."
 	if additionalHelp != "" {
-		isEmptyDsnUsingPqFlagHelp += " " + additionalHelp
+		isEmptyDsnUsingEnvFlagHelp += " " + additionalHelp
 	}
-	cmd.Flags().BoolVar(&c.isEmptyDsnUsingPq, c.isEmptyDsnUsingPqFlagName, false, isEmptyDsnUsingPqFlagHelp)
+	cmd.Flags().BoolVar(&c.isEmptyDsnUsingEnv, c.isEmptyDsnUsingEnvFlagName, false, isEmptyDsnUsingEnvFlagHelp)
 
 	return &c
 }
 
 func (c *connectionFlags) IsSet() bool {
-	return c.dsn != "" || c.isEmptyDsnUsingPq
+	return c.dsn != "" || c.isEmptyDsnUsingEnv
 }
 
-func parseConnectionFlags(flags *connectionFlags) (*pgx.ConnConfig, error) {
-	if !flags.isEmptyDsnUsingPq && flags.dsn == "" {
-		return nil, fmt.Errorf("must specify either --%s or --%s", flags.dsnFlagName, flags.isEmptyDsnUsingPqFlagName)
+func parseConnectionFlags(flags *connectionFlags) (*pgxpool.Config, error) {
+	if !flags.isEmptyDsnUsingEnv && flags.dsn == "" {
+		return nil, fmt.Errorf("must specify either --%s or --%s", flags.dsnFlagName, flags.isEmptyDsnUsingEnvFlagName)
 	}
-	connConfig, err := pgx.ParseConfig(flags.dsn)
+	connConfig, err := pgxpool.ParseConfig(flags.dsn)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse connection string %q: %w", flags.dsn, err)
 	}

@@ -2,9 +2,9 @@ package pgdump_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/stripe/pg-schema-diff/internal/pgdump"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
@@ -19,11 +19,11 @@ func TestGetDump(t *testing.T) {
 	require.NoError(t, err)
 	defer db.DropDB()
 
-	connPool, err := sql.Open("pgx", db.GetDSN())
+	connPool, err := pgxpool.New(context.Background(), db.GetDSN())
 	require.NoError(t, err)
 	defer connPool.Close()
 
-	_, err = connPool.ExecContext(context.Background(), `
+	_, err = connPool.Exec(context.Background(), `
 			CREATE TABLE foobar(foobar_id text);
 
 			INSERT INTO foobar VALUES ('some-id');

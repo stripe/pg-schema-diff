@@ -2,11 +2,9 @@ package schema
 
 import (
 	"context"
-	"database/sql"
-	"io"
 	"testing"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1276,6 +1274,12 @@ var (
 	}
 )
 
+type closeFunc func()
+
+func (f closeFunc) Close() {
+	f()
+}
+
 func TestSchemaTestCases(t *testing.T) {
 	engine, err := pgengine.StartEngine()
 	require.NoError(t, err)
@@ -1283,24 +1287,24 @@ func TestSchemaTestCases(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("Conn pool", func(t *testing.T) {
-				runTestCase(t, engine, tc, func(db *sql.DB) (queries.DBTX, io.Closer) {
+				runTestCase(t, engine, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
 					return db, nil
 				})
 			})
 			t.Run("Connection", func(t *testing.T) {
-				runTestCase(t, engine, tc, func(db *sql.DB) (queries.DBTX, io.Closer) {
-					conn, err := db.Conn(context.Background())
+				runTestCase(t, engine, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
+					conn, err := db.Acquire(context.Background())
 					require.NoError(t, err)
-					return conn, conn
+					return conn, conn.Release
 				})
 			})
 		})
 	}
 }
 
-func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getDBTX func(db *sql.DB) (queries.DBTX, io.Closer)) {
+func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getDBTX func(db *pgxpool.Pool) (queries.DBTX, closeFunc)) {
 	defer func() {
-		db, err := sql.Open("pgx", engine.GetPostgresDatabaseDSN())
+		db, err := pgxpool.New(context.Background(), engine.GetPostgresDatabaseDSN())
 		require.NoError(t, err)
 		defer db.Close()
 		require.NoError(t, pgengine.ResetInstance(context.Background(), db))
@@ -1312,22 +1316,18 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 		require.NoError(t, db.DropDB())
 	}()
 
-	connPool, err := sql.Open("pgx", db.GetDSN())
+	connPool, err := pgxpool.New(context.Background(), db.GetDSN())
 	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, connPool.Close())
-	}()
+	defer connPool.Close()
 
 	for _, stmt := range testCase.ddl {
-		_, err := connPool.Exec(stmt)
+		_, err := connPool.Exec(context.Background(), stmt)
 		require.NoError(t, err)
 	}
 
 	dbtx, closer := getDBTX(connPool)
 	if closer != nil {
-		defer func() {
-			require.NoError(t, closer.Close())
-		}()
+		defer closer.Close()
 	}
 
 	fetchedSchema, err := GetSchema(context.Background(), dbtx, testCase.opts...)

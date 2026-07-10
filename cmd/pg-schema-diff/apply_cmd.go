@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/log"
@@ -120,18 +120,18 @@ func failIfHazardsNotAllowed(plan diff.Plan, allowedHazardsTypesStrs []string) e
 	return nil
 }
 
-func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig, plan diff.Plan) error {
-	connPool, err := openDbWithPgxConfig(connConfig)
+func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgxpool.Config, plan diff.Plan) error {
+	connPool, err := openPoolWithPgxConfig(ctx, connConfig)
 	if err != nil {
 		return err
 	}
 	defer connPool.Close()
 
-	conn, err := connPool.Conn(ctx)
+	conn, err := connPool.Acquire(ctx)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer conn.Release()
 
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.
@@ -143,13 +143,13 @@ func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig
 		cmdPrintln(cmd, header(fmt.Sprintf("Executing statement %d", getDisplayableStmtIdx(i))))
 		cmdPrintf(cmd, "%s\n\n", statementToPrettyS(stmt))
 		start := time.Now()
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
+		if _, err := conn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
 			return fmt.Errorf("setting statement timeout: %w", err)
 		}
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION lock_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
+		if _, err := conn.Exec(ctx, fmt.Sprintf("SET SESSION lock_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
 			return fmt.Errorf("setting lock timeout: %w", err)
 		}
-		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
+		if _, err := conn.Exec(ctx, stmt.ToSQL()); err != nil {
 			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt.DDL, err)
 		}
 		cmdPrintf(cmd, "Finished executing statement. Duration: %s\n", time.Since(start))

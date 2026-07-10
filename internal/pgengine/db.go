@@ -1,10 +1,10 @@
 package pgengine
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type DB struct {
@@ -32,26 +32,26 @@ func (d *DB) DropDB() error {
 	}
 
 	// Use the pgDsn as we are dropping the test database
-	db, err := sql.Open("pgx", d.GetConnOpts().With(ConnectionOptionDatabase, "postgres").ToDSN())
+	db, err := pgxpool.New(context.Background(), d.GetConnOpts().With(ConnectionOptionDatabase, "postgres").ToDSN())
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
 	// Disallow further connections to the test database, except for superusers
-	_, err = db.Exec(fmt.Sprintf("ALTER DATABASE \"%s\" CONNECTION LIMIT 0", d.GetName()))
+	_, err = db.Exec(context.Background(), fmt.Sprintf("ALTER DATABASE \"%s\" CONNECTION LIMIT 0", d.GetName()))
 	if err != nil {
 		return err
 	}
 
 	// Drop existing connections, so that we can drop the database
-	_, err = db.Exec("SELECT PG_TERMINATE_BACKEND(pid) FROM pg_stat_activity WHERE datname = $1", d.GetName())
+	_, err = db.Exec(context.Background(), "SELECT PG_TERMINATE_BACKEND(pid) FROM pg_stat_activity WHERE datname = $1", d.GetName())
 	if err != nil {
 		return err
 	}
 
 	// Finally, drop the table
-	_, err = db.Exec(fmt.Sprintf("DROP DATABASE \"%s\"", d.GetName()))
+	_, err = db.Exec(context.Background(), fmt.Sprintf("DROP DATABASE \"%s\"", d.GetName()))
 	if err != nil {
 		return err
 	}

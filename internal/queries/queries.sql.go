@@ -7,9 +7,8 @@ package queries
 
 import (
 	"context"
-	"database/sql"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getCheckConstraints = `-- name: GetCheckConstraints :many
@@ -57,7 +56,7 @@ type GetCheckConstraintsRow struct {
 }
 
 func (q *Queries) GetCheckConstraints(ctx context.Context) ([]GetCheckConstraintsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getCheckConstraints)
+	rows, err := q.db.Query(ctx, getCheckConstraints)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +67,7 @@ func (q *Queries) GetCheckConstraints(ctx context.Context) ([]GetCheckConstraint
 		if err := rows.Scan(
 			&i.Oid,
 			&i.ConstraintName,
-			pq.Array(&i.ColumnNames),
+			&i.ColumnNames,
 			&i.TableName,
 			&i.TableSchemaName,
 			&i.IsValid,
@@ -78,9 +77,6 @@ func (q *Queries) GetCheckConstraints(ctx context.Context) ([]GetCheckConstraint
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -168,12 +164,12 @@ type GetColumnsForTableRow struct {
 	HasMissingValOptimization bool
 	ColumnSize                int16
 	IdentityType              string
-	StartValue                sql.NullInt64
-	IncrementValue            sql.NullInt64
-	MaxValue                  sql.NullInt64
-	MinValue                  sql.NullInt64
-	CacheSize                 sql.NullInt64
-	IsCycle                   sql.NullBool
+	StartValue                pgtype.Int8
+	IncrementValue            pgtype.Int8
+	MaxValue                  pgtype.Int8
+	MinValue                  pgtype.Int8
+	CacheSize                 pgtype.Int8
+	IsCycle                   pgtype.Bool
 	CollationName             string
 	CollationSchemaName       string
 	DefaultValue              string
@@ -183,7 +179,7 @@ type GetColumnsForTableRow struct {
 }
 
 func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) ([]GetColumnsForTableRow, error) {
-	rows, err := q.db.QueryContext(ctx, getColumnsForTable, attrelid)
+	rows, err := q.db.Query(ctx, getColumnsForTable, attrelid)
 	if err != nil {
 		return nil, err
 	}
@@ -213,9 +209,6 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) 
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -256,7 +249,7 @@ type GetDependsOnFunctionsRow struct {
 }
 
 func (q *Queries) GetDependsOnFunctions(ctx context.Context, arg GetDependsOnFunctionsParams) ([]GetDependsOnFunctionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getDependsOnFunctions, arg.SystemCatalog, arg.ObjectID)
+	rows, err := q.db.Query(ctx, getDependsOnFunctions, arg.SystemCatalog, arg.ObjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -268,9 +261,6 @@ func (q *Queries) GetDependsOnFunctions(ctx context.Context, arg GetDependsOnFun
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -316,7 +306,7 @@ type GetEnumsRow struct {
 }
 
 func (q *Queries) GetEnums(ctx context.Context) ([]GetEnumsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getEnums)
+	rows, err := q.db.Query(ctx, getEnums)
 	if err != nil {
 		return nil, err
 	}
@@ -324,13 +314,10 @@ func (q *Queries) GetEnums(ctx context.Context) ([]GetEnumsRow, error) {
 	var items []GetEnumsRow
 	for rows.Next() {
 		var i GetEnumsRow
-		if err := rows.Scan(&i.EnumName, &i.EnumSchemaName, pq.Array(&i.EnumLabels)); err != nil {
+		if err := rows.Scan(&i.EnumName, &i.EnumSchemaName, &i.EnumLabels); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -362,7 +349,7 @@ type GetExtensionsRow struct {
 }
 
 func (q *Queries) GetExtensions(ctx context.Context) ([]GetExtensionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getExtensions)
+	rows, err := q.db.Query(ctx, getExtensions)
 	if err != nil {
 		return nil, err
 	}
@@ -379,9 +366,6 @@ func (q *Queries) GetExtensions(ctx context.Context) ([]GetExtensionsRow, error)
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -429,7 +413,7 @@ type GetForeignKeyConstraintsRow struct {
 }
 
 func (q *Queries) GetForeignKeyConstraints(ctx context.Context) ([]GetForeignKeyConstraintsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getForeignKeyConstraints)
+	rows, err := q.db.Query(ctx, getForeignKeyConstraints)
 	if err != nil {
 		return nil, err
 	}
@@ -449,9 +433,6 @@ func (q *Queries) GetForeignKeyConstraints(ctx context.Context) ([]GetForeignKey
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -542,7 +523,7 @@ type GetIndexesRow struct {
 }
 
 func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
-	rows, err := q.db.QueryContext(ctx, getIndexes)
+	rows, err := q.db.Query(ctx, getIndexes)
 	if err != nil {
 		return nil, err
 	}
@@ -565,15 +546,12 @@ func (q *Queries) GetIndexes(ctx context.Context) ([]GetIndexesRow, error) {
 			&i.IndexIsUnique,
 			&i.ParentIndexName,
 			&i.ParentIndexSchemaName,
-			pq.Array(&i.ColumnNames),
+			&i.ColumnNames,
 			&i.ConstraintIsLocal,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -630,10 +608,7 @@ SELECT
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    -- Cast to text because pgv4/pq does not support unmarshalling JSON
-    -- arrays into []json.RawMessage.
-    -- Instead, they must be unmarshalled as string arrays.
-    -- https://github.com/lib/pq/pull/466
+    -- Cast to text so table dependencies can be scanned as string arrays.
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
@@ -664,7 +639,7 @@ type GetMaterializedViewsRow struct {
 }
 
 func (q *Queries) GetMaterializedViews(ctx context.Context) ([]GetMaterializedViewsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getMaterializedViews)
+	rows, err := q.db.Query(ctx, getMaterializedViews)
 	if err != nil {
 		return nil, err
 	}
@@ -675,17 +650,14 @@ func (q *Queries) GetMaterializedViews(ctx context.Context) ([]GetMaterializedVi
 		if err := rows.Scan(
 			&i.SchemaName,
 			&i.ViewName,
-			pq.Array(&i.RelOptions),
+			&i.RelOptions,
 			&i.TablespaceName,
-			pq.Array(&i.TableDependencies),
+			&i.TableDependencies,
 			&i.ViewDefinition,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -759,7 +731,7 @@ type GetPoliciesRow struct {
 }
 
 func (q *Queries) GetPolicies(ctx context.Context) ([]GetPoliciesRow, error) {
-	rows, err := q.db.QueryContext(ctx, getPolicies)
+	rows, err := q.db.Query(ctx, getPolicies)
 	if err != nil {
 		return nil, err
 	}
@@ -772,18 +744,15 @@ func (q *Queries) GetPolicies(ctx context.Context) ([]GetPoliciesRow, error) {
 			&i.OwningTableName,
 			&i.OwningTableSchemaName,
 			&i.IsPermissive,
-			pq.Array(&i.AppliesTo),
+			&i.AppliesTo,
 			&i.Cmd,
 			&i.CheckExpression,
 			&i.UsingExpression,
-			pq.Array(&i.ColumnNames),
+			&i.ColumnNames,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -834,7 +803,7 @@ type GetProcsRow struct {
 }
 
 func (q *Queries) GetProcs(ctx context.Context, prokind interface{}) ([]GetProcsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getProcs, prokind)
+	rows, err := q.db.Query(ctx, getProcs, prokind)
 	if err != nil {
 		return nil, err
 	}
@@ -853,9 +822,6 @@ func (q *Queries) GetProcs(ctx context.Context, prokind interface{}) ([]GetProcs
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -882,7 +848,7 @@ WHERE
 `
 
 func (q *Queries) GetSchemas(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, getSchemas)
+	rows, err := q.db.Query(ctx, getSchemas)
 	if err != nil {
 		return nil, err
 	}
@@ -894,9 +860,6 @@ func (q *Queries) GetSchemas(ctx context.Context) ([]string, error) {
 			return nil, err
 		}
 		items = append(items, schema_name)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -969,7 +932,7 @@ type GetSequencesRow struct {
 }
 
 func (q *Queries) GetSequences(ctx context.Context) ([]GetSequencesRow, error) {
-	rows, err := q.db.QueryContext(ctx, getSequences)
+	rows, err := q.db.Query(ctx, getSequences)
 	if err != nil {
 		return nil, err
 	}
@@ -994,9 +957,6 @@ func (q *Queries) GetSequences(ctx context.Context) ([]GetSequencesRow, error) {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1056,7 +1016,7 @@ type GetTablePrivilegesRow struct {
 
 // Exclude privileges granted to the table owner (these are implicit)
 func (q *Queries) GetTablePrivileges(ctx context.Context) ([]GetTablePrivilegesRow, error) {
-	rows, err := q.db.QueryContext(ctx, getTablePrivileges)
+	rows, err := q.db.Query(ctx, getTablePrivileges)
 	if err != nil {
 		return nil, err
 	}
@@ -1074,9 +1034,6 @@ func (q *Queries) GetTablePrivileges(ctx context.Context) ([]GetTablePrivilegesR
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1146,7 +1103,7 @@ type GetTablesRow struct {
 }
 
 func (q *Queries) GetTables(ctx context.Context) ([]GetTablesRow, error) {
-	rows, err := q.db.QueryContext(ctx, getTables)
+	rows, err := q.db.Query(ctx, getTables)
 	if err != nil {
 		return nil, err
 	}
@@ -1169,9 +1126,6 @@ func (q *Queries) GetTables(ctx context.Context) ([]GetTablesRow, error) {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1220,7 +1174,7 @@ type GetTriggersRow struct {
 }
 
 func (q *Queries) GetTriggers(ctx context.Context) ([]GetTriggersRow, error) {
-	rows, err := q.db.QueryContext(ctx, getTriggers)
+	rows, err := q.db.Query(ctx, getTriggers)
 	if err != nil {
 		return nil, err
 	}
@@ -1241,9 +1195,6 @@ func (q *Queries) GetTriggers(ctx context.Context) ([]GetTriggersRow, error) {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1298,10 +1249,7 @@ SELECT
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
-    -- Cast to text because pgv4/pq does not support unmarshalling JSON
-    -- arrays into []json.RawMessage.
-    -- Instead, they must be unmarshalled as string arrays.
-    -- https://github.com/lib/pq/pull/466
+    -- Cast to text so table dependencies can be scanned as string arrays.
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
@@ -1330,7 +1278,7 @@ type GetViewsRow struct {
 }
 
 func (q *Queries) GetViews(ctx context.Context) ([]GetViewsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getViews)
+	rows, err := q.db.Query(ctx, getViews)
 	if err != nil {
 		return nil, err
 	}
@@ -1341,16 +1289,13 @@ func (q *Queries) GetViews(ctx context.Context) ([]GetViewsRow, error) {
 		if err := rows.Scan(
 			&i.SchemaName,
 			&i.ViewName,
-			pq.Array(&i.RelOptions),
-			pq.Array(&i.TableDependencies),
+			&i.RelOptions,
+			&i.TableDependencies,
 			&i.ViewDefinition,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

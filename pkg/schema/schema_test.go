@@ -2,9 +2,9 @@ package schema_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/suite"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
@@ -83,16 +83,16 @@ func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 	suite.Require().NoError(err)
 	defer db.DropDB()
 
-	connPool, err := sql.Open("pgx", db.GetDSN())
+	connPool, err := pgxpool.New(context.Background(), db.GetDSN())
 	suite.Require().NoError(err)
 	defer connPool.Close()
 
-	_, err = connPool.ExecContext(context.Background(), ddl)
+	_, err = connPool.Exec(context.Background(), ddl)
 	suite.Require().NoError(err)
 
-	conn, err := connPool.Conn(context.Background())
+	conn, err := connPool.Acquire(context.Background())
 	suite.Require().NoError(err)
-	defer conn.Close()
+	defer conn.Release()
 
 	hash, err := schema.GetSchemaHash(context.Background(), conn, schema.WithIncludeSchemas("public"))
 	suite.Require().NoError(err)

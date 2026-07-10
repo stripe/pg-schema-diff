@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
-	"database/sql"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
@@ -115,19 +116,17 @@ func tempDbWithSchema(t *testing.T, pgEngine *pgengine.Engine, ddl []string) *pg
 	t.Cleanup(func() {
 		require.NoError(t, db.DropDB())
 	})
-	dbPool, err := sql.Open("pgx", db.GetDSN())
+	dbPool, err := pgxpool.New(context.Background(), db.GetDSN())
 	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, dbPool.Close())
-	}()
+	defer dbPool.Close()
 	for _, d := range ddl {
-		_, err := dbPool.Exec(d)
+		_, err := dbPool.Exec(context.Background(), d)
 		require.NoError(t, err)
 	}
 	return db
 }
 
-func tempSetPqEnvVarsForDb(t *testing.T, db *pgengine.DB) {
+func tempSetPostgresEnvVarsForDb(t *testing.T, db *pgengine.DB) {
 	t.Helper()
 	tempSetEnvVar(t, "PGHOST", db.GetConnOpts()[pgengine.ConnectionOptionHost])
 	tempSetEnvVar(t, "PGPORT", db.GetConnOpts()[pgengine.ConnectionOptionPort])

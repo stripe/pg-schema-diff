@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/internal/util"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
@@ -303,14 +302,17 @@ func parseSchemaSource(p schemaSourceFactoryFlags) (schemaSourceFactory, error) 
 
 // dsnSchemaSource returns a schema source factory that connects to a database using the provided DSN.
 // This exists in its own function to allow for the plan cmd to call it.
-func dsnSchemaSource(connConfig *pgx.ConnConfig) schemaSourceFactory {
+func dsnSchemaSource(connConfig *pgxpool.Config) schemaSourceFactory {
 	return func() (diff.SchemaSource, io.Closer, error) {
-		connPool, err := openDbWithPgxConfig(connConfig)
+		cfg := connConfig.Copy()
+		if cfg.MaxConns <= 0 {
+			cfg.MaxConns = defaultMaxConnections
+		}
+		connPool, err := openPoolWithPgxConfig(context.Background(), cfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("opening db with pgx config: %w", err)
 		}
-		connPool.SetMaxOpenConns(defaultMaxConnections)
-		return diff.DBSchemaSource(connPool), connPool, nil
+		return diff.DBSchemaSource(connPool), pgxPoolCloser{pool: connPool}, nil
 	}
 }
 
@@ -459,7 +461,7 @@ func parseInsertStatementStr(val string) (insertStatement, error) {
 type generatePlanParameters struct {
 	fromSchema       schemaSourceFactory
 	toSchema         schemaSourceFactory
-	tempDbConnConfig *pgx.ConnConfig
+	tempDbConnConfig *pgxpool.Config
 	planOptions      planOptions
 	logger           log.Logger
 }
@@ -468,11 +470,11 @@ func generatePlan(
 	ctx context.Context,
 	params generatePlanParameters,
 ) (diff.Plan, error) {
-	tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*sql.DB, error) {
+	tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
 		cfg := params.tempDbConnConfig.Copy()
-		cfg.Database = dbName
-		return openDbWithPgxConfig(cfg)
-	}, tempdb.WithRootDatabase(params.tempDbConnConfig.Database))
+		cfg.ConnConfig.Database = dbName
+		return openPoolWithPgxConfig(ctx, cfg)
+	}, tempdb.WithRootDatabase(params.tempDbConnConfig.ConnConfig.Database))
 	if err != nil {
 		return diff.Plan{}, fmt.Errorf("creating temp db factory: %w", err)
 	}

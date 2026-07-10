@@ -2,14 +2,13 @@ package migration_acceptance_tests
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	stdlog "log"
 	"os"
 	"testing"
 
 	"github.com/google/uuid"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -127,11 +126,11 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	}
 
 	// Create roles since they are global
-	rootDb, err := sql.Open("pgx", engine.GetPostgresDatabaseDSN())
+	rootDb, err := pgxpool.New(context.Background(), engine.GetPostgresDatabaseDSN())
 	require.NoError(t, err)
 	defer rootDb.Close()
 	for _, r := range tc.roles {
-		_, err := rootDb.Exec(fmt.Sprintf("CREATE ROLE %s", r))
+		_, err := rootDb.Exec(context.Background(), fmt.Sprintf("CREATE ROLE %s", r))
 		require.NoError(t, err)
 	}
 
@@ -144,13 +143,15 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	require.NoError(t, applyDDL(oldDb, tc.oldSchemaDDL))
 
 	// Migrate the old DB
-	oldDBConnPool, err := sql.Open("pgx", oldDb.GetDSN())
+	oldDbConfig, err := pgxpool.ParseConfig(oldDb.GetDSN())
+	require.NoError(t, err)
+	oldDbConfig.MaxConns = 1
+	oldDBConnPool, err := pgxpool.NewWithConfig(context.Background(), oldDbConfig)
 	require.NoError(t, err)
 	defer oldDBConnPool.Close()
-	oldDBConnPool.SetMaxOpenConns(1)
 
-	tempDbFactory, err := tempdb.NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*sql.DB, error) {
-		return sql.Open("pgx", engine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
+	tempDbFactory, err := tempdb.NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
+		return pgxpool.New(ctx, engine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
 	}, tempdb.WithRandReader(deterministicRandReader))
 	require.NoError(t, err)
 	defer func(tempDbFactory tempdb.Factory) {
@@ -227,14 +228,14 @@ func directlyRunDDLAndGetDump(t *testing.T, engine *pgengine.Engine, ddl []strin
 }
 
 func applyDDL(db *pgengine.DB, ddl []string) error {
-	conn, err := sql.Open("pgx", db.GetDSN())
+	conn, err := pgxpool.New(context.Background(), db.GetDSN())
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
 	for _, stmt := range ddl {
-		_, err := conn.Exec(stmt)
+		_, err := conn.Exec(context.Background(), stmt)
 		if err != nil {
 			return fmt.Errorf("DDL:\n: %w"+stmt, err)
 		}

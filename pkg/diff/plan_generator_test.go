@@ -2,11 +2,10 @@ package diff
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"testing"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
@@ -40,15 +39,15 @@ type planGeneratorTestSuite struct {
 	db       *pgengine.DB
 }
 
-func (suite *planGeneratorTestSuite) mustGetTestDBPool() *sql.DB {
-	pool, err := sql.Open("pgx", suite.db.GetDSN())
+func (suite *planGeneratorTestSuite) mustGetTestDBPool() *pgxpool.Pool {
+	pool, err := pgxpool.New(context.Background(), suite.db.GetDSN())
 	suite.NoError(err)
 	return pool
 }
 
 func (suite *planGeneratorTestSuite) mustBuildTempDbFactory(ctx context.Context) tempdb.Factory {
-	tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*sql.DB, error) {
-		return sql.Open("pgx", suite.pgEngine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
+	tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
+		return pgxpool.New(ctx, suite.pgEngine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
 	})
 	suite.Require().NoError(err)
 	return tempDbFactory
@@ -59,7 +58,7 @@ func (suite *planGeneratorTestSuite) mustApplyDDLToTestDb(ddl []string) {
 	defer conn.Close()
 
 	for _, stmt := range ddl {
-		_, err := conn.Exec(stmt)
+		_, err := conn.Exec(context.Background(), stmt)
 		suite.NoError(err)
 	}
 }
@@ -110,7 +109,7 @@ func (suite *planGeneratorTestSuite) TestGenerate() {
 	suite.mustApplyMigrationPlan(connPool, plan)
 	// Ensure that some sort of migration ran. we're really not testing the correctness of the
 	// migration in this test suite
-	_, err = connPool.ExecContext(context.Background(),
+	_, err = connPool.Exec(context.Background(),
 		"SELECT new_column FROM foobar;")
 	suite.NoError(err)
 }
@@ -148,10 +147,10 @@ func (suite *planGeneratorTestSuite) TestGeneratePlan_SchemaSourceErr() {
 	suite.ErrorIs(err, expectedErr)
 }
 
-func (suite *planGeneratorTestSuite) mustApplyMigrationPlan(db *sql.DB, plan Plan) {
+func (suite *planGeneratorTestSuite) mustApplyMigrationPlan(db *pgxpool.Pool, plan Plan) {
 	// Run the migration
 	for _, stmt := range plan.Statements {
-		_, err := db.ExecContext(context.Background(), stmt.ToSQL())
+		_, err := db.Exec(context.Background(), stmt.ToSQL())
 		suite.Require().NoError(err)
 	}
 }

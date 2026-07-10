@@ -2,11 +2,10 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/log"
@@ -51,24 +50,27 @@ func buildDumpCmd() *cobra.Command {
 }
 
 type generateDumpParams struct {
-	connConfig     *pgx.ConnConfig
+	connConfig     *pgxpool.Config
 	includeSchemas []string
 	excludeSchemas []string
 }
 
 func generateDump(ctx context.Context, params generateDumpParams) (diff.Plan, error) {
-	connPool, err := openDbWithPgxConfig(params.connConfig)
+	cfg := params.connConfig.Copy()
+	if cfg.MaxConns <= 0 {
+		cfg.MaxConns = defaultMaxConnections
+	}
+	connPool, err := openPoolWithPgxConfig(ctx, cfg)
 	if err != nil {
 		return diff.Plan{}, fmt.Errorf("opening database connection: %w", err)
 	}
 	defer connPool.Close()
-	connPool.SetMaxOpenConns(defaultMaxConnections)
 
-	tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*sql.DB, error) {
+	tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
 		cfg := params.connConfig.Copy()
-		cfg.Database = dbName
-		return openDbWithPgxConfig(cfg)
-	}, tempdb.WithRootDatabase(params.connConfig.Database))
+		cfg.ConnConfig.Database = dbName
+		return openPoolWithPgxConfig(ctx, cfg)
+	}, tempdb.WithRootDatabase(params.connConfig.ConnConfig.Database))
 	if err != nil {
 		return diff.Plan{}, fmt.Errorf("creating temp db factory: %w", err)
 	}

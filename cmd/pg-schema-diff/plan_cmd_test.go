@@ -61,7 +61,7 @@ func (suite *cmdTestSuite) TestPlanCmd() {
 			dynamicArgs: []dArgGenerator{
 				func(t *testing.T) []string {
 					db := tempDbWithSchema(t, suite.pgEngine, []string{""})
-					tempSetPqEnvVarsForDb(t, db)
+					tempSetPostgresEnvVarsForDb(t, db)
 					return []string{"--from-empty-dsn"}
 				},
 				tempSchemaDirDArg("to-dir", []string{"CREATE TABLE foobar()"}),

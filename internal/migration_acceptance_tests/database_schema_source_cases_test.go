@@ -24,7 +24,7 @@ func databaseSchemaSourcePlan(ctx context.Context, connPool sqldb.Queryable, tem
 	}()
 
 	for _, stmt := range newSchemaDDL {
-		if _, err := newSchemaDb.ConnPool.ExecContext(ctx, stmt); err != nil {
+		if _, err := newSchemaDb.ConnPool.Exec(ctx, stmt); err != nil {
 			return diff.Plan{}, fmt.Errorf("running DDL: %w", err)
 		}
 	}

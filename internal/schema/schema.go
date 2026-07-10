@@ -2,14 +2,14 @@ package schema
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/stripe/pg-schema-diff/internal/concurrent"
 	"github.com/stripe/pg-schema-diff/internal/queries"
@@ -577,13 +577,9 @@ type getSchemaOptions struct {
 
 // GetSchema fetches the database schema. It is a non-atomic operation.
 func GetSchema(ctx context.Context, db queries.DBTX, opts ...GetSchemaOpt) (Schema, error) {
-	// To allow backwards compatibility with connections, we will not use concurrency if passed in a db that is not a
-	// *sql.DB. This is because not all implementations are thread safe, e.g., pgx.Connection.
-	//
-	// In the future, we should maybe create options where users can pass in a DB pool (WithPool(db) or WithConnection(db))
-	// and we can set concurrency to 1 if the passed in db is not a *sql.DB.
+	// Use concurrency for pools, but not single connections because pgx.Conn is not safe for concurrent use.
 	goroutineRunnerFactory := concurrent.NewSynchronousGoroutineRunner
-	if _, ok := db.(*sql.DB); ok {
+	if _, ok := db.(*pgxpool.Pool); ok {
 		goroutineRunnerFactory = func() concurrent.GoroutineRunner {
 			return concurrent.NewGoroutineLimiter(50)
 		}

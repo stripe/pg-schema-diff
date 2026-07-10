@@ -2,9 +2,9 @@ package pgengine_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 
@@ -33,12 +33,12 @@ func TestPgEngine(t *testing.T) {
 
 	// Hold open a connection before we try to drop the database. The drop should still pass, despite the open
 	// connection
-	connPool, err := sql.Open("pgx", unnamedDb.GetDSN())
+	connPool, err := pgxpool.New(context.Background(), unnamedDb.GetDSN())
 	require.NoError(t, err)
 	defer connPool.Close()
-	conn, err := connPool.Conn(context.Background())
+	conn, err := connPool.Acquire(context.Background())
 	require.NoError(t, err)
-	defer conn.Close()
+	defer conn.Release()
 
 	// Drops should be idempotent
 	require.NoError(t, unnamedDb.DropDB())
@@ -51,14 +51,12 @@ func TestPgEngine(t *testing.T) {
 }
 
 func assertDatabaseIsValid(t *testing.T, db *pgengine.DB, expectedName string) {
-	connPool, err := sql.Open("pgx", db.GetDSN())
+	connPool, err := pgxpool.New(context.Background(), db.GetDSN())
 	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, connPool.Close())
-	}()
+	defer connPool.Close()
 
 	var fetchedName string
-	require.NoError(t, connPool.QueryRowContext(context.Background(), "SELECT current_database();").
+	require.NoError(t, connPool.QueryRow(context.Background(), "SELECT current_database();").
 		Scan(&fetchedName))
 
 	assert.Equal(t, db.GetName(), fetchedName)
@@ -67,26 +65,24 @@ func assertDatabaseIsValid(t *testing.T, db *pgengine.DB, expectedName string) {
 	}
 
 	// Validate writing and reading works
-	_, err = connPool.ExecContext(context.Background(), `CREATE TABLE foobar(id serial NOT NULL)`)
+	_, err = connPool.Exec(context.Background(), `CREATE TABLE foobar(id serial NOT NULL)`)
 	require.NoError(t, err)
 
-	_, err = connPool.ExecContext(context.Background(), `INSERT INTO foobar DEFAULT VALUES`)
+	_, err = connPool.Exec(context.Background(), `INSERT INTO foobar DEFAULT VALUES`)
 	require.NoError(t, err)
 
 	var id string
-	require.NoError(t, connPool.QueryRowContext(context.Background(), "SELECT * FROM foobar LIMIT 1;").
+	require.NoError(t, connPool.QueryRow(context.Background(), "SELECT * FROM foobar LIMIT 1;").
 		Scan(&id))
 	assert.NotEmptyf(t, t, id)
 }
 
 func getAllDatabaseNames(t *testing.T, engine *pgengine.Engine) []string {
-	conn, err := sql.Open("pgx", engine.GetPostgresDatabaseDSN())
+	conn, err := pgxpool.New(context.Background(), engine.GetPostgresDatabaseDSN())
 	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, conn.Close())
-	}()
+	defer conn.Close()
 
-	rows, err := conn.QueryContext(context.Background(), "SELECT datname FROM pg_database")
+	rows, err := conn.Query(context.Background(), "SELECT datname FROM pg_database")
 	require.NoError(t, err)
 	defer rows.Close()
 

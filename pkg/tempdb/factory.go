@@ -3,15 +3,14 @@ package tempdb
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stripe/pg-schema-diff/internal/pgidentifier"
 	"github.com/stripe/pg-schema-diff/internal/util"
 	"github.com/stripe/pg-schema-diff/pkg/log"
@@ -40,7 +39,7 @@ type (
 	// Database represents a temporary database. It should be closed when it is no longer needed.
 	Database struct {
 		// ConnPool is the connection pool to the temporary database
-		ConnPool *sql.DB
+		ConnPool *pgxpool.Pool
 		// ExcludeMetadataOptions are the options used to exclude any internal metadata from plan generation
 		ExcludeMetadataOptions []schema.GetSchemaOpt
 		// ContextualCloser should be called to clean up the temporary database
@@ -120,11 +119,11 @@ func WithRandReader(randReader io.Reader) OnInstanceFactoryOpt {
 }
 
 type (
-	CreateConnPoolForDbFn func(ctx context.Context, dbName string) (*sql.DB, error)
+	CreateConnPoolForDbFn func(ctx context.Context, dbName string) (*pgxpool.Pool, error)
 
 	// onInstanceFactory creates temporary databases on the provided Postgres server
 	onInstanceFactory struct {
-		rootDb              *sql.DB
+		rootDb              *pgxpool.Pool
 		createConnPoolForDb CreateConnPoolForDbFn
 		options             onInstanceFactoryOptions
 	}
@@ -163,7 +162,7 @@ func NewOnInstanceFactory(ctx context.Context, createConnPoolForDb CreateConnPoo
 		return &onInstanceFactory{}, fmt.Errorf("createConnForDb: %w", err)
 	}
 	defer util.DoOnErrOrPanic(&_retErr, func() {
-		_ = rootDb.Close()
+		rootDb.Close()
 	})
 
 	if err := assertConnPoolIsOnExpectedDatabase(ctx, rootDb, options.rootDatabase); err != nil {
@@ -178,7 +177,8 @@ func NewOnInstanceFactory(ctx context.Context, createConnPoolForDb CreateConnPoo
 }
 
 func (o *onInstanceFactory) Close() error {
-	return o.rootDb.Close()
+	o.rootDb.Close()
+	return nil
 }
 
 func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr error) {
@@ -191,11 +191,11 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 	if err != nil {
 		return nil, fmt.Errorf("openConnectionWithDefaults: %w", err)
 	}
-	defer rootConn.Close()
+	defer rootConn.Release()
 
 	tempDbName := o.options.dbPrefix + strings.ReplaceAll(dbUUID.String(), "-", "_")
 	// Create the temporary database using template0, the default Postgres template with no user-defined objects.
-	if _, err = rootConn.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE template0;", tempDbName)); err != nil {
+	if _, err = rootConn.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE template0;", tempDbName)); err != nil {
 		return nil, fmt.Errorf("creating temporary database: %w", err)
 	}
 	defer util.DoOnErrOrPanic(&_retErr, func() {
@@ -212,7 +212,7 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 	defer util.DoOnErrOrPanic(&_retErr, func() {
 		// Only close the connection pool if an error occurred during creation.
 		// We should close the connection pool on the off-chance that the drop database fails
-		_ = tempDbConnPool.Close()
+		tempDbConnPool.Close()
 	})
 	if err := assertConnPoolIsOnExpectedDatabase(ctx, tempDbConnPool, tempDbName); err != nil {
 		return nil, fmt.Errorf("assertConnPoolIsOnExpectedDatabase: %w", err)
@@ -231,7 +231,7 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 			);
 		INSERT INTO %s DEFAULT VALUES;
 	`, sanitizedSchemaName, sanitizedTableName, sanitizedTableName)
-	if _, err := tempDbConnPool.ExecContext(ctx, createMetadataStmts); err != nil {
+	if _, err := tempDbConnPool.Exec(ctx, createMetadataStmts); err != nil {
 		return nil, fmt.Errorf("creating metadata in temporary database: %w", err)
 	}
 
@@ -241,7 +241,7 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 			schema.WithExcludeSchemas(o.options.metadataSchema),
 		},
 		ContextualCloser: fnContextualCloser(func(ctx context.Context) error {
-			_ = tempDbConnPool.Close()
+			tempDbConnPool.Close()
 			return o.dropTempDatabase(ctx, tempDbName)
 		}),
 	}, nil
@@ -249,15 +249,15 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 }
 
 // assertConnPoolIsOnExpectedDatabase provides validation that a user properly passed in a proper CreateConnPoolForDbFn
-func assertConnPoolIsOnExpectedDatabase(ctx context.Context, connPool *sql.DB, expectedDatabase string) (retErr error) {
+func assertConnPoolIsOnExpectedDatabase(ctx context.Context, connPool *pgxpool.Pool, expectedDatabase string) (retErr error) {
 	conn, err := openConnectionWithDefaults(ctx, connPool)
 	if err != nil {
 		return fmt.Errorf("openConnectionWithDefaults: %w", err)
 	}
-	defer conn.Close()
+	defer conn.Release()
 
 	var dbName string
-	if err := connPool.QueryRowContext(ctx, "SELECT current_database();").Scan(&dbName); err != nil {
+	if err := connPool.QueryRow(ctx, "SELECT current_database();").Scan(&dbName); err != nil {
 		return fmt.Errorf("query current database name: %w", err)
 	}
 	if dbName != expectedDatabase {
@@ -276,13 +276,13 @@ func (o *onInstanceFactory) dropTempDatabase(ctx context.Context, dbName string)
 	if err != nil {
 		return fmt.Errorf("openConnectionWithDefaults: %w", err)
 	}
-	defer rootConn.Close()
+	defer rootConn.Release()
 
-	if _, err := rootConn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d;", o.options.dropTimeout.Milliseconds())); err != nil {
+	if _, err := rootConn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d;", o.options.dropTimeout.Milliseconds())); err != nil {
 		return fmt.Errorf("setting statement timeout: %w", err)
 	}
 
-	_, err = rootConn.ExecContext(ctx, fmt.Sprintf("DROP DATABASE %s;", dbName))
+	_, err = rootConn.Exec(ctx, fmt.Sprintf("DROP DATABASE %s;", dbName))
 	if err != nil {
 		return fmt.Errorf("dropping temporary database: %w", err)
 	}
@@ -292,16 +292,16 @@ func (o *onInstanceFactory) dropTempDatabase(ctx context.Context, dbName string)
 
 // openConnectionWithDefaults uses the provided connection pool to open a connection to the database and sets safe
 // defaults, such as statement_timeout
-func openConnectionWithDefaults(ctx context.Context, connPool *sql.DB) (_ *sql.Conn, retErr error) {
-	conn, err := connPool.Conn(ctx)
+func openConnectionWithDefaults(ctx context.Context, connPool *pgxpool.Pool) (_ *pgxpool.Conn, retErr error) {
+	conn, err := connPool.Acquire(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting connection: %w", err)
 	}
 	defer util.DoOnErrOrPanic(&retErr, func() {
-		_ = conn.Close()
+		conn.Release()
 	})
 
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d;", DefaultStatementTimeout.Milliseconds())); err != nil {
+	if _, err := conn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d;", DefaultStatementTimeout.Milliseconds())); err != nil {
 		return nil, fmt.Errorf("setting statement timeout: %w", err)
 	}
 	return conn, nil

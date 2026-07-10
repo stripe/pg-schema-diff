@@ -2,15 +2,14 @@ package sqldb
 
 import (
 	"context"
-	"database/sql"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Queryable represents a queryable database. It is recommended to use *sql.DB or *sql.Conn.
-// In a future major version update, we will probably deprecate *sql.Conn support and only support *sql.DB.
-// Alternatively, we might only support *sql.Conn or *sql.DB.
+// Queryable represents a queryable database. It is recommended to use *pgxpool.Pool or *pgx.Conn.
 type Queryable interface {
-	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
-	PrepareContext(context.Context, string) (*sql.Stmt, error)
-	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
+	Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...interface{}) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...interface{}) pgx.Row
 }

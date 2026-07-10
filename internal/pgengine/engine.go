@@ -1,7 +1,7 @@
 package pgengine
 
 import (
-	"database/sql"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ConnectionOption string
@@ -179,16 +179,17 @@ func (e *Engine) waitTillServingTraffic(maxAttempts int, timeBetweenAttempts tim
 }
 
 func (e *Engine) testIfInstanceServingTraffic() error {
-	db, err := sql.Open("pgx", e.GetPostgresDatabaseDSN())
+	db, err := pgxpool.New(context.Background(), e.GetPostgresDatabaseDSN())
 	if err != nil {
 		return err
 	}
 
-	if err := db.Ping(); err != nil {
+	if err := db.Ping(context.Background()); err != nil {
 		db.Close()
 		return err
 	}
-	return db.Close()
+	db.Close()
+	return nil
 }
 
 func (e *Engine) GetPostgresDatabaseConnOpts() ConnectionOptions {
@@ -233,13 +234,13 @@ func (e *Engine) CreateDatabase() (*DB, error) {
 
 func (e *Engine) CreateDatabaseWithName(name string) (*DB, error) {
 	dsn := e.GetPostgresDatabaseConnOpts().With(ConnectionOptionDatabase, "postgres").ToDSN()
-	db, err := sql.Open("pgx", dsn)
+	db, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
 
-	_, err = db.Exec(fmt.Sprintf("CREATE DATABASE \"%s\"", name))
+	_, err = db.Exec(context.Background(), fmt.Sprintf("CREATE DATABASE \"%s\"", name))
 	if err != nil {
 		return nil, err
 	}

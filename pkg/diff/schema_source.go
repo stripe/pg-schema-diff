@@ -115,7 +115,7 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 	}(tempDb.ContextualCloser)
 
 	for _, ddlStmt := range s.ddl {
-		if _, err := tempDb.ConnPool.ExecContext(ctx, ddlStmt.stmt); err != nil {
+		if _, err := tempDb.ConnPool.Exec(ctx, ddlStmt.stmt); err != nil {
 			debugInfo := ""
 			if ddlStmt.file != "" {
 				debugInfo = fmt.Sprintf(" (from %s)", ddlStmt.file)
@@ -132,7 +132,7 @@ type dbSchemaSource struct {
 }
 
 // DBSchemaSource returns a SchemaSource that returns a schema based on the provided queryable. It is recommended
-// that the sqldb.Queryable is a *sql.DB with a max # of connections set.
+// that the sqldb.Queryable is a *pgxpool.Pool with a max # of connections set.
 func DBSchemaSource(queryable sqldb.Queryable) SchemaSource {
 	return &dbSchemaSource{queryable: queryable}
 }

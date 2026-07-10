@@ -41,7 +41,7 @@ func (suite *cmdTestSuite) TestApplyCmd() {
 		{
 			name: "from empty dsn",
 			fromDbArg: func(db *pgengine.DB) []string {
-				tempSetPqEnvVarsForDb(suite.T(), db)
+				tempSetPostgresEnvVarsForDb(suite.T(), db)
 				return []string{"--from-empty-dsn"}
 			},
 			dynamicArgs: []dArgGenerator{tempSchemaDirDArg("to-dir", []string{"CREATE TABLE foobar();"})},

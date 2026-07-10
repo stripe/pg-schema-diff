@@ -2,14 +2,15 @@ package pgengine
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ResetInstance attempts to reset the cluster to a clean state.
 // It deletes all cluster level objects, i.e., roles, which are not deleted
 // by dropping database(s). This can be useful for re-using a cluster for multiple tests.
-func ResetInstance(ctx context.Context, db *sql.DB) error {
+func ResetInstance(ctx context.Context, db *pgxpool.Pool) error {
 	// Drop all roles except the current user and postgres internal roles
 	if err := dropRoles(ctx, db); err != nil {
 		return fmt.Errorf("dropping roles: %w", err)
@@ -19,8 +20,8 @@ func ResetInstance(ctx context.Context, db *sql.DB) error {
 }
 
 // DropRoles drops all roles except the current user and postgres internal roles
-func dropRoles(ctx context.Context, db *sql.DB) error {
-	rows, err := db.QueryContext(ctx, `
+func dropRoles(ctx context.Context, db *pgxpool.Pool) error {
+	rows, err := db.Query(ctx, `
 		SELECT rolname 
 		FROM pg_catalog.pg_roles 
 		WHERE rolname NOT LIKE 'pg_%'
@@ -37,7 +38,7 @@ func dropRoles(ctx context.Context, db *sql.DB) error {
 		if err := rows.Scan(&roleName); err != nil {
 			return fmt.Errorf("scanning role: %w", err)
 		}
-		if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP ROLE %s", roleName)); err != nil {
+		if _, err := db.Exec(ctx, fmt.Sprintf("DROP ROLE %s", roleName)); err != nil {
 			return fmt.Errorf("dropping role %q: %w", roleName, err)
 		}
 	}

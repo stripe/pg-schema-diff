@@ -2,13 +2,12 @@ package tempdb
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/suite"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
@@ -33,19 +32,19 @@ func (suite *onInstanceTempDbFactorySuite) TearDownSuite() {
 }
 
 func (suite *onInstanceTempDbFactorySuite) mustBuildFactory(opt ...OnInstanceFactoryOpt) Factory {
-	factory, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*sql.DB, error) {
+	factory, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
 		return suite.getConnPoolForDb(dbName)
 	}, opt...)
 	suite.Require().NoError(err)
 	return factory
 }
 
-func (suite *onInstanceTempDbFactorySuite) getConnPoolForDb(dbName string) (*sql.DB, error) {
-	return sql.Open("pgx", suite.engine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
+func (suite *onInstanceTempDbFactorySuite) getConnPoolForDb(dbName string) (*pgxpool.Pool, error) {
+	return pgxpool.New(context.Background(), suite.engine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
 }
 
-func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *sql.Conn) {
-	_, err := conn.ExecContext(context.Background(), `
+func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *pgxpool.Conn) {
+	_, err := conn.Exec(context.Background(), `
 		CREATE TABLE foobar(
 		  id INT PRIMARY KEY,
 		  message TEXT
@@ -54,12 +53,12 @@ func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *sql.Conn) {
  	`)
 	suite.Require().NoError(err)
 
-	_, err = conn.ExecContext(context.Background(), `
+	_, err = conn.Exec(context.Background(), `
 		INSERT INTO foobar VALUES (1, 'some message'), (2, 'some other message'), (3, 'a final message');
 	`)
 	suite.Require().NoError(err)
 
-	res, err := conn.QueryContext(context.Background(), `
+	res, err := conn.Query(context.Background(), `
 		SELECT id, message FROM foobar;
 	`)
 	suite.Require().NoError(err)
@@ -80,7 +79,7 @@ func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *sql.Conn) {
 	}, rows)
 
 	// Drop the table we just created
-	_, err = conn.ExecContext(context.Background(), "DROP TABLE foobar")
+	_, err = conn.Exec(context.Background(), "DROP TABLE foobar")
 	suite.Require().NoError(err)
 }
 
@@ -89,14 +88,14 @@ func (suite *onInstanceTempDbFactorySuite) TestNew_ConnectsToWrongDatabase() {
 	suite.Require().NoError(err)
 	defer db.DropDB()
 
-	_, err = NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*sql.DB, error) {
+	_, err = NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
 		return suite.getConnPoolForDb("not-postgres")
 	})
 	suite.ErrorContains(err, "connection pool is on")
 }
 
 func (suite *onInstanceTempDbFactorySuite) TestNew_ErrorsOnNonSimpleDbPrefix() {
-	_, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*sql.DB, error) {
+	_, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
 		suite.Fail("shouldn't be reached")
 		return nil, nil
 	}, WithDbPrefix("non-simple identifier"))
@@ -134,11 +133,11 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	// it shouldn't be a problem because names shouldn't conflict
 	afterTimeOfCreation := time.Now()
 
-	conn1, err := tempDb.ConnPool.Conn(context.Background())
+	conn1, err := tempDb.ConnPool.Acquire(context.Background())
 	suite.Require().NoError(err)
 
 	var dbName string
-	suite.Require().NoError(conn1.QueryRowContext(context.Background(), "SELECT current_database()").Scan(&dbName))
+	suite.Require().NoError(conn1.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbName))
 	suite.True(strings.HasPrefix(dbName, dbPrefix))
 	suite.Len(dbName, len(dbPrefix)+36) // should be length of prefix + length of uuid
 
@@ -150,19 +149,19 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	metadataQuery := fmt.Sprintf(`
 		SELECT * FROM "%s"."%s"
 	`, metadataSchema, metadataTable)
-	suite.Require().NoError(conn1.QueryRowContext(context.Background(), metadataQuery).Scan(&createdAt))
+	suite.Require().NoError(conn1.QueryRow(context.Background(), metadataQuery).Scan(&createdAt))
 	suite.True(createdAt.Before(afterTimeOfCreation))
 
 	// Get another connection from the pool and make sure it's also set to the correct db while
 	// the other connection is still open
-	conn2, err := tempDb.ConnPool.Conn(context.Background())
+	conn2, err := tempDb.ConnPool.Acquire(context.Background())
 	suite.Require().NoError(err)
 	var dbNameFromConn2 string
-	suite.Require().NoError(conn2.QueryRowContext(context.Background(), "SELECT current_database()").Scan(&dbNameFromConn2))
+	suite.Require().NoError(conn2.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbNameFromConn2))
 	suite.Equal(dbName, dbNameFromConn2)
 
-	suite.Require().NoError(conn1.Close())
-	suite.Require().NoError(conn2.Close())
+	conn1.Release()
+	conn2.Release()
 
 	// Get the schema without the exclude options. It should not be empty because of the metadata schema.
 	schema, err := internalschema.GetSchema(context.Background(), tempDb.ConnPool)
@@ -186,12 +185,12 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	// a query is needed in order to find if the database still exists.
 	conn, err := suite.getConnPoolForDb(dbName)
 	suite.Require().NoError(err)
-	suite.Require().ErrorContains(conn.QueryRowContext(context.Background(), metadataQuery).Scan(&createdAt), "SQLSTATE 3D000")
+	suite.Require().ErrorContains(conn.QueryRow(context.Background(), metadataQuery).Scan(&createdAt), "SQLSTATE 3D000")
 	suite.True(createdAt.Before(afterTimeOfCreation))
 }
 
 func (suite *onInstanceTempDbFactorySuite) TestCreate_ConnectsToWrongDatabase() {
-	factory, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*sql.DB, error) {
+	factory, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
 		return suite.getConnPoolForDb("postgres")
 	})
 	suite.Require().NoError(err)
