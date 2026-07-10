@@ -1,6 +1,6 @@
 module github.com/stripe/pg-schema-diff
 
-go 1.25.5
+go 1.26
 
 require (
 	github.com/go-logfmt/logfmt v0.6.0
@@ -12,7 +12,8 @@ require (
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/spf13/cobra v1.7.0
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.11.1
+	go.inout.gg/foundations v0.0.0-20251108094430-2c59a9842cd4
 	golang.org/x/sync v0.18.0
 )
 

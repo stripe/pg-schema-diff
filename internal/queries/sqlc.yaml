@@ -1,9 +1,13 @@
-version: 1
-packages:
-  - path: "."
-    name: "queries"
+version: "2"
+sql:
+  - schema: "."
+    queries:
+      - "queries.sql"
     engine: "postgresql"
-    queries: "queries.sql"
-    output_db_file_name: "dml.sql.go"
-    output_models_file_name: "models.sql.go"
-    output_querier_file_name: "querier.sql.go"
+    gen:
+      go:
+        package: "dbsqlc"
+        sql_package: "pgx/v5"
+        out: "."
+        emit_pointers_for_null_types: true
+        emit_methods_with_db_argument: true
