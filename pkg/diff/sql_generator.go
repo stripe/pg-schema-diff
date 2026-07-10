@@ -756,7 +756,8 @@ func buildChildrenByPartitionedIndexNameMap(indexes []schema.Index) map[string][
 		if idx.ParentIdx != nil {
 			parentIdxName = idx.ParentIdx.GetName()
 		}
-		childrenByDirectParentIdxName[parentIdxName] = append(childrenByDirectParentIdxName[parentIdxName], idx)
+		childrenByDirectParentIdxName[parentIdxName] =
+			append(childrenByDirectParentIdxName[parentIdxName], idx)
 	}
 
 	// Use this map to build a map of root index by child index name
@@ -785,7 +786,8 @@ func buildChildrenByPartitionedIndexNameMap(indexes []schema.Index) map[string][
 			continue
 		}
 		rootIdx := rootsByChildIdxName[idx.GetName()]
-		allChildrenByRootIndexName[rootIdx.GetName()] = append(allChildrenByRootIndexName[rootIdx.GetName()], idx)
+		allChildrenByRootIndexName[rootIdx.GetName()] =
+			append(allChildrenByRootIndexName[rootIdx.GetName()], idx)
 	}
 
 	return allChildrenByRootIndexName

@@ -2,13 +2,15 @@ package schema
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	queries "github.com/stripe/pg-schema-diff/internal/queries"
 )
 
@@ -1347,18 +1349,15 @@ func (f closeFunc) Close() {
 }
 
 func TestSchemaTestCases(t *testing.T) {
-	engine, err := pgengine.StartEngine()
-	require.NoError(t, err)
-	defer engine.Close()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("Conn pool", func(t *testing.T) {
-				runTestCase(t, engine, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
+				runTestCase(t, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
 					return db, nil
 				})
 			})
 			t.Run("Connection", func(t *testing.T) {
-				runTestCase(t, engine, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
+				runTestCase(t, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
 					conn, err := db.Acquire(context.Background())
 					require.NoError(t, err)
 					return conn, conn.Release
@@ -1368,23 +1367,24 @@ func TestSchemaTestCases(t *testing.T) {
 	}
 }
 
-func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getDBTX func(db *pgxpool.Pool) (queries.DBTX, closeFunc)) {
-	defer func() {
-		db, err := pgxpool.New(context.Background(), engine.GetPostgresDatabaseDSN())
+func runTestCase(t *testing.T, testCase *testCase, getDBTX func(db *pgxpool.Pool) (queries.DBTX, closeFunc)) {
+	db, err := pgxpool.New(context.Background(), os.Getenv("TEST_DATABASE_URL"))
+	require.NoError(t, err)
+	require.NoError(t, dropRoles(context.Background(), db, []string{
+		"some_role_1", "some_role_2",
+	}))
+	db.Close()
+
+	t.Cleanup(func() {
+		db, err := pgxpool.New(context.Background(), os.Getenv("TEST_DATABASE_URL"))
 		require.NoError(t, err)
 		defer db.Close()
-		require.NoError(t, pgengine.ResetInstance(context.Background(), db))
-	}()
+		require.NoError(t, dropRoles(context.Background(), db, []string{
+			"some_role_1", "some_role_2",
+		}))
+	})
 
-	db, err := engine.CreateDatabase()
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, db.DropDB())
-	}()
-
-	connPool, err := pgxpool.New(context.Background(), db.GetDSN())
-	require.NoError(t, err)
-	defer connPool.Close()
+	connPool := poolFactory.Pool(t)
 
 	for _, stmt := range testCase.ddl {
 		_, err := connPool.Exec(context.Background(), stmt)
@@ -1425,6 +1425,57 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 		// Optionally assert that the hash matches the expected hash
 		assert.Equal(t, testCase.expectedHash, fetchedSchemaHash)
 	}
+}
+
+func dropRoles(ctx context.Context, db *pgxpool.Pool, roleNames []string) error {
+	for _, roleName := range roleNames {
+		if _, err := db.Exec(ctx, fmt.Sprintf("DROP ROLE IF EXISTS %s", roleName)); err != nil {
+			if err := dropOwnedByRoleInAllDatabases(ctx, db, roleName); err != nil {
+				return err
+			}
+			if _, err := db.Exec(ctx, fmt.Sprintf("DROP ROLE IF EXISTS %s", roleName)); err != nil {
+				return fmt.Errorf("dropping role %q: %w", roleName, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func dropOwnedByRoleInAllDatabases(ctx context.Context, rootDB *pgxpool.Pool, roleName string) error {
+	rows, err := rootDB.Query(ctx, "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate")
+	if err != nil {
+		return fmt.Errorf("listing databases: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var dbName string
+		if err := rows.Scan(&dbName); err != nil {
+			return fmt.Errorf("scanning database name: %w", err)
+		}
+
+		config := rootDB.Config().Copy()
+		config.ConnConfig.Database = dbName
+		db, err := pgxpool.NewWithConfig(ctx, config)
+		if err != nil {
+			if strings.Contains(err.Error(), "SQLSTATE 3D000") ||
+				strings.Contains(err.Error(), "does not exist") {
+				continue
+			}
+			return fmt.Errorf("connecting to database %q: %w", dbName, err)
+		}
+		_, err = db.Exec(ctx, fmt.Sprintf("DROP OWNED BY %s", roleName))
+		db.Close()
+		if err != nil {
+			return fmt.Errorf("dropping objects owned by role %q in database %q: %w", roleName, dbName, err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("listing databases: %w", err)
+	}
+
+	return nil
 }
 
 func TestIdxDefStmtToCreateIdxConcurrently(t *testing.T) {
@@ -1491,7 +1542,7 @@ func TestTriggerDefStmtToCreateOrReplace(t *testing.T) {
 		},
 		{
 			name:      "case sensitive",
-			defStmt:   "CREATE TRIGGER some_trigger BEFORE UPDATE ON public.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
+			defStmt:   "create TRIGGER some_trigger BEFORE UPDATE ON public.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
 			expectErr: true,
 		},
 		{

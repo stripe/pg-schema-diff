@@ -81,7 +81,8 @@ func fetchTables(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory fun
 	}
 	checkConsByTable := make(map[string][]CheckConstraint)
 	for _, cc := range checkCons {
-		checkConsByTable[cc.table.GetFQEscapedName()] = append(checkConsByTable[cc.table.GetFQEscapedName()], cc.checkConstraint)
+		checkConsByTable[cc.table.GetFQEscapedName()] =
+			append(checkConsByTable[cc.table.GetFQEscapedName()], cc.checkConstraint)
 	}
 
 	policies, err := fetchPolicies(ctx, db)
@@ -90,7 +91,8 @@ func fetchTables(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory fun
 	}
 	policiesByTable := make(map[string][]Policy)
 	for _, p := range policies {
-		policiesByTable[p.table.GetFQEscapedName()] = append(policiesByTable[p.table.GetFQEscapedName()], p.policy)
+		policiesByTable[p.table.GetFQEscapedName()] =
+			append(policiesByTable[p.table.GetFQEscapedName()], p.policy)
 	}
 
 	privileges, err := fetchPrivileges(ctx, db)
@@ -99,7 +101,8 @@ func fetchTables(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory fun
 	}
 	privilegesByTable := make(map[string][]TablePrivilege)
 	for _, p := range privileges {
-		privilegesByTable[p.table.GetFQEscapedName()] = append(privilegesByTable[p.table.GetFQEscapedName()], p.privilege)
+		privilegesByTable[p.table.GetFQEscapedName()] =
+			append(privilegesByTable[p.table.GetFQEscapedName()], p.privilege)
 	}
 
 	goroutineRunner := goroutineRunnerFactory()

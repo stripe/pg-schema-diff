@@ -31,7 +31,6 @@ internal/               # Internal implementation
 ├── schema/             # Complete schema representation types (schema.go is 46KB)
 ├── queries/            # SQL queries via sqlc for schema introspection
 ├── migration_acceptance_tests/  # Comprehensive test suite (24 test files)
-├── pgengine/           # Postgres engine management for tests
 ├── pgdump/             # pg_dump integration
 ├── graph/              # Dependency graph for statement ordering
 ```
@@ -59,8 +58,8 @@ Uses **sqlc** for type-safe SQL queries. To modify:
 ## Development Commands
 
 ```bash
-# Run all tests (requires Docker or local Postgres)
-go test -v -race ./... -timeout 30m
+# Run all tests with Postgres service
+devenv tasks run go:test-ci
 
 # Run specific acceptance tests
 go test -v ./internal/migration_acceptance_tests/... -run TestIndexAcceptance
@@ -101,10 +100,9 @@ acceptanceTestCase{
 }
 ```
 
-### Running Tests with Docker
+### Running Tests with devenv
 ```bash
-docker build -f build/Dockerfile.test --build-arg PG_MAJOR=15 -t pg-schema-diff-test .
-docker run pg-schema-diff-test
+devenv tasks run go:test-ci
 ```
 
 ## Key Concepts
@@ -206,5 +204,5 @@ Use `fmt.Errorf` with `%w` for error wrapping. Functions return `error` as last 
 
 ### Testing Conventions
 - Use `testify/assert` and `testify/require`
-- Acceptance tests use shared Postgres via `pgengine`
+- Tests use `go.segfaultmedaddy.com/pgxephemeraltest` directly from package-level `TestMain` setup
 - Test cases are typically table-driven

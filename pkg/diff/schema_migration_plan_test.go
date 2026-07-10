@@ -192,7 +192,7 @@ var (
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:         "ALTER INDEX \"public\".\"foobar_1_some_idx\" RENAME TO \"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVTheYGRobHB0eHw\"",
+					DDL:         "ALTER INDEX \"public\".\"foobar_1_some_idx\" RENAME TO \"pgschemadiff_tmpidx_foobar_1_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
 					Timeout:     statementTimeoutDefault,
 					LockTimeout: lockTimeoutDefault,
 				},
@@ -210,7 +210,7 @@ var (
 					LockTimeout: lockTimeoutDefault,
 				},
 				{
-					DDL:         "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVTheYGRobHB0eHw\"",
+					DDL:         "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_foobar_1_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
 					Timeout:     statementTimeoutConcurrentIndexDrop,
 					LockTimeout: lockTimeoutDefault,
 					Hazards: []MigrationHazard{
@@ -358,9 +358,9 @@ func (r *deterministicRandReader) Read(p []byte) (int, error) {
 }
 
 func TestSchemaMigrationPlanTest(t *testing.T) {
-	randReader := &deterministicRandReader{}
 	for _, testCase := range schemaMigrationPlanTestCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			randReader := &deterministicRandReader{}
 			schemaDiff, _, err := buildSchemaDiff(testCase.oldSchema, testCase.newSchema)
 			if testCase.expectedDiffErrIs != nil {
 				require.ErrorIs(t, err, testCase.expectedDiffErrIs)

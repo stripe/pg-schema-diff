@@ -9,69 +9,62 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stretchr/testify/suite"
-	"github.com/stripe/pg-schema-diff/internal/pgengine"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
 )
 
-type onInstanceTempDbFactorySuite struct {
-	suite.Suite
-
-	engine *pgengine.Engine
-}
-
-func (suite *onInstanceTempDbFactorySuite) SetupSuite() {
-	engine, err := pgengine.StartEngine()
-	suite.Require().NoError(err)
-	suite.engine = engine
-}
-
-func (suite *onInstanceTempDbFactorySuite) TearDownSuite() {
-	suite.engine.Close()
-}
-
-func (suite *onInstanceTempDbFactorySuite) mustBuildFactory(opt ...OnInstanceFactoryOpt) Factory {
+func buildFactory(t *testing.T, rootPool *pgxpool.Pool, opt ...OnInstanceFactoryOpt) Factory {
+	t.Helper()
+	rootDbName := rootPool.Config().ConnConfig.Database
+	opt = append(opt, WithRootDatabase(rootDbName))
 	factory, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
-		return suite.getConnPoolForDb(dbName)
+		if dbName == rootDbName {
+			return rootPool, nil
+		}
+		return newPoolForDB(rootPool, dbName)
 	}, opt...)
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 	return factory
 }
 
-func (suite *onInstanceTempDbFactorySuite) getConnPoolForDb(dbName string) (*pgxpool.Pool, error) {
-	return pgxpool.New(context.Background(), suite.engine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
+func newPoolForDB(rootPool *pgxpool.Pool, dbName string) (*pgxpool.Pool, error) {
+	config := rootPool.Config().Copy()
+	config.ConnConfig.Database = dbName
+	return pgxpool.NewWithConfig(context.Background(), config)
 }
 
-func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *pgxpool.Conn) {
+func runSQL(t *testing.T, conn *pgxpool.Conn) {
+	t.Helper()
 	_, err := conn.Exec(context.Background(), `
 		CREATE TABLE foobar(
 		  id INT PRIMARY KEY,
 		  message TEXT
 		);
 		CREATE INDEX message_idx ON foobar(message);
- 	`)
-	suite.Require().NoError(err)
+  	`)
+	require.NoError(t, err)
 
 	_, err = conn.Exec(context.Background(), `
 		INSERT INTO foobar VALUES (1, 'some message'), (2, 'some other message'), (3, 'a final message');
 	`)
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 
 	res, err := conn.Query(context.Background(), `
 		SELECT id, message FROM foobar;
 	`)
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 
 	var rows [][]any
 	for res.Next() {
 		var id int
 		var message string
-		suite.Require().NoError(res.Scan(&id, &message))
+		require.NoError(t, res.Scan(&id, &message))
 		rows = append(rows, []any{
 			id, message,
 		})
 	}
-	suite.ElementsMatch([][]any{
+	assert.ElementsMatch(t, [][]any{
 		{1, "some message"},
 		{2, "some other message"},
 		{3, "a final message"},
@@ -79,138 +72,136 @@ func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *pgxpool.Conn) {
 
 	// Drop the table we just created
 	_, err = conn.Exec(context.Background(), "DROP TABLE foobar")
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 }
 
-func (suite *onInstanceTempDbFactorySuite) TestNew_ConnectsToWrongDatabase() {
-	db, err := suite.engine.CreateDatabaseWithName("not-postgres")
-	suite.Require().NoError(err)
-	defer db.DropDB()
-
-	_, err = NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
-		return suite.getConnPoolForDb("not-postgres")
-	})
-	suite.ErrorContains(err, "connection pool is on")
-}
-
-func (suite *onInstanceTempDbFactorySuite) TestNew_ErrorsOnNonSimpleDbPrefix() {
+func TestNewOnInstanceFactoryConnectsToWrongDatabase(t *testing.T) {
+	rootPool := poolFactory.Pool(t)
 	_, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
-		suite.Fail("shouldn't be reached")
+		return rootPool, nil
+	})
+	require.ErrorContains(t, err, "connection pool is on")
+}
+
+func TestNewOnInstanceFactoryErrorsOnNonSimpleDbPrefix(t *testing.T) {
+	_, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
+		t.Fatal("shouldn't be reached")
 		return nil, nil
 	}, WithDbPrefix("non-simple identifier"))
-	suite.ErrorContains(err, "must be a simple Postgres identifier")
+	require.ErrorContains(t, err, "must be a simple Postgres identifier")
 }
 
-func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
+func TestOnInstanceFactoryCreateAndDropFlow(t *testing.T) {
 	const (
 		dbPrefix       = "some_prefix"
 		metadataSchema = "some metadata schema"
 		metadataTable  = "some metadata table"
-		rootDbName     = "some_root_db"
 	)
 
-	rootDb, err := suite.engine.CreateDatabaseWithName(rootDbName)
-	suite.Require().NoError(err)
-	defer func(rootDb *pgengine.DB) {
-		suite.Require().NoError(rootDb.DropDB())
-	}(rootDb)
-
-	factory := suite.mustBuildFactory(
+	rootPool := poolFactory.Pool(t)
+	factory := buildFactory(
+		t, rootPool,
 		WithDbPrefix(dbPrefix),
 		WithMetadataSchema(metadataSchema),
 		WithMetadataTable(metadataTable),
 		WithLogger(slog.Default()),
-		WithRootDatabase(rootDbName),
 	)
 	defer func(factory Factory) {
-		suite.Require().NoError(factory.Close())
+		require.NoError(t, factory.Close())
 	}(factory)
 
 	tempDb, err := factory.Create(context.Background())
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 	// Don't defer dropping. we want to run assertions after it drops. if dropping fails,
 	// it shouldn't be a problem because names shouldn't conflict
 	afterTimeOfCreation := time.Now()
 
 	conn1, err := tempDb.ConnPool.Acquire(context.Background())
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 
 	var dbName string
-	suite.Require().NoError(conn1.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbName))
-	suite.True(strings.HasPrefix(dbName, dbPrefix))
-	suite.Len(dbName, len(dbPrefix)+36) // should be length of prefix + length of uuid
+	require.NoError(t, conn1.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbName))
+	assert.True(t, strings.HasPrefix(dbName, dbPrefix))
+	assert.Len(t, dbName, len(dbPrefix)+36) // should be length of prefix + length of uuid
 
 	// Make sure SQL can run on the connection
-	suite.mustRunSQL(conn1)
+	runSQL(t, conn1)
 
 	// Check the metadata entry exists
 	var createdAt time.Time
 	metadataQuery := fmt.Sprintf(`
 		SELECT * FROM "%s"."%s"
 	`, metadataSchema, metadataTable)
-	suite.Require().NoError(conn1.QueryRow(context.Background(), metadataQuery).Scan(&createdAt))
-	suite.True(createdAt.Before(afterTimeOfCreation))
+	require.NoError(t, conn1.QueryRow(context.Background(), metadataQuery).Scan(&createdAt))
+	assert.True(t, createdAt.Before(afterTimeOfCreation))
 
 	// Get another connection from the pool and make sure it's also set to the correct db while
 	// the other connection is still open
 	conn2, err := tempDb.ConnPool.Acquire(context.Background())
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 	var dbNameFromConn2 string
-	suite.Require().NoError(conn2.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbNameFromConn2))
-	suite.Equal(dbName, dbNameFromConn2)
+	require.NoError(t, conn2.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbNameFromConn2))
+	assert.Equal(t, dbName, dbNameFromConn2)
 
 	conn1.Release()
 	conn2.Release()
 
 	// Get the schema without the exclude options. It should not be empty because of the metadata schema.
 	schema, err := internalschema.GetSchema(context.Background(), tempDb.ConnPool)
-	suite.Require().NoError(err)
-	suite.NotEmpty(schema)
+	require.NoError(t, err)
+	assert.NotEmpty(t, schema)
 
 	// Get the schema with the exclude options (it should be empty)
 	schema, err = internalschema.GetSchema(context.Background(), tempDb.ConnPool, tempDb.ExcludeMetadataOptions...)
-	suite.Require().NoError(err)
-	suite.Equal(internalschema.Schema{
+	require.NoError(t, err)
+	assert.Equal(t, internalschema.Schema{
 		NamedSchemas: []internalschema.NamedSchema{{
 			Name: "public",
 		}},
 	}, schema)
 
 	// Drop database
-	suite.Require().NoError(tempDb.Close(context.Background()))
+	require.NoError(t, tempDb.Close(context.Background()))
 
 	// Expect an error when attempting to query the database, since it should be dropped.
 	// when a db pool is opened, it has no connections.
 	// a query is needed in order to find if the database still exists.
-	conn, err := suite.getConnPoolForDb(dbName)
-	suite.Require().NoError(err)
-	suite.Require().ErrorContains(conn.QueryRow(context.Background(), metadataQuery).Scan(&createdAt), "SQLSTATE 3D000")
-	suite.True(createdAt.Before(afterTimeOfCreation))
+	conn, err := newPoolForDB(rootPool, dbName)
+	require.NoError(t, err)
+	defer conn.Close()
+	require.ErrorContains(t, conn.QueryRow(context.Background(), metadataQuery).Scan(&createdAt), "SQLSTATE 3D000")
+	assert.True(t, createdAt.Before(afterTimeOfCreation))
 }
 
-func (suite *onInstanceTempDbFactorySuite) TestCreate_ConnectsToWrongDatabase() {
-	factory, err := NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
-		return suite.getConnPoolForDb("postgres")
-	})
-	suite.Require().NoError(err)
+func TestOnInstanceFactoryCreateConnectsToWrongDatabase(t *testing.T) {
+	rootPool := poolFactory.Pool(t)
+	rootDbName := rootPool.Config().ConnConfig.Database
+	factory, err := NewOnInstanceFactory(
+		context.Background(),
+		func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
+			if dbName == rootDbName {
+				return rootPool, nil
+			}
+			return newPoolForDB(rootPool, rootDbName)
+		},
+		WithRootDatabase(rootDbName),
+	)
+	require.NoError(t, err)
 	defer func(factory Factory) {
-		suite.Require().NoError(factory.Close())
+		require.NoError(t, factory.Close())
 	}(factory)
 
 	_, err = factory.Create(context.Background())
-	suite.ErrorContains(err, "connection pool is on")
+	require.ErrorContains(t, err, "connection pool is on")
 }
 
-func (suite *onInstanceTempDbFactorySuite) TestDropTempDB_CannotDropNonTempDb() {
-	factory := suite.mustBuildFactory()
+func TestOnInstanceFactoryDropTempDBCannotDropNonTempDB(t *testing.T) {
+	rootPool := poolFactory.Pool(t)
+	factory := buildFactory(t, rootPool)
 	defer func(factory Factory) {
-		suite.Require().NoError(factory.Close())
+		require.NoError(t, factory.Close())
 	}(factory)
 
-	suite.ErrorContains(factory.(*onInstanceFactory).dropTempDatabase(context.Background(),
+	require.ErrorContains(t, factory.(*onInstanceFactory).dropTempDatabase(context.Background(),
 		"some_db"), "drop non-temporary database")
-}
-
-func TestOnInstanceFactorySuite(t *testing.T) {
-	suite.Run(t, new(onInstanceTempDbFactorySuite))
 }

@@ -18,6 +18,7 @@ in
     govulncheck
     golangci-lint
     gofumpt
+    gcc
     git
     sqlc
     sqlfluff
@@ -53,9 +54,6 @@ in
     };
 
     initialScript = ''
-      CREATE USER u1 SUPERUSER PASSWORD 'u1';
-      CREATE USER u2 SUPERUSER PASSWORD 'u2';
-
       CREATE USER ${user} SUPERUSER PASSWORD '${password}';
       CREATE DATABASE ${db} OWNER ${user};
     '';
@@ -109,6 +107,11 @@ in
     "go:test" = {
       exec = "go test -v -race -count=1 ./... -timeout 30m";
       description = "Run Go tests";
+    };
+
+    "go:test-ci" = {
+      exec = "go test -count=1 ./... -timeout 30m";
+      description = "Run CI tests";
     };
 
     "go:test-acceptance" = {

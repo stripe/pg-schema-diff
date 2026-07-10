@@ -813,11 +813,11 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
             CREATE INDEX new_idx ON foobar(bar);
 		`},
 		expectedPlanDDL: []string{
-			"ALTER INDEX \"public\".\"some_idx_with_a_very_long_name\" RENAME TO \"pgschemadiff_tmpidx_some_idx_with_a_very_EBESExQVTheYGRobHB0eHw\"",
+			"ALTER INDEX \"public\".\"some_idx_with_a_very_long_name\" RENAME TO \"pgschemadiff_tmpidx_some_idx_with_a_very_AAECAwQFRgeICQoLDA0ODw\"",
 			"CREATE INDEX CONCURRENTLY new_idx ON public.foobar USING btree (bar)",
 			"CREATE INDEX CONCURRENTLY some_idx_with_a_very_long_name ON public.foobar USING btree (foo, bar)",
 			"DROP INDEX CONCURRENTLY \"public\".\"old_idx\"",
-			"DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_some_idx_with_a_very_EBESExQVTheYGRobHB0eHw\"",
+			"DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_some_idx_with_a_very_AAECAwQFRgeICQoLDA0ODw\"",
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeIndexBuild,

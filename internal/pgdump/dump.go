@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/hashicorp/go-version"
-	"github.com/stripe/pg-schema-diff/internal/pgengine"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -51,9 +53,8 @@ func WithRestrictKey(restrictKey string) Parameter {
 
 // GetDump gets the pg_dump of the inputted database.
 // It is only intended to be used for testing. You cannot securely pass passwords with this implementation, so it will
-// only accept databases created for unit tests (spun up with the pgengine package)
 // "pgdump" must be on the system's PATH
-func GetDump(db *pgengine.DB, additionalParams ...Parameter) (string, error) {
+func GetDump(db *pgxpool.Pool, additionalParams ...Parameter) (string, error) {
 	pgDumpBinaryPath, err := exec.LookPath("pg_dump")
 	if err != nil {
 		return "", errors.New("pg_dump executable not found in path")
@@ -61,14 +62,14 @@ func GetDump(db *pgengine.DB, additionalParams ...Parameter) (string, error) {
 	return GetDumpUsingBinary(pgDumpBinaryPath, db, additionalParams...)
 }
 
-func GetDumpUsingBinary(pgDumpBinaryPath string, db *pgengine.DB, additionalParams ...Parameter) (string, error) {
+func GetDumpUsingBinary(pgDumpBinaryPath string, db *pgxpool.Pool, additionalParams ...Parameter) (string, error) {
 	version, err := getVersion(pgDumpBinaryPath)
 	if err != nil {
 		return "", fmt.Errorf("getVersion: %w", err)
 	}
 
 	params := []string{
-		db.GetDSN(),
+		connStringForPool(db),
 	}
 	for _, param := range additionalParams {
 		if param.minimumVersion != nil && param.minimumVersion.GreaterThan(version) {
@@ -78,6 +79,29 @@ func GetDumpUsingBinary(pgDumpBinaryPath string, db *pgengine.DB, additionalPara
 		params = append(params, param.values...)
 	}
 	return runPgDumpCmd(pgDumpBinaryPath, params...)
+}
+
+func connStringForPool(pool *pgxpool.Pool) string {
+	connConfig := pool.Config().ConnConfig
+	pairs := []string{
+		"host=" + quoteConnValue(connConfig.Host),
+		"port=" + quoteConnValue(strconv.Itoa(int(connConfig.Port))),
+		"dbname=" + quoteConnValue(connConfig.Database),
+		"user=" + quoteConnValue(connConfig.User),
+	}
+	if connConfig.Password != "" {
+		pairs = append(pairs, "password="+quoteConnValue(connConfig.Password))
+	}
+	if connConfig.TLSConfig == nil {
+		pairs = append(pairs, "sslmode=disable")
+	}
+	return strings.Join(pairs, " ")
+}
+
+func quoteConnValue(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `'`, `\'`)
+	return "'" + value + "'"
 }
 
 // ParseVersion parses a version string from pg_dump output and returns a Version object.

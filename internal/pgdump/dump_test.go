@@ -4,26 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/stripe/pg-schema-diff/internal/pgdump"
-	"github.com/stripe/pg-schema-diff/internal/pgengine"
 )
 
 func TestGetDump(t *testing.T) {
-	pgEngine, err := pgengine.StartEngine()
-	require.NoError(t, err)
-	defer pgEngine.Close()
+	connPool := poolFactory.Pool(t)
 
-	db, err := pgEngine.CreateDatabase()
-	require.NoError(t, err)
-	defer db.DropDB()
-
-	connPool, err := pgxpool.New(context.Background(), db.GetDSN())
-	require.NoError(t, err)
-	defer connPool.Close()
-
-	_, err = connPool.Exec(context.Background(), `
+	_, err := connPool.Exec(context.Background(), `
 			CREATE TABLE foobar(foobar_id text);
 
 			INSERT INTO foobar VALUES ('some-id');
@@ -33,19 +21,19 @@ func TestGetDump(t *testing.T) {
 		`)
 	require.NoError(t, err)
 
-	dump, err := pgdump.GetDump(db)
+	dump, err := pgdump.GetDump(connPool)
 	require.NoError(t, err)
 	require.Contains(t, dump, "public.foobar")
 	require.Contains(t, dump, "test.bar")
 	require.Contains(t, dump, "some-id")
 
-	onlySchemasDump, err := pgdump.GetDump(db, pgdump.WithSchemaOnly())
+	onlySchemasDump, err := pgdump.GetDump(connPool, pgdump.WithSchemaOnly())
 	require.NoError(t, err)
 	require.Contains(t, onlySchemasDump, "public.foobar")
 	require.Contains(t, onlySchemasDump, "test.bar")
 	require.NotContains(t, onlySchemasDump, "some-id")
 
-	onlyPublicSchemaDump, err := pgdump.GetDump(db, pgdump.WithSchemaOnly(), pgdump.WithExcludeSchema("test"))
+	onlyPublicSchemaDump, err := pgdump.GetDump(connPool, pgdump.WithSchemaOnly(), pgdump.WithExcludeSchema("test"))
 	require.NoError(t, err)
 	require.Contains(t, onlyPublicSchemaDump, "public.foobar")
 	require.NotContains(t, onlyPublicSchemaDump, "test.bar")
