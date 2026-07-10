@@ -26,9 +26,8 @@ index cc3a14b..cf4b32d 100644
 -CREATE INDEX message_idx ON foobar(message);
 +CREATE INDEX message_idx ON foobar(message, created_at);
 ```
-The generated plan (*queries using `message_idx` will always have an index backing them, even while the new index is being built*):
+An example generated plan (*queries using `message_idx` will always have an index backing them, even while the new index is being built*):
 ```
-$ pg-schema-diff plan --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir ./schema
 /*
 Statement 0
 */
@@ -67,9 +66,8 @@ index cc3a14b..5a1cec2 100644
  );
  CREATE INDEX message_idx ON foobar(message);
 ```
-The generated plan (*leverages check constraints to eliminate the need for a long-lived access-exclusive lock on the table*):
+An example generated plan (*leverages check constraints to eliminate the need for a long-lived access-exclusive lock on the table*):
 ```
-$ pg-schema-diff plan --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir ./schema
 /*
 Statement 0
 */
@@ -113,53 +111,11 @@ ALTER TABLE "public"."foobar" DROP CONSTRAINT "pgschemadiff_tmpnn_GimngG1rRkODhK
   * Migration plans are validated first against a temporary database exactly as they would be performed against the real database.
 * Strong support of partitions
 # Install
-## CLI
-Brew:
-```bash
-brew install pg-schema-diff
-```
-Go toolchain:
-```bash
-go install github.com/stripe/pg-schema-diff/cmd/pg-schema-diff@latest
-```
-## Library
 ```bash
 go get -u github.com/stripe/pg-schema-diff@latest
 ```
-# Using CLI
-## 1. Apply schema to fresh database
-Create a directory to hold your schema files. Then, generate sql files and place them into a schema dir.
-```bash
-mkdir schema
-echo "CREATE TABLE foobar (id int);" > schema/foobar.sql
-echo "CREATE TABLE bar (id varchar(255), message TEXT NOT NULL);" > schema/bar.sql
-```
-
-Apply the schema to a fresh database. [The connection string spec can be found here](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
-Setting the `PGPASSWORD` env var will override any password set in the connection string and is recommended.
-```bash
-pg-schema-diff apply --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir schema
-```
-
-Alternatively, if you have an existing database, you can dump its schema to use as a starting point:
-```bash
-mkdir -p schema && pg-schema-diff dump --dsn "postgres://postgres:postgres@localhost:5432/postgres" > schema/schema.sql
-```
-
-## 2. Updating schema
-Update the SQL file(s)
-```bash
-echo "CREATE INDEX message_idx ON bar(message)" >> schema/bar.sql
-```
-
-Apply the schema. Any hazards in the generated plan must be approved
-```bash
-pg-schema-diff apply --from-dsn "postgres://postgres:postgres@localhost:5432/postgres" --to-dir schema --allow-hazards INDEX_BUILD
-```
-
 # Using Library
-Docs to use the library can be found [here](https://pkg.go.dev/github.com/stripe/pg-schema-diff). Check out [the CLI](https://github.com/stripe/pg-schema-diff/tree/main/cmd/pg-schema-diff)
-for an example implementation with the library
+Docs to use the library can be found [here](https://pkg.go.dev/github.com/stripe/pg-schema-diff).
 
 ## 1. Generating plan
 ```go
