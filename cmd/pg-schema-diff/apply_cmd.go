@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
-	"github.com/stripe/pg-schema-diff/pkg/log"
 )
 
 func buildApplyCmd() *cobra.Command {
@@ -28,7 +28,7 @@ func buildApplyCmd() *cobra.Command {
 			" (example: --allow-hazards DELETES_DATA,INDEX_BUILD)")
 	skipConfirmPrompt := cmd.Flags().Bool("skip-confirm-prompt", false, "Skips prompt asking for user to confirm before applying")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		logger := log.SimpleLogger()
+		logger := slog.Default()
 
 		connConfig, err := parseConnectionFlags(connFlags)
 		if err != nil {

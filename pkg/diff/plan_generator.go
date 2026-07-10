@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/schema"
 	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 
-	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
@@ -26,7 +26,7 @@ type (
 		tempDbFactory           tempdb.Factory
 		dataPackNewTables       bool
 		ignoreChangesToColOrder bool
-		logger                  log.Logger
+		logger                  *slog.Logger
 		validatePlan            bool
 		getSchemaOpts           []schema.GetSchemaOpt
 		randReader              io.Reader
@@ -67,7 +67,7 @@ func WithDoNotValidatePlan() PlanOpt {
 }
 
 // WithLogger configures plan generation to use the provided logger instead of the default
-func WithLogger(logger log.Logger) PlanOpt {
+func WithLogger(logger *slog.Logger) PlanOpt {
 	return func(opts *planOptions) {
 		opts.logger = logger
 	}
@@ -124,11 +124,14 @@ func Generate(
 	planOptions := &planOptions{
 		validatePlan:            true,
 		ignoreChangesToColOrder: true,
-		logger:                  log.SimpleLogger(),
+		logger:                  slog.Default(),
 		randReader:              rand.Reader,
 	}
 	for _, opt := range opts {
 		opt(planOptions)
+	}
+	if planOptions.logger == nil {
+		planOptions.logger = slog.Default()
 	}
 
 	currentSchema, err := fromSchema.GetSchema(ctx, schemaSourcePlanDeps{
@@ -212,7 +215,9 @@ func assertValidPlan(ctx context.Context,
 	}
 	defer func(closer tempdb.ContextualCloser) {
 		if err := closer.Close(ctx); err != nil {
-			planOptions.logger.Errorf("an error occurred while dropping the temp database: %s", err)
+			planOptions.logger.ErrorContext(ctx, "failed to drop temporary database",
+				slog.Any("error", err),
+			)
 		}
 	}(tempDb.ContextualCloser)
 	if err := setSchemaForEmptyDatabase(ctx, tempDb, currentSchema, planOptions); err != nil {

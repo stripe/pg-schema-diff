@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stripe/pg-schema-diff/internal/pgidentifier"
 	"github.com/stripe/pg-schema-diff/internal/util"
-	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/schema"
 )
 
@@ -60,7 +60,7 @@ type (
 		dbPrefix       string
 		metadataSchema string
 		metadataTable  string
-		logger         log.Logger
+		logger         *slog.Logger
 		rootDatabase   string
 		dropTimeout    time.Duration
 		randReader     io.Reader
@@ -69,8 +69,8 @@ type (
 	OnInstanceFactoryOpt func(*onInstanceFactoryOptions)
 )
 
-// WithLogger sets the logger for the factory. If not set, a SimpleLogger will be used
-func WithLogger(logger log.Logger) OnInstanceFactoryOpt {
+// WithLogger sets the logger for the factory. If not set, slog.Default will be used.
+func WithLogger(logger *slog.Logger) OnInstanceFactoryOpt {
 	return func(opts *onInstanceFactoryOptions) {
 		opts.logger = logger
 	}
@@ -147,11 +147,14 @@ func NewOnInstanceFactory(ctx context.Context, createConnPoolForDb CreateConnPoo
 		metadataTable:  DefaultOnInstanceMetadataTable,
 		dropTimeout:    DefaultStatementTimeout,
 		rootDatabase:   "postgres",
-		logger:         log.SimpleLogger(),
+		logger:         slog.Default(),
 		randReader:     rand.Reader,
 	}
 	for _, opt := range opts {
 		opt(&options)
+	}
+	if options.logger == nil {
+		options.logger = slog.Default()
 	}
 	if !pgidentifier.IsSimpleIdentifier(options.dbPrefix) {
 		return nil, fmt.Errorf("dbPrefix (%s) must be a simple Postgres identifier matching the following regex: %s", options.dbPrefix, pgidentifier.SimpleIdentifierRegex)
@@ -201,7 +204,11 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 	defer util.DoOnErrOrPanic(&_retErr, func() {
 		// Only drop the temp database if an error occurred during creation
 		if err := o.dropTempDatabase(ctx, tempDbName); err != nil {
-			o.options.logger.Errorf("Failed to drop temporary database %s because %q. This drop was automatically triggered by %q", tempDbName, err.Error(), _retErr.Error())
+			o.options.logger.ErrorContext(ctx, "failed to drop temporary database after creation error",
+				slog.String("database", tempDbName),
+				slog.Any("error", err),
+				slog.Any("triggering_error", _retErr),
+			)
 		}
 	})
 

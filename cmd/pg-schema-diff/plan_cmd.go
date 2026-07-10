@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"regexp"
 	"slices"
@@ -16,7 +17,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/internal/util"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
-	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
@@ -50,7 +50,7 @@ func buildPlanCmd() *cobra.Command {
 		fmt.Sprintf("Change the output format for what is printed. Defaults to %v. (options: %s)", outputFmt.identifier, strings.Join(outputFormatStrings(), ", ")),
 	)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		logger := log.SimpleLogger()
+		logger := slog.Default()
 
 		fromSchema, err := parseSchemaSource(*fromSchemaFlags)
 		if err != nil {
@@ -463,7 +463,7 @@ type generatePlanParameters struct {
 	toSchema         schemaSourceFactory
 	tempDbConnConfig *pgxpool.Config
 	planOptions      planOptions
-	logger           log.Logger
+	logger           *slog.Logger
 }
 
 func generatePlan(
@@ -474,14 +474,16 @@ func generatePlan(
 		cfg := params.tempDbConnConfig.Copy()
 		cfg.ConnConfig.Database = dbName
 		return openPoolWithPgxConfig(ctx, cfg)
-	}, tempdb.WithRootDatabase(params.tempDbConnConfig.ConnConfig.Database))
+	}, tempdb.WithRootDatabase(params.tempDbConnConfig.ConnConfig.Database), tempdb.WithLogger(params.logger))
 	if err != nil {
 		return diff.Plan{}, fmt.Errorf("creating temp db factory: %w", err)
 	}
 	defer func() {
 		err := tempDbFactory.Close()
 		if err != nil {
-			params.logger.Errorf("error shutting down temp db factory: %v", err)
+			params.logger.ErrorContext(ctx, "failed to shut down temp db factory",
+				slog.Any("error", err),
+			)
 		}
 	}()
 
@@ -501,6 +503,7 @@ func generatePlan(
 		append(
 			params.planOptions.opts,
 			diff.WithTempDbFactory(tempDbFactory),
+			diff.WithLogger(params.logger),
 		)...,
 	)
 	if err != nil {

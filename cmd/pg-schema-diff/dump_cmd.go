@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
-	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
@@ -76,7 +76,9 @@ func generateDump(ctx context.Context, params generateDumpParams) (diff.Plan, er
 	}
 	defer func() {
 		if err := tempDbFactory.Close(); err != nil {
-			log.SimpleLogger().Errorf("error shutting down temp db factory: %v", err)
+			slog.Default().ErrorContext(ctx, "failed to shut down temp db factory",
+				slog.Any("error", err),
+			)
 		}
 	}()
 

@@ -3,6 +3,7 @@ package diff
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -10,7 +11,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	"github.com/stripe/pg-schema-diff/internal/schema"
-	"github.com/stripe/pg-schema-diff/pkg/log"
 	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
@@ -118,7 +118,7 @@ func (suite *planGeneratorTestSuite) TestGeneratePlan_SchemaSourceErr() {
 	tempDbFactory := suite.mustBuildTempDbFactory(context.Background())
 	defer tempDbFactory.Close()
 
-	logger := log.SimpleLogger()
+	logger := slog.Default()
 
 	getSchemaOpts := []externalschema.GetSchemaOpt{
 		externalschema.WithIncludeSchemas("schema_1"),

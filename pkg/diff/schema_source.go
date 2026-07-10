@@ -3,19 +3,19 @@ package diff
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/stripe/pg-schema-diff/internal/schema"
-	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
 type schemaSourcePlanDeps struct {
 	tempDBFactory tempdb.Factory
-	logger        log.Logger
+	logger        *slog.Logger
 	getSchemaOpts []schema.GetSchemaOpt
 }
 
@@ -110,7 +110,9 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 	}
 	defer func(closer tempdb.ContextualCloser) {
 		if err := closer.Close(ctx); err != nil {
-			deps.logger.Errorf("an error occurred while dropping the temp database: %s", err)
+			deps.logger.ErrorContext(ctx, "failed to drop temporary database",
+				slog.Any("error", err),
+			)
 		}
 	}(tempDb.ContextualCloser)
 

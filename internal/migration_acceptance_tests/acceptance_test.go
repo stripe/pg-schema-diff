@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	stdlog "log"
+	"log/slog"
 	"os"
 	"testing"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/pgdump"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
-	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
@@ -100,7 +100,7 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	// in future assertions.
 	_, err := uuid.NewRandomFromReader(deterministicRandReader)
 	require.NoError(t, err)
-	tc.planOpts = append([]diff.PlanOpt{diff.WithLogger(log.SimpleLogger()), diff.WithRandReader(deterministicRandReader)}, tc.planOpts...)
+	tc.planOpts = append([]diff.PlanOpt{diff.WithLogger(slog.Default()), diff.WithRandReader(deterministicRandReader)}, tc.planOpts...)
 	if tc.expectedDBSchemaDDL == nil {
 		tc.expectedDBSchemaDDL = tc.newSchemaDDL
 	}

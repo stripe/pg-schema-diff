@@ -3,6 +3,7 @@ package tempdb
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -11,8 +12,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
-
-	"github.com/stripe/pg-schema-diff/pkg/log"
 )
 
 type onInstanceTempDbFactorySuite struct {
@@ -120,7 +119,7 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 		WithDbPrefix(dbPrefix),
 		WithMetadataSchema(metadataSchema),
 		WithMetadataTable(metadataTable),
-		WithLogger(log.SimpleLogger()),
+		WithLogger(slog.Default()),
 		WithRootDatabase(rootDbName),
 	)
 	defer func(factory Factory) {
