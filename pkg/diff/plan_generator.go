@@ -17,9 +17,7 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
-var (
-	errTempDbFactoryRequired = fmt.Errorf("tempDbFactory is required. include the option WithTempDbFactory")
-)
+var errTempDbFactoryRequired = fmt.Errorf("tempDbFactory is required. include the option WithTempDbFactory")
 
 type (
 	planOptions struct {
@@ -215,7 +213,8 @@ func assertValidPlan(ctx context.Context,
 	}
 	defer func(closer tempdb.ContextualCloser) {
 		if err := closer.Close(ctx); err != nil {
-			planOptions.logger.ErrorContext(ctx, "failed to drop temporary database",
+			planOptions.logger.ErrorContext(
+				ctx, "failed to drop temporary database",
 				slog.Any("error", err),
 			)
 		}
@@ -313,7 +312,8 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *pgxpool.Pool
 	defer conn.Release()
 
 	// Set a session-level statement_timeout to bound the execution of the migration plan.
-	if _, err := conn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", (10*time.Second).Milliseconds())); err != nil {
+	if _, err := conn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d",
+		(10*time.Second).Milliseconds())); err != nil {
 		return fmt.Errorf("setting statement timeout: %w", err)
 	}
 	// When a statement_timeout is set for the session, it will not reset

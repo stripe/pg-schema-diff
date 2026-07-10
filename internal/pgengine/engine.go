@@ -61,12 +61,10 @@ const (
 	defaultWaitBetweenStartupConnAttempt = time.Second
 )
 
-var (
-	defaultServerConfiguration = map[string]string{
-		"log_checkpoints": "false",
-		"max_connections": "1000",
-	}
-)
+var defaultServerConfiguration = map[string]string{
+	"log_checkpoints": "false",
+	"max_connections": "1000",
+}
 
 // StartEngine starts a postgres instance. This is useful for testing, where Postgres databases need to be spun up.
 // "postgres" must be on the system's PATH, and the binary must be located in a directory containing "initdb"
@@ -113,7 +111,8 @@ func StartEngineUsingPgDir(pgDir string) (_ *Engine, retErr error) {
 			pgEngine.Close()
 		}
 	}()
-	if err := pgEngine.waitTillServingTraffic(defaultMaxConnAttemptsAtStartup, defaultWaitBetweenStartupConnAttempt); err != nil {
+	if err := pgEngine.waitTillServingTraffic(defaultMaxConnAttemptsAtStartup,
+		defaultWaitBetweenStartupConnAttempt); err != nil {
 		return nil, fmt.Errorf("waiting till server can serve traffic: %w", err)
 	}
 

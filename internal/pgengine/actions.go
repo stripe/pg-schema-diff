@@ -21,7 +21,8 @@ func ResetInstance(ctx context.Context, db *pgxpool.Pool) error {
 
 // DropRoles drops all roles except the current user and postgres internal roles
 func dropRoles(ctx context.Context, db *pgxpool.Pool) error {
-	rows, err := db.Query(ctx, `
+	rows, err := db.Query(
+		ctx, `
 		SELECT rolname 
 		FROM pg_catalog.pg_roles 
 		WHERE rolname NOT LIKE 'pg_%'

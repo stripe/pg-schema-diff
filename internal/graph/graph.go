@@ -186,7 +186,8 @@ func (g *Graph[V]) TopologicallySortWithPriority(isLowerPriority func(V, V) bool
 		// Take the source with highest priority from the sorted array of sources
 		indexOfSourceWithHighestPri := -1
 		for i, source := range sources {
-			if indexOfSourceWithHighestPri == -1 || isLowerPriority(sources[indexOfSourceWithHighestPri], source) {
+			if indexOfSourceWithHighestPri == -1 ||
+				isLowerPriority(sources[indexOfSourceWithHighestPri], source) {
 				indexOfSourceWithHighestPri = i
 			}
 		}
@@ -194,9 +195,10 @@ func (g *Graph[V]) TopologicallySortWithPriority(isLowerPriority func(V, V) bool
 			dotSB := strings.Builder{}
 			if err := EncodeDOT(g, &dotSB, true); err != nil {
 				dotSB.Reset()
-				dotSB.WriteString(fmt.Sprintf("failed to encode graph to DOT: %v", err))
+				fmt.Fprintf(&dotSB, "failed to encode graph to DOT: %v", err)
 			}
-			return nil, fmt.Errorf("cycle detected: %+v, %+v\n%s", graph, incomingEdgeCountByVertex, dotSB.String())
+			return nil, fmt.Errorf("cycle detected: %+v, %+v\n%s", graph,
+				incomingEdgeCountByVertex, dotSB.String())
 		}
 		sourceWithHighestPriority := sources[indexOfSourceWithHighestPri]
 

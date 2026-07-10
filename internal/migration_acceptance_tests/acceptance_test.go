@@ -21,12 +21,11 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
-var (
-	errValidatingPlan = fmt.Errorf("validating migration plan")
-)
+var errValidatingPlan = fmt.Errorf("validating migration plan")
 
 type (
-	planFactory func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error)
+	planFactory func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory,
+		newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error)
 
 	acceptanceTestCase struct {
 		name string
@@ -100,17 +99,22 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	// in future assertions.
 	_, err := uuid.NewRandomFromReader(deterministicRandReader)
 	require.NoError(t, err)
-	tc.planOpts = append([]diff.PlanOpt{diff.WithLogger(slog.Default()), diff.WithRandReader(deterministicRandReader)}, tc.planOpts...)
+	tc.planOpts = append([]diff.PlanOpt{
+		diff.WithLogger(slog.Default()),
+		diff.WithRandReader(deterministicRandReader),
+	}, tc.planOpts...)
 	if tc.expectedDBSchemaDDL == nil {
 		tc.expectedDBSchemaDDL = tc.newSchemaDDL
 	}
 	if tc.planFactory == nil {
-		tc.planFactory = func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error) {
-
+		tc.planFactory = func(ctx context.Context, connPool sqldb.Queryable,
+			tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt,
+		) (diff.Plan, error) {
 			connSource := diff.DBSchemaSource(connPool)
 
 			return diff.Generate(ctx, connSource, diff.DDLSchemaSource(newSchemaDDL),
-				append(tc.planOpts,
+				append(
+					tc.planOpts,
 					diff.WithTempDbFactory(tempDbFactory),
 				)...)
 		}
@@ -150,7 +154,9 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	require.NoError(t, err)
 	defer oldDBConnPool.Close()
 
-	tempDbFactory, err := tempdb.NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
+	tempDbFactory, err := tempdb.NewOnInstanceFactory(context.Background(), func(
+		ctx context.Context, dbName string,
+	) (*pgxpool.Pool, error) {
 		return pgxpool.New(ctx, engine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
 	}, tempdb.WithRandReader(deterministicRandReader))
 	require.NoError(t, err)
@@ -177,14 +183,16 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 		// It shouldn't be necessary, but we'll run all checks below this point just in case rather than exiting early
 		assert.Empty(t, plan.Statements)
 	}
-	assert.ElementsMatch(t, tc.expectedHazardTypes, getUniqueHazardTypesFromStatements(plan.Statements), prettySprintPlan(plan))
+	assert.ElementsMatch(t, tc.expectedHazardTypes,
+		getUniqueHazardTypesFromStatements(plan.Statements), prettySprintPlan(plan))
 
 	// Apply the plan
 	require.NoError(t, applyPlan(oldDb, plan), prettySprintPlan(plan))
 
 	// Make sure the pgdump after running the migration is the same as the
 	// pgdump from a database where we directly run the newSchemaDDL
-	oldDbDump, err := pgdump.GetDump(oldDb, pgdump.WithSchemaOnly(), pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
+	oldDbDump, err := pgdump.GetDump(oldDb, pgdump.WithSchemaOnly(),
+		pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
 	require.NoError(t, err)
 
 	newDbDump := directlyRunDDLAndGetDump(t, engine, tc.expectedDBSchemaDDL)
@@ -200,7 +208,8 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 		// We can also make the system more advanced by using tokens in place of the "randomly" generated UUIDs, such
 		// the test case doesn't need to be updated if the UUID generation changes. If we built this functionality, we
 		// should also integrate it with the schema_migration_plan_test.go tests.
-		assert.Equal(t, tc.expectedPlanDDL, generatedDDL, "data packing can change the the generated UUID and DDL")
+		assert.Equal(t, tc.expectedPlanDDL, generatedDDL,
+			"data packing can change the the generated UUID and DDL")
 	}
 
 	// Make sure no diff is found if we try to regenerate a plan
@@ -211,8 +220,10 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 
 func assertValidPlan(t *testing.T, plan diff.Plan) {
 	for _, stmt := range plan.Statements {
-		assert.Greater(t, stmt.Timeout.Nanoseconds(), int64(0), "timeout should be greater than 0. stmt=%+v", stmt)
-		assert.Greater(t, stmt.LockTimeout.Nanoseconds(), int64(0), "lock timeout should be greater than 0. stmt=%+v", stmt)
+		assert.Greater(t, stmt.Timeout.Nanoseconds(), int64(0),
+			"timeout should be greater than 0. stmt=%+v", stmt)
+		assert.Greater(t, stmt.LockTimeout.Nanoseconds(), int64(0),
+			"lock timeout should be greater than 0. stmt=%+v", stmt)
 	}
 }
 
@@ -222,7 +233,8 @@ func directlyRunDDLAndGetDump(t *testing.T, engine *pgengine.Engine, ddl []strin
 	defer newDb.DropDB()
 	require.NoError(t, applyDDL(newDb, ddl))
 
-	newDbDump, err := pgdump.GetDump(newDb, pgdump.WithSchemaOnly(), pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
+	newDbDump, err := pgdump.GetDump(newDb, pgdump.WithSchemaOnly(),
+		pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
 	require.NoError(t, err)
 	return newDbDump
 }
@@ -252,7 +264,7 @@ func applyPlan(db *pgengine.DB, plan diff.Plan) error {
 }
 
 func getUniqueHazardTypesFromStatements(statements []diff.Statement) []diff.MigrationHazardType {
-	var seenHazardTypes = make(map[diff.MigrationHazardType]bool)
+	seenHazardTypes := make(map[diff.MigrationHazardType]bool)
 	var hazardTypes []diff.MigrationHazardType
 	for _, stmt := range statements {
 		for _, hazard := range stmt.Hazards {

@@ -1,7 +1,7 @@
 # Expected workflow
 
 1. Add a SQL query/statement in `queries.sql`, following the other examples.
-2. Run `make sqlc` using the same version of sqlc as in `build/Dockerfile.codegen`
+2. Run `devenv tasks run sql:gen` using the pinned devenv version of sqlc
 
 `sqlc` decides what the return-type of the generated method should be based on the `:exec` suffix (documentation [here](https://docs.sqlc.dev/en/latest/reference/query-annotations.html)):
   - `:exec` will only tell you whether the query succeeded: `error`

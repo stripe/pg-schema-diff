@@ -55,7 +55,7 @@ var (
 			CREATE TYPE foobar_enum AS ENUM ('foobar_1', 'foobar_2', 'foobar_3');
 			CREATE TYPE schema_1.foobar_enum AS ENUM ('foobar_1', 'foobar_2');
 			-- Validate types are filtered out
-			CREATE TYPE schema_filtered_1.foobar_enum AS ENUM ('foobar_1', 'foobar_2');		
+			CREATE TYPE schema_filtered_1.foobar_enum AS ENUM ('foobar_1', 'foobar_2');
 
 			CREATE SEQUENCE schema_1.foobar_sequence
 			    AS BIGINT
@@ -67,7 +67,7 @@ var (
 			-- Validate sequences are filtered out
 			CREATE SEQUENCE schema_filtered_1.foobar_sequence
 			    AS BIGINT
-				INCREMENT BY 2	
+				INCREMENT BY 2
 				MINVALUE 5 MAXVALUE 100
 				START WITH 10 CACHE 5 CYCLE
 				OWNED BY NONE;
@@ -279,11 +279,20 @@ var (
 							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
 							{Name: "version", Type: "integer", Default: "0", Size: 4},
-							{Name: "added_col", Type: "text", Default: "'some_default'::text", IsNullable: true, Size: -1, Collation: defaultCollation, HasMissingValOptimization: true},
+							{
+								Name: "added_col", Type: "text", Default: "'some_default'::text", IsNullable: true,
+								Size: -1, Collation: defaultCollation, HasMissingValOptimization: true,
+							},
 						},
 						CheckConstraints: []CheckConstraint{
-							{Name: "author_content_check", Expression: "((length(content) > 0) AND (length(author) > 0))", KeyColumns: []string{"author", "content"}},
-							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true, KeyColumns: []string{"created_at"}},
+							{
+								Name: "author_content_check", Expression: "((length(content) > 0) AND (length(author) > 0))",
+								KeyColumns: []string{"author", "content"},
+							},
+							{
+								Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))",
+								IsValid: true, KeyColumns: []string{"created_at"},
+							},
 							{
 								Name:          "foo_id_check",
 								Expression:    "(function_with_dependencies(id, id) > 0)",
@@ -411,12 +420,15 @@ var (
 				},
 				Indexes: []Index{
 					{
-						OwningRelName:   SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
-						OwningRelKind:   RelKindOrdinaryTable,
-						Name:            "foo_pkey",
-						Columns:         []string{"id", "version"},
-						IsUnique:        true,
-						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (id, version)", IsLocal: true},
+						OwningRelName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
+						OwningRelKind: RelKindOrdinaryTable,
+						Name:          "foo_pkey",
+						Columns:       []string{"id", "version"},
+						IsUnique:      true,
+						Constraint: &IndexConstraint{
+							Type:                  PkIndexConstraintType,
+							EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (id, version)", IsLocal: true,
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON schema_2.foo USING btree (id, version)",
 					},
 					{
@@ -478,12 +490,18 @@ var (
 				},
 				Procedures: []Procedure{
 					{
-						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_plpgsql_procedure\"(IN foobar numeric)"},
-						Def:                 "CREATE OR REPLACE PROCEDURE public.some_plpgsql_procedure(IN foobar numeric)\n LANGUAGE plpgsql\nAS $procedure$\n\t\t\t\tBEGIN\n\t\t\t\t\tRAISE NOTICE 'some notice';\n\t\t\t\tEND\n\t\t\t\t$procedure$\n",
+						SchemaQualifiedName: SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"some_plpgsql_procedure\"(IN foobar numeric)",
+						},
+						Def: "CREATE OR REPLACE PROCEDURE public.some_plpgsql_procedure(IN foobar numeric)\n LANGUAGE plpgsql\nAS $procedure$\n\t\t\t\tBEGIN\n\t\t\t\t\tRAISE NOTICE 'some notice';\n\t\t\t\tEND\n\t\t\t\t$procedure$\n",
 					},
 					{
-						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"some_insert_procedure\"(IN a integer, IN b integer)"},
-						Def:                 "CREATE OR REPLACE PROCEDURE schema_2.some_insert_procedure(IN a integer, IN b integer)\n LANGUAGE sql\nBEGIN ATOMIC\n INSERT INTO schema_2.foo DEFAULT VALUES;\nEND\n",
+						SchemaQualifiedName: SchemaQualifiedName{
+							SchemaName:  "schema_2",
+							EscapedName: "\"some_insert_procedure\"(IN a integer, IN b integer)",
+						},
+						Def: "CREATE OR REPLACE PROCEDURE schema_2.some_insert_procedure(IN a integer, IN b integer)\n LANGUAGE sql\nBEGIN ATOMIC\n INSERT INTO schema_2.foo DEFAULT VALUES;\nEND\n",
 					},
 				},
 				Triggers: []Trigger{
@@ -603,13 +621,23 @@ var (
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
 							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", Size: 4,
-								Identity: &ColumnIdentity{Type: "a", MinValue: 1, MaxValue: 2147483647, StartValue: 1, Increment: 1, CacheSize: 1, Cycle: false},
+							{
+								Name: "version", Type: "integer", Size: 4,
+								Identity: &ColumnIdentity{
+									Type: "a", MinValue: 1, MaxValue: 2147483647, StartValue: 1,
+									Increment: 1, CacheSize: 1, Cycle: false,
+								},
 							},
 						},
 						CheckConstraints: []CheckConstraint{
-							{Name: "author_check", Expression: "((author IS NOT NULL) AND (length(author) > 0))", IsInheritable: true, KeyColumns: []string{"author"}},
-							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true, IsInheritable: true, KeyColumns: []string{"created_at"}},
+							{
+								Name: "author_check", Expression: "((author IS NOT NULL) AND (length(author) > 0))",
+								IsInheritable: true, KeyColumns: []string{"author"},
+							},
+							{
+								Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))",
+								IsValid: true, IsInheritable: true, KeyColumns: []string{"created_at"},
+							},
 							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
 						},
 						ReplicaIdentity: ReplicaIdentityFull,
@@ -733,7 +761,10 @@ var (
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						OwningRelKind: RelKindPartitionedTable,
 						Name:          "foo_pkey", Columns: []string{"author", "id"}, IsUnique: true,
-						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true},
+						Constraint: &IndexConstraint{
+							Type:                  PkIndexConstraintType,
+							EscapedConstraintName: "\"foo_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true,
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_pkey ON ONLY public.foo USING btree (author, id)",
 					},
 					{
@@ -759,14 +790,20 @@ var (
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_1_author_idx", Columns: []string{"author"},
-						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_partitioned_idx\""},
+						ParentIdx: &SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"some_partitioned_idx\"",
+						},
 						GetIndexDefStmt: "CREATE INDEX foo_1_author_idx ON public.foo_1 USING hash (author)",
 					},
 					{
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_1_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
-						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_unique_partitioned_idx\""},
+						ParentIdx: &SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"some_unique_partitioned_idx\"",
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_author_created_at_idx ON public.foo_1 USING btree (author, created_at DESC)",
 					},
 					{
@@ -779,8 +816,11 @@ var (
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_1_pkey", Columns: []string{"author", "id"}, IsUnique: true,
-						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_pkey\""},
-						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
+						ParentIdx: &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_pkey\""},
+						Constraint: &IndexConstraint{
+							Type:                  PkIndexConstraintType,
+							EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)",
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_pkey ON public.foo_1 USING btree (author, id)",
 					},
 					// foo_2 indexes
@@ -788,14 +828,20 @@ var (
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_2_author_idx", Columns: []string{"author"},
-						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_partitioned_idx\""},
+						ParentIdx: &SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"some_partitioned_idx\"",
+						},
 						GetIndexDefStmt: "CREATE INDEX foo_2_author_idx ON public.foo_2 USING hash (author)",
 					},
 					{
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_2_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
-						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_unique_partitioned_idx\""},
+						ParentIdx: &SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"some_unique_partitioned_idx\"",
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_author_created_at_idx ON public.foo_2 USING btree (author, created_at DESC)",
 					},
 					{
@@ -808,8 +854,11 @@ var (
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_2_pkey", Columns: []string{"author", "id"}, IsUnique: true,
-						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_pkey\""},
-						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_2_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
+						ParentIdx: &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_pkey\""},
+						Constraint: &IndexConstraint{
+							Type:                  PkIndexConstraintType,
+							EscapedConstraintName: "\"foo_2_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)",
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_2_pkey ON public.foo_2 USING btree (author, id)",
 					},
 					// foo_3 indexes
@@ -817,14 +866,20 @@ var (
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_3_author_idx", Columns: []string{"author"},
-						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_partitioned_idx\""},
+						ParentIdx: &SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"some_partitioned_idx\"",
+						},
 						GetIndexDefStmt: "CREATE INDEX foo_3_author_idx ON public.foo_3 USING hash (author)",
 					},
 					{
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_3_author_created_at_idx", Columns: []string{"author", "created_at"}, IsUnique: true,
-						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"some_unique_partitioned_idx\""},
+						ParentIdx: &SchemaQualifiedName{
+							SchemaName:  "public",
+							EscapedName: "\"some_unique_partitioned_idx\"",
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_author_created_at_idx ON public.foo_3 USING btree (author, created_at DESC)",
 					},
 					{
@@ -837,8 +892,11 @@ var (
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_3_pkey", Columns: []string{"author", "id"}, IsUnique: true,
-						ParentIdx:       &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_pkey\""},
-						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_3_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)"},
+						ParentIdx: &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_pkey\""},
+						Constraint: &IndexConstraint{
+							Type:                  PkIndexConstraintType,
+							EscapedConstraintName: "\"foo_3_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)",
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_3_pkey ON public.foo_3 USING btree (author, id)",
 					},
 				},
@@ -941,7 +999,10 @@ var (
 						OwningRelName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
 						OwningRelKind: RelKindOrdinaryTable,
 						Name:          "foo_1_pkey", Columns: []string{"author", "id"}, IsUnique: true,
-						Constraint:      &IndexConstraint{Type: PkIndexConstraintType, EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true},
+						Constraint: &IndexConstraint{
+							Type:                  PkIndexConstraintType,
+							EscapedConstraintName: "\"foo_1_pkey\"", ConstraintDef: "PRIMARY KEY (author, id)", IsLocal: true,
+						},
 						GetIndexDefStmt: "CREATE UNIQUE INDEX foo_1_pkey ON public.foo_1 USING btree (author, id)",
 					},
 				},
@@ -984,8 +1045,12 @@ var (
 							{Name: "integer", Type: "integer", Default: "0", Size: 4},
 							{Name: "big_integer", Type: "bigint", Default: "0", Size: 8},
 							{Name: "decimal", Type: "numeric(65,10)", Default: "0.0", Size: -1},
-							{Name: "serial", Type: "integer", Collation: SchemaQualifiedName{}, Default: "nextval('foo_serial_seq'::regclass)", IsNullable: false, Size: 4},
-							{Name: "identity_always", Type: "bigint", Size: 8,
+							{
+								Name: "serial", Type: "integer", Collation: SchemaQualifiedName{},
+								Default: "nextval('foo_serial_seq'::regclass)", IsNullable: false, Size: 4,
+							},
+							{
+								Name: "identity_always", Type: "bigint", Size: 8,
 								Identity: &ColumnIdentity{
 									Type:       ColumnIdentityTypeAlways,
 									MinValue:   2,
@@ -996,7 +1061,8 @@ var (
 									Cycle:      false,
 								},
 							},
-							{Name: "identity_default", Type: "bigint", Size: 8,
+							{
+								Name: "identity_default", Type: "bigint", Size: 8,
 								Identity: &ColumnIdentity{
 									Type:       ColumnIdentityTypeByDefault,
 									MinValue:   20,
@@ -1068,7 +1134,7 @@ var (
 			opts: []GetSchemaOpt{WithIncludeSchemas("public")},
 			ddl: []string{`
 				CREATE SCHEMA schema_filtered_1;
-				CREATE TABLE schema_filtered_1.foobar(	
+				CREATE TABLE schema_filtered_1.foobar(
 				    id VARCHAR(255) NOT NULL
 				) PARTITION BY LIST (id);
 				CREATE TABLE foobar_1 PARTITION OF schema_filtered_1.foobar FOR VALUES IN ('1');
@@ -1096,7 +1162,7 @@ var (
 			opts: []GetSchemaOpt{WithIncludeSchemas("public")},
 			ddl: []string{`
 				CREATE SCHEMA schema_filtered_1;
-				CREATE TABLE foobar(	
+				CREATE TABLE foobar(
 				    id VARCHAR(255) NOT NULL
 				) PARTITION BY LIST (id);
 				CREATE TABLE schema_filtered_1.foobar_1 PARTITION OF foobar FOR VALUES IN ('1');
@@ -1121,7 +1187,7 @@ var (
 			name: "Filtering - no filtering fetches everything",
 			ddl: []string{`
 				CREATE SCHEMA schema_1;
-				CREATE TABLE schema_1.foobar(	
+				CREATE TABLE schema_1.foobar(
 				    id VARCHAR(255) NOT NULL
 				) PARTITION BY LIST (id);
 				CREATE TABLE foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('1');
@@ -1239,7 +1305,7 @@ var (
 			},
 			ddl: []string{`
 				CREATE TABLE foobar();
-				CREATE SCHEMA schema_1;	
+				CREATE SCHEMA schema_1;
 				CREATE TABLE schema_1.foobar();
 				CREATE SCHEMA schema_2;
 				CREATE TABLE schema_2.foobar();
@@ -1345,14 +1411,16 @@ func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getD
 
 	expectedNormalized := testCase.expectedSchema.Normalize()
 	fetchedNormalized := fetchedSchema.Normalize()
-	assert.Equal(t, expectedNormalized, fetchedNormalized, "expected=\n%# v \n fetched=%# v\n", pretty.Formatter(expectedNormalized), pretty.Formatter(fetchedNormalized))
+	assert.Equal(t, expectedNormalized, fetchedNormalized, "expected=\n%# v \n fetched=%# v\n",
+		pretty.Formatter(expectedNormalized), pretty.Formatter(fetchedNormalized))
 
 	fetchedSchemaHash, err := fetchedSchema.Hash()
 	require.NoError(t, err)
 	expectedSchemaHash, err := testCase.expectedSchema.Hash()
 	require.NoError(t, err)
 	// same schemas should have the same hashes
-	assert.Equal(t, expectedSchemaHash, fetchedSchemaHash, "hash of expected schema should match fetched hash")
+	assert.Equal(t, expectedSchemaHash, fetchedSchemaHash,
+		"hash of expected schema should match fetched hash")
 	if testCase.expectedHash != "" {
 		// Optionally assert that the hash matches the expected hash
 		assert.Equal(t, testCase.expectedHash, fetchedSchemaHash)
@@ -1423,7 +1491,7 @@ func TestTriggerDefStmtToCreateOrReplace(t *testing.T) {
 		},
 		{
 			name:      "case sensitive",
-			defStmt:   "cREATE TRIGGER some_trigger BEFORE UPDATE ON public.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
+			defStmt:   "CREATE TRIGGER some_trigger BEFORE UPDATE ON public.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
 			expectErr: true,
 		},
 		{

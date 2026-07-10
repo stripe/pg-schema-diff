@@ -641,7 +641,8 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
                FOR EACH ROW
                WHEN (OLD.* IS DISTINCT FROM NEW.*)
                EXECUTE PROCEDURE "increment version"();
-		`},
+		`,
+		},
 		newSchemaDDL: []string{
 			`
            CREATE TABLE "some foo" (
@@ -671,7 +672,8 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
                FOR EACH ROW
                WHEN (OLD.* IS DISTINCT FROM NEW.*)
                EXECUTE PROCEDURE "decrement version"();
-		`},
+		`,
+		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
 	{
@@ -697,7 +699,8 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
                FOR EACH ROW
                WHEN (OLD.* IS DISTINCT FROM NEW.*)
                EXECUTE PROCEDURE "increment version"();
-		`},
+		`,
+		},
 		newSchemaDDL: []string{
 			`
            CREATE TABLE "some foo" (
@@ -719,7 +722,8 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
                FOR EACH ROW
                WHEN (OLD.* IS DISTINCT FROM NEW.*)
                EXECUTE PROCEDURE "decrement version"();
-		`},
+		`,
+		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
 	{

@@ -10,8 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mitchellh/hashstructure/v2"
+
 	"github.com/stripe/pg-schema-diff/internal/concurrent"
-	"github.com/stripe/pg-schema-diff/internal/queries"
+	dbsqlc "github.com/stripe/pg-schema-diff/internal/queries"
 )
 
 type (

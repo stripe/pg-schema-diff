@@ -11,10 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Build Docker image
-        run: docker build -t pg-schema-diff-lint-runner -f ./build/Dockerfile.lint .
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: nix profile install nixpkgs#devenv
       - name: Run lint
-        run: docker run pg-schema-diff-lint-runner
+        run: devenv tasks run go:lint
   # The "lint" job will lint go (and SQL). The "go_lint" job will also lint go but adds comments to the PR on the lines
   # containing the linting errors
   go_lint:
@@ -29,4 +33,3 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.7.0
-

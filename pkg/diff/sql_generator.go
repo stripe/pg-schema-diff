@@ -202,7 +202,8 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 					new: new,
 				},
 			}, false, nil
-		})
+		},
+	)
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing schemas: %w", err)
 	}
@@ -217,7 +218,8 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 					new: new,
 				},
 			}, false, nil
-		})
+		},
+	)
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing extensions: %w", err)
 	}
@@ -243,7 +245,9 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	addedTablesByName := buildSchemaObjByNameMap(tableDiffs.adds)
 	deletedTablesByName := buildSchemaObjByNameMap(tableDiffs.deletes)
 	tableDiffsByName := buildDiffByNameMap[schema.Table, tableDiff](tableDiffs.alters)
-	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(oldIndex, newIndex schema.Index, _, _ int) (indexDiff, bool, error) {
+	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(
+		oldIndex, newIndex schema.Index, _, _ int,
+	) (indexDiff, bool, error) {
 		return buildIndexDiff(indexDiffConfig{
 			newSchemaTablesByName:  newSchemaTablesByName,
 			addedTablesByName:      addedTablesByName,
@@ -256,14 +260,19 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	fsg := newForeignKeyConstraintSQLVertexGenerator(oldAndNew[schema.Schema]{old: old, new: new}, tableDiffs)
-	foreignKeyConstraintDiffs, err := diffLists(old.ForeignKeyConstraints, new.ForeignKeyConstraints, func(old, new schema.ForeignKeyConstraint, _, _ int) (foreignKeyConstraintDiff, bool, error) {
-		return buildForeignKeyConstraintDiff(fsg, addedTablesByName, old, new)
-	})
+	foreignKeyConstraintDiffs, err := diffLists(old.ForeignKeyConstraints,
+		new.ForeignKeyConstraints, func(old, new schema.ForeignKeyConstraint, _, _ int) (
+			foreignKeyConstraintDiff, bool, error,
+		) {
+			return buildForeignKeyConstraintDiff(fsg, addedTablesByName, old, new)
+		})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing foreign key constraints: %w", err)
 	}
 
-	sequencesDiffs, err := diffLists(old.Sequences, new.Sequences, func(old, new schema.Sequence, oldIndex, newIndex int) (diff sequenceDiff, requiresRecreation bool, error error) {
+	sequencesDiffs, err := diffLists(old.Sequences, new.Sequences, func(
+		old, new schema.Sequence, oldIndex, newIndex int,
+	) (diff sequenceDiff, requiresRecreation bool, error error) {
 		seqDiff := sequenceDiff{
 			oldAndNew[schema.Sequence]{
 				old: old,
@@ -296,7 +305,9 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing functions: %w", err)
 	}
 
-	procedureDiffs, err := diffLists(old.Procedures, new.Procedures, func(old, new schema.Procedure, _, _ int) (procedureDiff, bool, error) {
+	procedureDiffs, err := diffLists(old.Procedures, new.Procedures, func(
+		old, new schema.Procedure, _, _ int,
+	) (procedureDiff, bool, error) {
 		return procedureDiff{
 			oldAndNew[schema.Procedure]{
 				old: old,
@@ -325,14 +336,18 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing triggers: %w", err)
 	}
 
-	viewDiffs, err := diffLists(old.Views, new.Views, func(old, new schema.View, _, _ int) (diff viewDiff, requiresRecreation bool, error error) {
+	viewDiffs, err := diffLists(old.Views, new.Views, func(old, new schema.View, _, _ int) (
+		diff viewDiff, requiresRecreation bool, error error,
+	) {
 		return buildViewDiff(deletedTablesByName, tableDiffsByName, old, new)
 	})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing views: %w", err)
 	}
 
-	materializedViewDiffs, err := diffLists(old.MaterializedViews, new.MaterializedViews, func(old, new schema.MaterializedView, _, _ int) (diff materializedViewDiff, requiresRecreation bool, error error) {
+	materializedViewDiffs, err := diffLists(old.MaterializedViews, new.MaterializedViews, func(
+		old, new schema.MaterializedView, _, _ int,
+	) (diff materializedViewDiff, requiresRecreation bool, error error) {
 		return buildMaterializedViewDiff(deletedTablesByName, tableDiffsByName, old, new)
 	})
 	if err != nil {
@@ -426,7 +441,6 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 	policiesDiff, err := buildPolicyDiffs(psg, oldTable.Policies, newTable.Policies)
 	if err != nil {
 		return tableDiff{}, false, fmt.Errorf("diffing policies: %w", err)
-
 	}
 
 	privilegesDiff, err := diffLists(
@@ -595,14 +609,20 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	}
 
 	attachPartitionGenerator := newAttachPartitionSQLVertexGenerator(diff.new.Indexes, diff.tableDiffs.adds)
-	attachPartitionsPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Table, tableDiff](attachPartitionGenerator), diff.tableDiffs)
+	attachPartitionsPartialGraph, err := generatePartialGraph(
+		legacyToNewSqlVertexGenerator[schema.Table, tableDiff](attachPartitionGenerator), diff.tableDiffs,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("resolving attach partition diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, attachPartitionsPartialGraph)
 
-	renameConflictingIndexesGenerator := newRenameConflictingIndexSQLVertexGenerator(s.randReader, buildSchemaObjByNameMap(diff.old.Indexes))
-	renameConflictingIndexesPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Index, indexDiff](renameConflictingIndexesGenerator), diff.indexDiffs)
+	renameConflictingIndexesGenerator := newRenameConflictingIndexSQLVertexGenerator(
+		s.randReader, buildSchemaObjByNameMap(diff.old.Indexes),
+	)
+	renameConflictingIndexesPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Index, indexDiff](
+		renameConflictingIndexesGenerator,
+	), diff.indexDiffs)
 	if err != nil {
 		return nil, fmt.Errorf("resolving renaming conflicting indexes diff: %w", err)
 	}
@@ -718,7 +738,7 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 }
 
 func buildIndexesByTableNameMap(indexes []schema.Index) map[string][]schema.Index {
-	var output = make(map[string][]schema.Index)
+	output := make(map[string][]schema.Index)
 	for _, idx := range indexes {
 		output[idx.OwningRelName.GetName()] = append(output[idx.OwningRelName.GetName()], idx)
 	}
@@ -730,7 +750,7 @@ func buildIndexesByTableNameMap(indexes []schema.Index) map[string][]schema.Inde
 // has 5 children, the slice for foobar index will contain 30 indexes (the 5 direct children and the 25 "grandchildren")
 func buildChildrenByPartitionedIndexNameMap(indexes []schema.Index) map[string][]schema.Index {
 	// Build a map of children by their direct parent index
-	var childrenByDirectParentIdxName = make(map[string][]schema.Index)
+	childrenByDirectParentIdxName := make(map[string][]schema.Index)
 	for _, idx := range indexes {
 		parentIdxName := ""
 		if idx.ParentIdx != nil {
@@ -740,11 +760,11 @@ func buildChildrenByPartitionedIndexNameMap(indexes []schema.Index) map[string][
 	}
 
 	// Use this map to build a map of root index by child index name
-	var rootsByChildIdxName = make(map[string]schema.Index)
+	rootsByChildIdxName := make(map[string]schema.Index)
 	// We need to calculate this level by level. We will start with the roots.
-	var currentNodes = childrenByDirectParentIdxName[""]
+	currentNodes := childrenByDirectParentIdxName[""]
 	for len(currentNodes) > 0 {
-		var idx = currentNodes[0]
+		idx := currentNodes[0]
 		currentNodes = currentNodes[1:]
 
 		rootIdx := idx
@@ -758,7 +778,7 @@ func buildChildrenByPartitionedIndexNameMap(indexes []schema.Index) map[string][
 	}
 
 	// Build a map of all children by the root index name using the result of the previous step
-	var allChildrenByRootIndexName = make(map[string][]schema.Index)
+	allChildrenByRootIndexName := make(map[string][]schema.Index)
 	for _, idx := range indexes {
 		if idx.ParentIdx == nil {
 			// Skip nodes without parents
@@ -814,7 +834,8 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		}
 		// We attach the partitions separately. So the partition must have all the same check constraints
 		// as the original table
-		table.CheckConstraints = append(table.CheckConstraints, t.tablesInNewSchemaByName[table.ParentTable.GetName()].CheckConstraints...)
+		table.CheckConstraints = append(table.CheckConstraints,
+			t.tablesInNewSchemaByName[table.ParentTable.GetName()].CheckConstraints...)
 	}
 
 	var stmts []Statement
@@ -828,12 +849,14 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		columnDefs = append(columnDefs, "\t"+columnDef)
 	}
 	createTableSb := strings.Builder{}
-	createTableSb.WriteString(fmt.Sprintf("CREATE TABLE %s (\n%s\n)",
+	fmt.Fprintf(
+		&createTableSb,
+		"CREATE TABLE %s (\n%s\n)",
 		table.GetFQEscapedName(),
 		strings.Join(columnDefs, ",\n"),
-	))
+	)
 	if table.IsPartitioned() {
-		createTableSb.WriteString(fmt.Sprintf(" PARTITION BY %s", table.PartitionKeyDef))
+		fmt.Fprintf(&createTableSb, " PARTITION BY %s", table.PartitionKeyDef)
 	}
 	stmts = append(stmts, Statement{
 		DDL:         createTableSb.String(),
@@ -856,7 +879,9 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 
 	if table.ReplicaIdentity != schema.ReplicaIdentityDefault {
 		// We don't need to set the replica identity if it's the default
-		alterReplicaIdentityStmt, err := alterReplicaIdentityStatement(table.SchemaQualifiedName, table.ReplicaIdentity)
+		alterReplicaIdentityStmt, err := alterReplicaIdentityStatement(
+			table.SchemaQualifiedName, table.ReplicaIdentity,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("building replica identity statement: %w", err)
 		}
@@ -955,7 +980,9 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 	}
 
 	if diff.old.ReplicaIdentity != diff.new.ReplicaIdentity {
-		alterReplicaIdentityStmt, err := alterReplicaIdentityStatement(diff.new.SchemaQualifiedName, diff.new.ReplicaIdentity)
+		alterReplicaIdentityStmt, err := alterReplicaIdentityStatement(
+			diff.new.SchemaQualifiedName, diff.new.ReplicaIdentity,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("building replica identity statement: %w", err)
 		}
@@ -963,7 +990,7 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 	}
 
 	// We want to enable RLS after we do any other operations on the table, i.e., create policies, to avoid creating an
-	// outtage while RLS is being enabled
+	// outage while RLS is being enabled
 	if diff.new.RLSEnabled && !diff.old.RLSEnabled {
 		stmts = append(stmts, enableRLSForTable(diff.new))
 	}
@@ -980,7 +1007,8 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	}
 
 	var tempCCs []schema.CheckConstraint
-	for _, colDiff := range getDangerousNotNullAlters(diff.columnsDiff.alters, diff.new.CheckConstraints, diff.old.CheckConstraints) {
+	for _, colDiff := range getDangerousNotNullAlters(diff.columnsDiff.alters,
+		diff.new.CheckConstraints, diff.old.CheckConstraints) {
 		tempCC, err := buildTempNotNullConstraint(t.randReader, colDiff)
 		if err != nil {
 			return nil, fmt.Errorf("building temp check constraint: %w", err)
@@ -998,7 +1026,8 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	}
 	partialGraph = concatPartialGraphs(partialGraph, columnsPartialGraph)
 
-	checkConGenerator := legacyToNewSqlVertexGenerator[schema.CheckConstraint, checkConstraintDiff](&checkConstraintSQLVertexGenerator{
+	checkConGenerator := legacyToNewSqlVertexGenerator[schema.CheckConstraint,
+		checkConstraintDiff](&checkConstraintSQLVertexGenerator{
 		tableName:              diff.new.SchemaQualifiedName,
 		newSchemaColumnsByName: buildSchemaObjByNameMap(diff.new.Columns),
 		oldSchemaColumnsByName: buildSchemaObjByNameMap(diff.old.Columns),
@@ -1092,7 +1121,8 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 		}
 
 		if parentCol, ok := alteredParentColumnsByName[colDiff.new.Name]; ok {
-			if colDiff.new.IsNullable == parentCol.new.IsNullable && parentCol.new.IsNullable != parentCol.old.IsNullable {
+			if colDiff.new.IsNullable == parentCol.new.IsNullable &&
+				parentCol.new.IsNullable != parentCol.old.IsNullable {
 				// If the parent column's new nullability matches the child column, and the parent column's nullability
 				// is being altered, then we don't need to alter the child column's nullability because the DDL required
 				// to alter the parent's nullability will alter the child's nullability as well.
@@ -1100,7 +1130,9 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 			}
 		}
 
-		alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(diff.new.SchemaQualifiedName), schema.EscapeIdentifier(colDiff.new.Name))
+		alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s",
+			alterTablePrefix(diff.new.SchemaQualifiedName),
+			schema.EscapeIdentifier(colDiff.new.Name))
 		if colDiff.new.IsNullable {
 			stmts = append(stmts, Statement{
 				DDL:         fmt.Sprintf("%s DROP NOT NULL", alterColumnPrefix),
@@ -1167,12 +1199,17 @@ func buildTableVertexId(name schema.SchemaQualifiedName, diffType diffType) sqlV
 
 func (t *tableSQLVertexGenerator) GetAddAlterDependencies(table, _ schema.Table) ([]dependency, error) {
 	deps := []dependency{
-		mustRun(t.GetSQLVertexId(table, diffTypeAddAlter)).after(t.GetSQLVertexId(table, diffTypeDelete)),
+		mustRun(t.GetSQLVertexId(table, diffTypeAddAlter)).after(
+			t.GetSQLVertexId(table, diffTypeDelete),
+		),
 	}
 
 	if table.ParentTable != nil {
-		deps = append(deps,
-			mustRun(t.GetSQLVertexId(table, diffTypeAddAlter)).after(buildTableVertexId(*table.ParentTable, diffTypeAddAlter)),
+		deps = append(
+			deps,
+			mustRun(t.GetSQLVertexId(table, diffTypeAddAlter)).after(
+				buildTableVertexId(*table.ParentTable, diffTypeAddAlter),
+			),
 		)
 	}
 	return deps, nil
@@ -1202,14 +1239,12 @@ func getDangerousNotNullAlters(alteredCols []columnDiff, newSchemaCCs []schema.C
 	return dangerousNotNullAlters
 }
 
-var (
-	// isValidNotNullCCRegex is a regex that matches a valid NOT NULL check constraint. It's covers the simplest case,
-	// so we might have to improve it in the future.
-	// Notably, a false positive is much worse than a false negative because a false negative will result in an unnecessary
-	// check constraint being built, but a false positive will result in a column being changed to `NOT NULL` without
-	// a backing check constraint or a warning to the user. We should be very conservative with this regex.
-	isNotNullCCRegex = regexp.MustCompile(`^\(*((".*")|(\S*)) IS NOT NULL\)*$`)
-)
+// isValidNotNullCCRegex is a regex that matches a valid NOT NULL check constraint. It's covers the simplest case,
+// so we might have to improve it in the future.
+// Notably, a false positive is much worse than a false negative because a false negative will result in an unnecessary
+// check constraint being built, but a false positive will result in a column being changed to `NOT NULL` without
+// a backing check constraint or a warning to the user. We should be very conservative with this regex.
+var isNotNullCCRegex = regexp.MustCompile(`^\(*((".*")|(\S*)) IS NOT NULL\)*$`)
 
 func isValidNotNullCC(cc schema.CheckConstraint) bool {
 	if len(cc.KeyColumns) != 1 {
@@ -1227,9 +1262,10 @@ func buildTempNotNullConstraint(randReader io.Reader, colDiff columnDiff) (schem
 		return schema.CheckConstraint{}, fmt.Errorf("generating uuid: %w", err)
 	}
 	return schema.CheckConstraint{
-		Name:               fmt.Sprintf("%snn_%s", tmpObjNamePrefix, uuid),
-		KeyColumns:         []string{colDiff.new.Name},
-		Expression:         fmt.Sprintf("%s IS NOT NULL", schema.EscapeIdentifier(colDiff.new.Name)),
+		Name:       fmt.Sprintf("%snn_%s", tmpObjNamePrefix, uuid),
+		KeyColumns: []string{colDiff.new.Name},
+		Expression: fmt.Sprintf("%s IS NOT NULL",
+			schema.EscapeIdentifier(colDiff.new.Name)),
 		IsValid:            true,
 		IsInheritable:      true,
 		DependsOnFunctions: nil,
@@ -1239,8 +1275,11 @@ func buildTempNotNullConstraint(randReader io.Reader, colDiff columnDiff) (schem
 func (t *tableSQLVertexGenerator) GetDeleteDependencies(table schema.Table) ([]dependency, error) {
 	var deps []dependency
 	if table.ParentTable != nil {
-		deps = append(deps,
-			mustRun(t.GetSQLVertexId(table, diffTypeDelete)).after(buildTableVertexId(*table.ParentTable, diffTypeDelete)),
+		deps = append(
+			deps,
+			mustRun(t.GetSQLVertexId(table, diffTypeDelete)).after(
+				buildTableVertexId(*table.ParentTable, diffTypeDelete),
+			),
 		)
 	}
 	return deps, nil
@@ -1251,7 +1290,9 @@ type columnSQLVertexGenerator struct {
 }
 
 func newColumnSQLVertexGenerator(tableName schema.SchemaQualifiedName) sqlVertexGenerator[schema.Column, columnDiff] {
-	return legacyToNewSqlVertexGenerator[schema.Column, columnDiff](&columnSQLVertexGenerator{tableName: tableName})
+	return legacyToNewSqlVertexGenerator[schema.Column, columnDiff](&columnSQLVertexGenerator{
+		tableName: tableName,
+	})
 }
 
 func (csg *columnSQLVertexGenerator) Add(column schema.Column) ([]Statement, error) {
@@ -1303,7 +1344,8 @@ func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error)
 	}
 	oldColumn, newColumn := diff.old, diff.new
 	var stmts []Statement
-	alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(csg.tableName), schema.EscapeIdentifier(newColumn.Name))
+	alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(csg.tableName),
+		schema.EscapeIdentifier(newColumn.Name))
 
 	// Adding a "NOT NULL" constraint must come before updating a column to be an identity column, otherwise
 	// the add statement will fail because a column must be non-nullable to become an identity column.
@@ -1349,7 +1391,8 @@ func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error)
 	}
 
 	if !strings.EqualFold(oldColumn.Type, newColumn.Type) ||
-		!strings.EqualFold(oldColumn.Collation.GetFQEscapedName(), newColumn.Collation.GetFQEscapedName()) {
+		!strings.EqualFold(oldColumn.Collation.GetFQEscapedName(),
+			newColumn.Collation.GetFQEscapedName()) {
 		stmts = append(stmts,
 			[]Statement{
 				csg.generateTypeTransformationStatement(
@@ -1362,7 +1405,8 @@ func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error)
 				// affect query plans. In order to mitigate the effect on queries, re-generate the statistics for the
 				// column before continuing with the migration.
 				{
-					DDL:         fmt.Sprintf("ANALYZE %s (%s)", csg.tableName.GetFQEscapedName(), schema.EscapeIdentifier(newColumn.Name)),
+					DDL: fmt.Sprintf("ANALYZE %s (%s)", csg.tableName.GetFQEscapedName(),
+						schema.EscapeIdentifier(newColumn.Name)),
 					Timeout:     statementTimeoutAnalyzeColumn,
 					LockTimeout: lockTimeoutDefault,
 					Hazards: []MigrationHazard{
@@ -1399,7 +1443,8 @@ func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
 	if strings.EqualFold(oldType, "bigint") &&
 		strings.EqualFold(newType, "timestamp without time zone") {
 		return Statement{
-			DDL: fmt.Sprintf("%s SET DATA TYPE %s using to_timestamp(%s / 1000)",
+			DDL: fmt.Sprintf(
+				"%s SET DATA TYPE %s using to_timestamp(%s / 1000)",
 				csg.alterColumnPrefix(col),
 				newType,
 				schema.EscapeIdentifier(col.Name),
@@ -1424,7 +1469,8 @@ func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
 	}
 
 	return Statement{
-		DDL: fmt.Sprintf("%s SET DATA TYPE %s %susing %s::%s",
+		DDL: fmt.Sprintf(
+			"%s SET DATA TYPE %s %susing %s::%s",
 			csg.alterColumnPrefix(col),
 			newType,
 			collationModifier,
@@ -1526,7 +1572,9 @@ func buildColumnVertexId(columnName string, diffType diffType) sqlVertexId {
 
 func (csg *columnSQLVertexGenerator) GetAddAlterDependencies(col, _ schema.Column) ([]dependency, error) {
 	return []dependency{
-		mustRun(csg.GetSQLVertexId(col, diffTypeDelete)).before(csg.GetSQLVertexId(col, diffTypeAddAlter)),
+		mustRun(csg.GetSQLVertexId(col, diffTypeDelete)).before(
+			csg.GetSQLVertexId(col, diffTypeAddAlter),
+		),
 	}, nil
 }
 
@@ -1544,7 +1592,9 @@ type renameConflictingIndexSQLVertexGenerator struct {
 	sqlVertexGenerator[schema.Index, indexDiff]
 }
 
-func newRenameConflictingIndexSQLVertexGenerator(randReader io.Reader, oldSchemaIndexesByName map[string]schema.Index) *renameConflictingIndexSQLVertexGenerator {
+func newRenameConflictingIndexSQLVertexGenerator(randReader io.Reader,
+	oldSchemaIndexesByName map[string]schema.Index,
+) *renameConflictingIndexSQLVertexGenerator {
 	rsg := &renameConflictingIndexSQLVertexGenerator{
 		randReader:             randReader,
 		oldSchemaIndexesByName: oldSchemaIndexesByName,
@@ -1576,7 +1626,8 @@ func (rsg *renameConflictingIndexSQLVertexGenerator) Add(index schema.Index) ([]
 	rsg.indexRenamesByOldName[index.GetName()] = newName
 
 	return []Statement{{
-		DDL:         fmt.Sprintf("ALTER INDEX %s RENAME TO %s", index.GetSchemaQualifiedName().GetFQEscapedName(), schema.EscapeIdentifier(newName)),
+		DDL: fmt.Sprintf("ALTER INDEX %s RENAME TO %s",
+			index.GetSchemaQualifiedName().GetFQEscapedName(), schema.EscapeIdentifier(newName)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}}, nil
@@ -1730,10 +1781,11 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		// If it's associated with a constraint, the index will be created implicitly through the constraint
 		// If we attempt to create the index and the primary key, it will throw an error about the relation already existing.
 		// If the table is the base table of a partitioned table, the constraint should "ONLY" be added to the base
-		//table. We can then concurrently build all of the partitioned indexes and attach them.
+		// table. We can then concurrently build all of the partitioned indexes and attach them.
 		// Without "ONLY", all the partitioned indexes will be automatically built
 		return []Statement{{
-			DDL:         fmt.Sprintf("ALTER TABLE ONLY %s ADD CONSTRAINT %s %s", index.OwningRelName.GetFQEscapedName(), index.Constraint.EscapedConstraintName, index.Constraint.ConstraintDef),
+			DDL: fmt.Sprintf("ALTER TABLE ONLY %s ADD CONSTRAINT %s %s",
+				index.OwningRelName.GetFQEscapedName(), index.Constraint.EscapedConstraintName, index.Constraint.ConstraintDef),
 			Timeout:     statementTimeoutDefault,
 			LockTimeout: lockTimeoutDefault,
 		}}, nil
@@ -1862,7 +1914,8 @@ func (isg *indexSQLVertexGenerator) Delete(index schema.Index) ([]Statement, err
 	}
 
 	return []Statement{{
-		DDL:         fmt.Sprintf("DROP INDEX CONCURRENTLY %s", indexToDrop.GetSchemaQualifiedName().GetFQEscapedName()),
+		DDL: fmt.Sprintf("DROP INDEX CONCURRENTLY %s",
+			indexToDrop.GetSchemaQualifiedName().GetFQEscapedName()),
 		Timeout:     statementTimeoutConcurrentIndexDrop,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     []MigrationHazard{migrationHazardIndexDroppedQueryPerf},
@@ -1950,7 +2003,8 @@ func constraintTypeAsSQL(constraintType schema.IndexConstraintType) (string, err
 
 func buildAttachIndex(index schema.Index) Statement {
 	return Statement{
-		DDL:         fmt.Sprintf("ALTER INDEX %s ATTACH PARTITION %s", index.ParentIdx.GetFQEscapedName(), index.GetSchemaQualifiedName().GetFQEscapedName()),
+		DDL: fmt.Sprintf("ALTER INDEX %s ATTACH PARTITION %s",
+			index.ParentIdx.GetFQEscapedName(), index.GetSchemaQualifiedName().GetFQEscapedName()),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}
@@ -1967,22 +2021,30 @@ func buildIndexVertexId(name schema.SchemaQualifiedName, diffType diffType) sqlV
 func (isg *indexSQLVertexGenerator) GetAddAlterDependencies(index, _ schema.Index) ([]dependency, error) {
 	dependencies := []dependency{
 		// To allow for online changes to indexes, rename the older version of the index (if it exists) before the new version is added
-		mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(buildRenameConflictingIndexVertexId(index.GetSchemaQualifiedName(), diffTypeAddAlter)),
+		mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(
+			buildRenameConflictingIndexVertexId(index.GetSchemaQualifiedName(), diffTypeAddAlter),
+		),
 	}
 
 	// Add dependency on owning relation based on relation kind
 	if index.OwningRelKind == schema.RelKindMaterializedView {
 		dependencies = append(dependencies,
-			mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(buildMaterializedViewVertexId(index.OwningRelName, diffTypeAddAlter)))
+			mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(
+				buildMaterializedViewVertexId(index.OwningRelName, diffTypeAddAlter),
+			))
 	} else {
 		dependencies = append(dependencies,
-			mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(buildTableVertexId(index.OwningRelName, diffTypeAddAlter)))
+			mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(
+				buildTableVertexId(index.OwningRelName, diffTypeAddAlter),
+			))
 	}
 
 	if index.ParentIdx != nil {
 		// Partitions of indexes must be created after the parent index is created
 		dependencies = append(dependencies,
-			mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(buildIndexVertexId(*index.ParentIdx, diffTypeAddAlter)))
+			mustRun(isg.GetSQLVertexId(index, diffTypeAddAlter)).after(
+				buildIndexVertexId(*index.ParentIdx, diffTypeAddAlter),
+			))
 	}
 
 	return dependencies, nil
@@ -1991,23 +2053,31 @@ func (isg *indexSQLVertexGenerator) GetAddAlterDependencies(index, _ schema.Inde
 func (isg *indexSQLVertexGenerator) GetDeleteDependencies(index schema.Index) ([]dependency, error) {
 	dependencies := []dependency{
 		// Drop the index after it has been potentially renamed
-		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildRenameConflictingIndexVertexId(index.GetSchemaQualifiedName(), diffTypeAddAlter)),
+		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(
+			buildRenameConflictingIndexVertexId(index.GetSchemaQualifiedName(), diffTypeAddAlter),
+		),
 	}
 
 	// Add dependency on owning relation based on relation kind
 	if index.OwningRelKind == schema.RelKindMaterializedView {
 		dependencies = append(dependencies,
-			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildMaterializedViewVertexId(index.OwningRelName, diffTypeDelete)))
+			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(
+				buildMaterializedViewVertexId(index.OwningRelName, diffTypeDelete),
+			))
 	} else {
 		dependencies = append(dependencies,
-			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildTableVertexId(index.OwningRelName, diffTypeDelete)))
+			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(
+				buildTableVertexId(index.OwningRelName, diffTypeDelete),
+			))
 	}
 
 	if index.ParentIdx != nil {
 		// Since dropping the parent index will cause the partition of the index to drop, the parent drop should come
 		// before
 		dependencies = append(dependencies,
-			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(buildIndexVertexId(*index.ParentIdx, diffTypeDelete)))
+			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).after(
+				buildIndexVertexId(*index.ParentIdx, diffTypeDelete),
+			))
 	}
 	dependencies = append(dependencies, isg.addDepsOnRelationAddAlterIfNecessary(index)...)
 
@@ -2023,7 +2093,9 @@ func (isg *indexSQLVertexGenerator) addDepsOnRelationAddAlterIfNecessary(index s
 		}
 		// For MVs, we just need the index drop to come before MV alterations
 		return []dependency{
-			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).before(buildMaterializedViewVertexId(index.OwningRelName, diffTypeAddAlter)),
+			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).before(
+				buildMaterializedViewVertexId(index.OwningRelName, diffTypeAddAlter),
+			),
 		}
 	}
 
@@ -2037,14 +2109,18 @@ func (isg *indexSQLVertexGenerator) addDepsOnRelationAddAlterIfNecessary(index s
 
 	// These dependencies will force the index deletion statement to come before the table AddAlter
 	addAlterColumnDeps := []dependency{
-		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).before(buildTableVertexId(index.OwningRelName, diffTypeAddAlter)),
+		mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).before(
+			buildTableVertexId(index.OwningRelName, diffTypeAddAlter),
+		),
 	}
 	if parentTable.ParentTable != nil {
 		// If the table is partitioned, columns modifications occur on the base table not the children. Thus, we
 		// need the dependency to also be on the parent table add/alter statements
 		addAlterColumnDeps = append(
 			addAlterColumnDeps,
-			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).before(buildTableVertexId(*parentTable.ParentTable, diffTypeAddAlter)),
+			mustRun(isg.GetSQLVertexId(index, diffTypeDelete)).before(
+				buildTableVertexId(*parentTable.ParentTable, diffTypeAddAlter),
+			),
 		)
 	}
 
@@ -2102,8 +2178,8 @@ func (csg *checkConstraintSQLVertexGenerator) Add(con schema.CheckConstraint) ([
 func (csg *checkConstraintSQLVertexGenerator) createCheckConstraintStatement(con schema.CheckConstraint) Statement {
 	var hazards []MigrationHazard
 	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("%s CHECK(%s)",
-		addConstraintPrefix(csg.tableName, schema.EscapeIdentifier(con.Name)), con.Expression))
+	fmt.Fprintf(&sb, "%s CHECK(%s)",
+		addConstraintPrefix(csg.tableName, schema.EscapeIdentifier(con.Name)), con.Expression)
 	if !con.IsInheritable {
 		sb.WriteString(" NO INHERIT")
 	}
@@ -2145,7 +2221,8 @@ func (csg *checkConstraintSQLVertexGenerator) Alter(diff checkConstraintDiff) ([
 
 	var stmts []Statement
 	if !diff.old.IsValid && diff.new.IsValid {
-		stmts = append(stmts, validateConstraintStatement(csg.tableName, schema.EscapeIdentifier(diff.new.Name)))
+		stmts = append(stmts, validateConstraintStatement(csg.tableName,
+			schema.EscapeIdentifier(diff.new.Name)))
 		oldCopy.IsValid = diff.new.IsValid
 	}
 
@@ -2156,7 +2233,8 @@ func (csg *checkConstraintSQLVertexGenerator) Alter(diff checkConstraintDiff) ([
 	if !cmp.Equal(oldCopy, newCopy) {
 		// Technically, we could support altering expression, but I don't see the use case for it. it would require more test
 		// cases than force re-adding it, and I'm not convinced it unlocks any functionality
-		return nil, fmt.Errorf("altering check constraint to resolve the following diff %s: %w", cmp.Diff(oldCopy, diff.new), ErrNotImplemented)
+		return nil, fmt.Errorf("altering check constraint to resolve the following diff %s: %w",
+			cmp.Diff(oldCopy, diff.new), ErrNotImplemented)
 	} else if len(diff.old.DependsOnFunctions) > 0 || len(diff.new.DependsOnFunctions) > 0 {
 		return nil, fmt.Errorf("check constraints that depend on UDFs: %w", ErrNotImplemented)
 	}
@@ -2170,7 +2248,9 @@ func (*checkConstraintSQLVertexGenerator) GetSQLVertexId(con schema.CheckConstra
 
 func (csg *checkConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ schema.CheckConstraint) ([]dependency, error) {
 	deps := []dependency{
-		mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).before(csg.GetSQLVertexId(con, diffTypeAddAlter)),
+		mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).before(
+			csg.GetSQLVertexId(con, diffTypeAddAlter),
+		),
 	}
 
 	targetColumns, err := getTargetColumns(con.KeyColumns, csg.newSchemaColumnsByName)
@@ -2189,10 +2269,14 @@ func (csg *checkConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ sch
 	if isOnValidNotNullPreExistingColumn {
 		// If the NOT NULL check constraint is on a pre-existing column, then we should ensure it is added before
 		// the column alter.
-		deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeAddAlter)).before(buildColumnVertexId(targetColumns[0].Name, diffTypeAddAlter)))
+		deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeAddAlter)).before(
+			buildColumnVertexId(targetColumns[0].Name, diffTypeAddAlter),
+		))
 	} else {
 		for _, tc := range targetColumns {
-			deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeAddAlter)).after(buildColumnVertexId(tc.Name, diffTypeAddAlter)))
+			deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeAddAlter)).after(
+				buildColumnVertexId(tc.Name, diffTypeAddAlter),
+			))
 		}
 	}
 	return deps, nil
@@ -2218,16 +2302,22 @@ func (csg *checkConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.C
 		tc := targetColumns[0]
 		if _, ok := csg.deletedColumnsByName[tc.Name]; ok {
 			// If the column is being deleted, we should drop the not null check constraint before the column is deleted.
-			deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).before(buildColumnVertexId(tc.Name, diffTypeDelete)))
+			deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).before(
+				buildColumnVertexId(tc.Name, diffTypeDelete),
+			))
 		} else {
 			// Otherwise, we should drop the not null check constraint after the column is altered. This dependency
 			// doesn't need to be explicitly, since our topological sort prioritizes adds/alters over deletes. Nevertheless,
 			// we'll add it for clarity and to ensure that an error is returned if the delete is not placed after the alter.
-			deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).after(buildColumnVertexId(tc.Name, diffTypeAddAlter)))
+			deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).after(
+				buildColumnVertexId(tc.Name, diffTypeAddAlter),
+			))
 		}
 	} else {
 		for _, tc := range targetColumns {
-			deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).before(buildColumnVertexId(tc.Name, diffTypeAddAlter)))
+			deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).before(
+				buildColumnVertexId(tc.Name, diffTypeAddAlter),
+			))
 			// This is a weird quirk of our graph system, where if a -> b and b -> c and b does-not-exist, b will be
 			// implicitly created s.t. a -> b -> c (https://github.com/stripe/pg-schema-diff/issues/84)
 			//
@@ -2235,7 +2325,9 @@ func (csg *checkConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.C
 			// the column, and "c" is the alter/addition of the column. We do not want this behavior. We only want
 			// a -> b -> c iff the column is being deleted.
 			if _, ok := csg.deletedColumnsByName[tc.Name]; ok {
-				deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).before(buildColumnVertexId(tc.Name, diffTypeDelete)))
+				deps = append(deps, mustRun(csg.GetSQLVertexId(con, diffTypeDelete)).before(
+					buildColumnVertexId(tc.Name, diffTypeDelete),
+				))
 			}
 		}
 	}
@@ -2266,7 +2358,9 @@ type attachPartitionSQLVertexGenerator struct {
 	sqlVertexGenerator[schema.Table, tableDiff]
 }
 
-func newAttachPartitionSQLVertexGenerator(newSchemaIndexes []schema.Index, addedTables []schema.Table) *attachPartitionSQLVertexGenerator {
+func newAttachPartitionSQLVertexGenerator(newSchemaIndexes []schema.Index,
+	addedTables []schema.Table,
+) *attachPartitionSQLVertexGenerator {
 	asg := &attachPartitionSQLVertexGenerator{
 		indexesInNewSchemaByTableName: buildIndexesByTableNameMap(newSchemaIndexes),
 		addedTablesByName:             buildSchemaObjByNameMap(addedTables),
@@ -2284,7 +2378,8 @@ func (*attachPartitionSQLVertexGenerator) Add(table schema.Table) ([]Statement, 
 	}
 
 	return []Statement{{
-		DDL:         fmt.Sprintf("%s ATTACH PARTITION %s %s", alterTablePrefix(*table.ParentTable), table.GetFQEscapedName(), table.ForValues),
+		DDL: fmt.Sprintf("%s ATTACH PARTITION %s %s", alterTablePrefix(*table.ParentTable),
+			table.GetFQEscapedName(), table.ForValues),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}}, nil
@@ -2309,7 +2404,9 @@ func (a *attachPartitionSQLVertexGenerator) GetAddAlterDependencies(table, old s
 	}
 
 	deps := []dependency{
-		mustRun(a.GetSQLVertexId(table, diffTypeAddAlter)).after(buildTableVertexId(table.SchemaQualifiedName, diffTypeAddAlter)),
+		mustRun(a.GetSQLVertexId(table, diffTypeAddAlter)).after(
+			buildTableVertexId(table.SchemaQualifiedName, diffTypeAddAlter),
+		),
 	}
 
 	if _, baseTableIsNew := a.addedTablesByName[table.ParentTable.GetName()]; baseTableIsNew {
@@ -2318,14 +2415,18 @@ func (a *attachPartitionSQLVertexGenerator) GetAddAlterDependencies(table, old s
 		// have the PK (this is useful when creating the fresh database schema for migration validation)
 		// If we attach the partition after the index is built, the index will be automatically built by Postgres
 		for _, idx := range a.indexesInNewSchemaByTableName[table.ParentTable.GetName()] {
-			deps = append(deps, mustRun(a.GetSQLVertexId(table, diffTypeAddAlter)).before(buildIndexVertexId(idx.GetSchemaQualifiedName(), diffTypeAddAlter)))
+			deps = append(deps, mustRun(a.GetSQLVertexId(table, diffTypeAddAlter)).before(
+				buildIndexVertexId(idx.GetSchemaQualifiedName(), diffTypeAddAlter),
+			))
 		}
 		return deps, nil
 	}
 
 	a.isPartitionAttachedAfterIdxBuildsByTableName[table.GetName()] = true
 	for _, idx := range a.indexesInNewSchemaByTableName[table.GetName()] {
-		deps = append(deps, mustRun(a.GetSQLVertexId(table, diffTypeAddAlter)).after(buildIndexVertexId(idx.GetSchemaQualifiedName(), diffTypeAddAlter)))
+		deps = append(deps, mustRun(a.GetSQLVertexId(table, diffTypeAddAlter)).after(
+			buildIndexVertexId(idx.GetSchemaQualifiedName(), diffTypeAddAlter),
+		))
 	}
 	return deps, nil
 }
@@ -2338,7 +2439,10 @@ func (a *attachPartitionSQLVertexGenerator) GetDeleteDependencies(_ schema.Table
 	return nil, nil
 }
 
-func buildForeignKeyConstraintDiff(fsg sqlVertexGenerator[schema.ForeignKeyConstraint, foreignKeyConstraintDiff], addedTablesByName map[string]schema.Table, old, new schema.ForeignKeyConstraint) (foreignKeyConstraintDiff, bool, error) {
+func buildForeignKeyConstraintDiff(fsg sqlVertexGenerator[schema.ForeignKeyConstraint,
+	foreignKeyConstraintDiff], addedTablesByName map[string]schema.Table,
+	old, new schema.ForeignKeyConstraint,
+) (foreignKeyConstraintDiff, bool, error) {
 	if _, isOnNewTable := addedTablesByName[new.OwningTable.GetName()]; isOnNewTable {
 		// If the owning table is new, then it must be re-created (this occurs if the base table has been
 		// re-created). In other words, a foreign key constraint must be re-created if the owning table or referenced
@@ -2360,7 +2464,8 @@ func buildForeignKeyConstraintDiff(fsg sqlVertexGenerator[schema.ForeignKeyConst
 			// The foreign key must be re-created if the diff cannot be reconciled via alter statements
 			return foreignKeyConstraintDiff{}, true, nil
 		}
-		return foreignKeyConstraintDiff{}, false, fmt.Errorf("generating foreign key alter statements: %w", err)
+		return foreignKeyConstraintDiff{}, false,
+			fmt.Errorf("generating foreign key alter statements: %w", err)
 	}
 
 	return fkDiff, false, nil
@@ -2386,7 +2491,9 @@ type foreignKeyConstraintSQLVertexGenerator struct {
 	childrenInNewSchemaByPartitionedIndexName map[string][]schema.Index
 }
 
-func newForeignKeyConstraintSQLVertexGenerator(oldAndNewSchema oldAndNew[schema.Schema], tableDiffs listDiff[schema.Table, tableDiff]) sqlVertexGenerator[schema.ForeignKeyConstraint, foreignKeyConstraintDiff] {
+func newForeignKeyConstraintSQLVertexGenerator(oldAndNewSchema oldAndNew[schema.Schema],
+	tableDiffs listDiff[schema.Table, tableDiff],
+) sqlVertexGenerator[schema.ForeignKeyConstraint, foreignKeyConstraintDiff] {
 	return legacyToNewSqlVertexGenerator[schema.ForeignKeyConstraint, foreignKeyConstraintDiff](&foreignKeyConstraintSQLVertexGenerator{
 		newSchemaTablesByName:                     buildSchemaObjByNameMap(oldAndNewSchema.new.Tables),
 		addedTablesByName:                         buildSchemaObjByNameMap(tableDiffs.adds),
@@ -2432,7 +2539,8 @@ func (f *foreignKeyConstraintSQLVertexGenerator) addAsInvalidThenValidateStateme
 	// circumvent requiring a SHARE_ROW_EXCLUSIVE lock on the tables.
 	return []Statement{
 		{
-			DDL:         fmt.Sprintf("%s %s NOT VALID", addConstraintPrefix(con.OwningTable, con.EscapedName), con.ConstraintDef),
+			DDL: fmt.Sprintf("%s %s NOT VALID",
+				addConstraintPrefix(con.OwningTable, con.EscapedName), con.ConstraintDef),
 			Timeout:     statementTimeoutDefault,
 			LockTimeout: lockTimeoutDefault,
 		},
@@ -2465,7 +2573,8 @@ func (f *foreignKeyConstraintSQLVertexGenerator) Alter(diff foreignKeyConstraint
 		stmts = append(stmts, validateConstraintStatement(diff.new.OwningTable, diff.new.EscapedName))
 	}
 	if !cmp.Equal(diff.old, diff.new) {
-		return nil, fmt.Errorf("altering foreign key constraint to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
+		return nil, fmt.Errorf("altering foreign key constraint to resolve the following diff %s: %w",
+			cmp.Diff(diff.old, diff.new), ErrNotImplemented)
 	}
 
 	return stmts, nil
@@ -2478,18 +2587,26 @@ func (*foreignKeyConstraintSQLVertexGenerator) GetSQLVertexId(con schema.Foreign
 func (f *foreignKeyConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ schema.ForeignKeyConstraint) ([]dependency, error) {
 	deps := []dependency{
 		mustRun(f.GetSQLVertexId(con, diffTypeAddAlter)).after(f.GetSQLVertexId(con, diffTypeDelete)),
-		mustRun(f.GetSQLVertexId(con, diffTypeAddAlter)).after(buildTableVertexId(con.OwningTable, diffTypeAddAlter)),
-		mustRun(f.GetSQLVertexId(con, diffTypeAddAlter)).after(buildTableVertexId(con.ForeignTable, diffTypeAddAlter)),
+		mustRun(f.GetSQLVertexId(con, diffTypeAddAlter)).after(
+			buildTableVertexId(con.OwningTable, diffTypeAddAlter),
+		),
+		mustRun(f.GetSQLVertexId(con, diffTypeAddAlter)).after(
+			buildTableVertexId(con.ForeignTable, diffTypeAddAlter),
+		),
 	}
 	// This is the slightly lazy way of ensuring the foreign key constraint is added after the requisite index is
 	// built and marked as valid.
 	// We __could__ do this just for the index the fk depends on, but that's slightly more wiring than we need right now
 	// because of partitioned indexes, which are only valid when all child indexes have been built
 	for _, i := range f.indexesInNewSchemaByTableName[con.ForeignTable.GetName()] {
-		deps = append(deps, mustRun(f.GetSQLVertexId(con, diffTypeAddAlter)).after(buildIndexVertexId(i.GetSchemaQualifiedName(), diffTypeAddAlter)))
+		deps = append(deps, mustRun(f.GetSQLVertexId(con, diffTypeAddAlter)).after(
+			buildIndexVertexId(i.GetSchemaQualifiedName(), diffTypeAddAlter),
+		))
 		// Build a dependency on any child index if the index is partitioned
 		for _, c := range f.childrenInNewSchemaByPartitionedIndexName[i.GetName()] {
-			deps = append(deps, mustRun(f.GetSQLVertexId(con, diffTypeAddAlter)).after(buildIndexVertexId(c.GetSchemaQualifiedName(), diffTypeAddAlter)))
+			deps = append(deps, mustRun(f.GetSQLVertexId(con, diffTypeAddAlter)).after(
+				buildIndexVertexId(c.GetSchemaQualifiedName(), diffTypeAddAlter),
+			))
 		}
 	}
 
@@ -2498,17 +2615,25 @@ func (f *foreignKeyConstraintSQLVertexGenerator) GetAddAlterDependencies(con, _ 
 
 func (f *foreignKeyConstraintSQLVertexGenerator) GetDeleteDependencies(con schema.ForeignKeyConstraint) ([]dependency, error) {
 	deps := []dependency{
-		mustRun(f.GetSQLVertexId(con, diffTypeDelete)).before(buildTableVertexId(con.OwningTable, diffTypeDelete)),
-		mustRun(f.GetSQLVertexId(con, diffTypeDelete)).before(buildTableVertexId(con.ForeignTable, diffTypeDelete)),
+		mustRun(f.GetSQLVertexId(con, diffTypeDelete)).before(
+			buildTableVertexId(con.OwningTable, diffTypeDelete),
+		),
+		mustRun(f.GetSQLVertexId(con, diffTypeDelete)).before(
+			buildTableVertexId(con.ForeignTable, diffTypeDelete),
+		),
 	}
 	// This is the slightly lazy way of ensuring the foreign key constraint is deleted before the index it depends on is deleted
 	// We __could__ do this just for the index the fk depends on, but that's slightly more wiring than we need right now
 	// because of partitioned indexes, which are only valid when all child indexes have been built
 	for _, i := range f.indexInOldSchemaByTableName[con.ForeignTable.GetName()] {
-		deps = append(deps, mustRun(f.GetSQLVertexId(con, diffTypeDelete)).before(buildIndexVertexId(i.GetSchemaQualifiedName(), diffTypeDelete)))
+		deps = append(deps, mustRun(f.GetSQLVertexId(con, diffTypeDelete)).before(
+			buildIndexVertexId(i.GetSchemaQualifiedName(), diffTypeDelete),
+		))
 		// Build a dependency on any child index if the index is partitioned
 		for _, c := range f.childrenInOldSchemaByPartitionedIndexName[i.GetName()] {
-			deps = append(deps, mustRun(f.GetSQLVertexId(con, diffTypeDelete)).before(buildIndexVertexId(c.GetSchemaQualifiedName(), diffTypeDelete)))
+			deps = append(deps, mustRun(f.GetSQLVertexId(con, diffTypeDelete)).before(
+				buildIndexVertexId(c.GetSchemaQualifiedName(), diffTypeDelete),
+			))
 		}
 	}
 	return deps, nil
@@ -2570,7 +2695,8 @@ func (s *sequenceSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, erro
 	}
 
 	if !cmp.Equal(diff.old, diff.new) {
-		return nil, fmt.Errorf("altering sequence to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
+		return nil, fmt.Errorf("altering sequence to resolve the following diff %s: %w",
+			cmp.Diff(diff.old, diff.new), ErrNotImplemented)
 	}
 
 	return stmts, nil
@@ -2582,15 +2708,15 @@ func (s *sequenceSQLVertexGenerator) buildAddAlterSequenceStatement(seq schema.S
 	if isAlter {
 		action = "ALTER"
 	}
-	sb.WriteString(fmt.Sprintf("%s SEQUENCE %s\n", action, seq.GetFQEscapedName()))
-	sb.WriteString(fmt.Sprintf("\tAS %s\n", seq.Type))
-	sb.WriteString(fmt.Sprintf("\tINCREMENT BY %d\n", seq.Increment))
-	sb.WriteString(fmt.Sprintf("\tMINVALUE %d MAXVALUE %d\n", seq.MinValue, seq.MaxValue))
+	fmt.Fprintf(&sb, "%s SEQUENCE %s\n", action, seq.GetFQEscapedName())
+	fmt.Fprintf(&sb, "\tAS %s\n", seq.Type)
+	fmt.Fprintf(&sb, "\tINCREMENT BY %d\n", seq.Increment)
+	fmt.Fprintf(&sb, "\tMINVALUE %d MAXVALUE %d\n", seq.MinValue, seq.MaxValue)
 	cycleModifier := ""
 	if !seq.Cycle {
 		cycleModifier = "NO "
 	}
-	sb.WriteString(fmt.Sprintf("\tSTART WITH %d CACHE %d %sCYCLE\n", seq.StartValue, seq.CacheSize, cycleModifier))
+	fmt.Fprintf(&sb, "\tSTART WITH %d CACHE %d %sCYCLE\n", seq.StartValue, seq.CacheSize, cycleModifier)
 
 	var hazards []MigrationHazard
 	if !isAlter && seq.Owner == nil {
@@ -2619,7 +2745,9 @@ func (s *sequenceSQLVertexGenerator) GetAddAlterDependencies(new schema.Sequence
 	}
 	if new.Owner != nil {
 		// Sequences should be added/altered before the table they are owned by
-		deps = append(deps, mustRun(s.GetSQLVertexId(new, diffTypeAddAlter)).before(buildTableVertexId(new.Owner.TableName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(s.GetSQLVertexId(new, diffTypeAddAlter)).before(
+			buildTableVertexId(new.Owner.TableName, diffTypeAddAlter),
+		))
 	}
 	return deps, nil
 }
@@ -2633,7 +2761,9 @@ func (s *sequenceSQLVertexGenerator) GetDeleteDependencies(seq schema.Sequence) 
 	// old owner column delete (equivalent to add/alter) and the sequence add/alter. We can get away with this because
 	// we, so far, no columns are ever "re-created". If we ever do support that, we'll need to revisit this.
 	if seq.Owner != nil {
-		deps = append(deps, mustRun(s.GetSQLVertexId(seq, diffTypeDelete)).after(buildTableVertexId(seq.Owner.TableName, diffTypeDelete)))
+		deps = append(deps, mustRun(s.GetSQLVertexId(seq, diffTypeDelete)).after(
+			buildTableVertexId(seq.Owner.TableName, diffTypeDelete),
+		))
 	}
 	return deps, nil
 }
@@ -2701,17 +2831,23 @@ func (s sequenceOwnershipSQLVertexGenerator) GetAddAlterDependencies(new schema.
 
 	deps := []dependency{
 		// Always change ownership after the sequence has been added/altered
-		mustRun(s.GetSQLVertexId(new, diffTypeAddAlter)).after(buildSequenceVertexId(new.SchemaQualifiedName, diffTypeAddAlter)),
+		mustRun(s.GetSQLVertexId(new, diffTypeAddAlter)).after(
+			buildSequenceVertexId(new.SchemaQualifiedName, diffTypeAddAlter),
+		),
 	}
 
 	if old.Owner != nil {
 		// Always update ownership before the old owner has been deleted
-		deps = append(deps, mustRun(s.GetSQLVertexId(new, diffTypeAddAlter)).before(buildTableVertexId(old.Owner.TableName, diffTypeDelete)))
+		deps = append(deps, mustRun(s.GetSQLVertexId(new, diffTypeAddAlter)).before(
+			buildTableVertexId(old.Owner.TableName, diffTypeDelete),
+		))
 	}
 
 	if new.Owner != nil {
 		// Always update ownership after the new owner has been created
-		deps = append(deps, mustRun(s.GetSQLVertexId(new, diffTypeAddAlter)).after(buildTableVertexId(new.Owner.TableName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(s.GetSQLVertexId(new, diffTypeAddAlter)).after(
+			buildTableVertexId(new.Owner.TableName, diffTypeAddAlter),
+		))
 	}
 
 	return deps, nil
@@ -2811,14 +2947,14 @@ func alterTablePrefix(table schema.SchemaQualifiedName) string {
 
 func buildColumnDefinition(column schema.Column) (string, error) {
 	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("%s %s", schema.EscapeIdentifier(column.Name), column.Type))
+	fmt.Fprintf(&sb, "%s %s", schema.EscapeIdentifier(column.Name), column.Type)
 	if column.IsCollated() {
-		sb.WriteString(fmt.Sprintf(" COLLATE %s", column.Collation.GetFQEscapedName()))
+		fmt.Fprintf(&sb, " COLLATE %s", column.Collation.GetFQEscapedName())
 	}
 	if column.IsGenerated {
-		sb.WriteString(fmt.Sprintf(" GENERATED ALWAYS AS (%s) STORED", column.GenerationExpression))
+		fmt.Fprintf(&sb, " GENERATED ALWAYS AS (%s) STORED", column.GenerationExpression)
 	} else if len(column.Default) > 0 {
-		sb.WriteString(fmt.Sprintf(" DEFAULT %s", column.Default))
+		fmt.Fprintf(&sb, " DEFAULT %s", column.Default)
 	}
 	if !column.IsNullable {
 		sb.WriteString(" NOT NULL")
@@ -2844,7 +2980,9 @@ func buildColumnIdentityDefinition(identity schema.ColumnIdentity) (string, erro
 		cycleModifier = "NO "
 	}
 
-	return fmt.Sprintf("GENERATED %s AS IDENTITY (INCREMENT BY %d MINVALUE %d MAXVALUE %d START WITH %d CACHE %d %sCYCLE)", typeModifier, identity.Increment, identity.MinValue, identity.MaxValue, identity.StartValue, identity.CacheSize, cycleModifier), nil
+	return fmt.Sprintf("GENERATED %s AS IDENTITY (INCREMENT BY %d MINVALUE %d MAXVALUE %d START WITH %d CACHE %d %sCYCLE)",
+		typeModifier, identity.Increment, identity.MinValue, identity.MaxValue,
+		identity.StartValue, identity.CacheSize, cycleModifier), nil
 }
 
 func columnIdentityTypeToModifier(val schema.ColumnIdentityType) (string, error) {

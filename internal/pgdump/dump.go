@@ -16,10 +16,8 @@ const (
 	FixedRestrictKey = "pgschemadiffrestrict"
 )
 
-var (
-	// versionRe matches the version returned by pg_dump.
-	versionRe = regexp.MustCompile(`pg_dump \(PostgreSQL\) (\d+(?:\.\d+)?)`)
-)
+// versionRe matches the version returned by pg_dump.
+var versionRe = regexp.MustCompile(`pg_dump \(PostgreSQL\) (\d+(?:\.\d+)?)`)
 
 // Parameter represents a parameter to be pg_dump. Don't use a type alias for a string slice
 // because all parameters for pgdump should be explicitly added here

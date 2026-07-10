@@ -226,7 +226,7 @@ func TestPlan_ApplyLockTimeoutModifier(t *testing.T) {
 }
 
 func TestPlan_InsertStatement(t *testing.T) {
-	var statementToInsert = diff.Statement{
+	statementToInsert := diff.Statement{
 		DDL:     "some DDL",
 		Timeout: 3 * time.Second,
 		Hazards: []diff.MigrationHazard{
@@ -294,7 +294,6 @@ func TestPlan_InsertStatement(t *testing.T) {
 
 			expectedPlan: diff.Plan{
 				Statements: []diff.Statement{
-
 					{DDL: "statement 1", Timeout: time.Second},
 					statementToInsert,
 					{DDL: "statement 2", Timeout: 2 * time.Second},

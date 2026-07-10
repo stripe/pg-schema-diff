@@ -156,7 +156,9 @@ type wrappedLegacySqlVertexGenerator[S schema.Object, Diff diff[S]] struct {
 	generator legacySqlVertexGenerator[S, Diff]
 }
 
-func legacyToNewSqlVertexGenerator[S schema.Object, Diff diff[S]](generator legacySqlVertexGenerator[S, Diff]) sqlVertexGenerator[S, Diff] {
+func legacyToNewSqlVertexGenerator[S schema.Object, Diff diff[S]](
+	generator legacySqlVertexGenerator[S, Diff],
+) sqlVertexGenerator[S, Diff] {
 	return &wrappedLegacySqlVertexGenerator[S, Diff]{
 		generator: generator,
 	}

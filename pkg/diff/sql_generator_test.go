@@ -16,7 +16,10 @@ func TestIsNotNullCCRegex(t *testing.T) {
 		{name: "Matching simple string without space that is not null", input: `foo IS NOT NULL`, expected: true},
 		{name: "Matching quotes string", input: `"foo bar" IS NOT NULL`, expected: true},
 		{name: "Matching string with open and closed parenthesis", input: `("foo" IS NOT NULL)`, expected: true},
-		{name: "Not matching on multi-part check constraint", input: `foo IS NOT NULL AND LENGTH(foo) > 0`, expected: false},
+		{
+			name:  "Not matching on multi-part check constraint",
+			input: `foo IS NOT NULL AND LENGTH(foo) > 0`, expected: false,
+		},
 		{name: "Not matching on other check constraint", input: `foo IS NULL`, expected: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

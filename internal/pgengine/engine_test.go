@@ -29,7 +29,9 @@ func TestPgEngine(t *testing.T) {
 	assertDatabaseIsValid(t, namedDb, "some-name")
 
 	// Assert no extra databases were created
-	assert.ElementsMatch(t, getAllDatabaseNames(t, engine), []string{unnamedDb.GetName(), "some-name", "postgres", "template0", "template1"})
+	assert.ElementsMatch(t, getAllDatabaseNames(t, engine), []string{
+		unnamedDb.GetName(), "some-name", "postgres", "template0", "template1",
+	})
 
 	// Hold open a connection before we try to drop the database. The drop should still pass, despite the open
 	// connection
@@ -47,7 +49,9 @@ func TestPgEngine(t *testing.T) {
 	require.NoError(t, namedDb.DropDB())
 
 	// Assert only the expected databases were dropped
-	assert.ElementsMatch(t, getAllDatabaseNames(t, engine), []string{"postgres", "template0", "template1"})
+	assert.ElementsMatch(t, getAllDatabaseNames(t, engine), []string{
+		"postgres", "template0", "template1",
+	})
 }
 
 func assertDatabaseIsValid(t *testing.T, db *pgengine.DB, expectedName string) {

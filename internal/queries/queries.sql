@@ -441,7 +441,7 @@ WITH roles AS (
     UNION
     (
         SELECT
-            0 AS ois,
+            0 AS is,
             'PUBLIC' AS role_name
     )
 )

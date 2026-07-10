@@ -26,17 +26,20 @@ func (p procedureSQLVertexGenerator) Add(s schema.Procedure) (partialSQLGraph, e
 
 	// Run after all tables have been added/altered, since a procedure might query a table.
 	for _, t := range p.newSchema.Tables {
-		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter)).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName,
+			diffTypeAddAlter)).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
 	// Run after all functions, since a procedure might call a function.
 	for _, f := range p.newSchema.Functions {
-		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter)).after(buildFunctionVertexId(f.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName,
+			diffTypeAddAlter)).after(buildFunctionVertexId(f.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
 	// Run after all sequences, since a procedure might call a sequence.
 	for _, seq := range p.newSchema.Sequences {
-		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName,
+			diffTypeAddAlter)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
 	return partialSQLGraph{
@@ -70,17 +73,20 @@ func (p procedureSQLVertexGenerator) Delete(s schema.Procedure) (partialSQLGraph
 	// being dropped because column drops are not "trackable" from external SQL generators until
 	// https://github.com/stripe/pg-schema-diff/issues/131 is fully implemented.
 	for _, t := range p.newSchema.Tables {
-		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeDelete)).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName,
+			diffTypeDelete)).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
 	// Run before all functions, since a procedure might call a function.
 	for _, f := range p.newSchema.Functions {
-		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeDelete)).after(buildFunctionVertexId(f.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName,
+			diffTypeDelete)).after(buildFunctionVertexId(f.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
 	// Run before all sequences, since a procedure might call a sequence.
 	for _, seq := range p.newSchema.Sequences {
-		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeDelete)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName,
+			diffTypeDelete)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
 	return partialSQLGraph{

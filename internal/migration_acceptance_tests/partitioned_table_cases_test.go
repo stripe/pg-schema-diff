@@ -267,7 +267,8 @@ var partitionedTableAcceptanceTestCases = []acceptanceTestCase{
             CREATE TABLE schema_2.foobar_1 PARTITION OF schema_1.foobar FOR VALUES IN ('foo_1');
 			`,
 		},
-		newSchemaDDL: []string{`
+		newSchemaDDL: []string{
+			`
             CREATE SCHEMA schema_3;
             CREATE TABLE schema_3.foobar(
                 foo VARCHAR(255)

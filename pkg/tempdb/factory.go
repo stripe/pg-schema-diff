@@ -55,6 +55,7 @@ type (
 		io.Closer
 	}
 )
+
 type (
 	onInstanceFactoryOptions struct {
 		dbPrefix       string
@@ -157,7 +158,8 @@ func NewOnInstanceFactory(ctx context.Context, createConnPoolForDb CreateConnPoo
 		options.logger = slog.Default()
 	}
 	if !pgidentifier.IsSimpleIdentifier(options.dbPrefix) {
-		return nil, fmt.Errorf("dbPrefix (%s) must be a simple Postgres identifier matching the following regex: %s", options.dbPrefix, pgidentifier.SimpleIdentifierRegex)
+		return nil, fmt.Errorf("dbPrefix (%s) must be a simple Postgres identifier matching the following regex: %s",
+			options.dbPrefix, pgidentifier.SimpleIdentifierRegex)
 	}
 
 	rootDb, err := createConnPoolForDb(ctx, options.rootDatabase)
@@ -204,7 +206,8 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 	defer util.DoOnErrOrPanic(&_retErr, func() {
 		// Only drop the temp database if an error occurred during creation
 		if err := o.dropTempDatabase(ctx, tempDbName); err != nil {
-			o.options.logger.ErrorContext(ctx, "failed to drop temporary database after creation error",
+			o.options.logger.ErrorContext(
+				ctx, "failed to drop temporary database after creation error",
 				slog.String("database", tempDbName),
 				slog.Any("error", err),
 				slog.Any("triggering_error", _retErr),
@@ -252,7 +255,6 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 			return o.dropTempDatabase(ctx, tempDbName)
 		}),
 	}, nil
-
 }
 
 // assertConnPoolIsOnExpectedDatabase provides validation that a user properly passed in a proper CreateConnPoolForDbFn
@@ -285,7 +287,8 @@ func (o *onInstanceFactory) dropTempDatabase(ctx context.Context, dbName string)
 	}
 	defer rootConn.Release()
 
-	if _, err := rootConn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d;", o.options.dropTimeout.Milliseconds())); err != nil {
+	if _, err := rootConn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d;",
+		o.options.dropTimeout.Milliseconds())); err != nil {
 		return fmt.Errorf("setting statement timeout: %w", err)
 	}
 
@@ -308,7 +311,8 @@ func openConnectionWithDefaults(ctx context.Context, connPool *pgxpool.Pool) (_ 
 		conn.Release()
 	})
 
-	if _, err := conn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d;", DefaultStatementTimeout.Milliseconds())); err != nil {
+	if _, err := conn.Exec(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d;",
+		DefaultStatementTimeout.Milliseconds())); err != nil {
 		return nil, fmt.Errorf("setting statement timeout: %w", err)
 	}
 	return conn, nil

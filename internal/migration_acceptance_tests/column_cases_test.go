@@ -529,7 +529,12 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
             );
 			`,
 		},
-		expectedPlanDDL: []string{"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID", "ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"", "ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL", "ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\""},
+		expectedPlanDDL: []string{
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\"",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\"",
+		},
 	},
 	{
 		name: "Set NOT NULL (add invalid CC)",
@@ -551,11 +556,11 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedPlanDDL: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar\" CHECK((foobar IS NOT NULL)) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\"",
 		},
 	},
 
@@ -580,10 +585,10 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedPlanDDL: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\"",
 		},
 	},
 	{
@@ -734,14 +739,14 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeImpactsDatabasePerformance,
 		},
 		expectedPlanDDL: []string{
-			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
-			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
+			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
+			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE integer using \"foobar\"::integer",
 			"ANALYZE \"public\".\"foobar\" (\"foobar\")",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar_foobar_check\" CHECK((foobar > 0)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar_foobar_check\"",
-			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVTheYGRobHB0eHw\"",
 		},
 	},
 	{

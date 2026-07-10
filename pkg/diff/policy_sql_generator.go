@@ -56,7 +56,7 @@ var (
 // 2. Create/alter policies
 // 3. Enable RLS -- This MUST be done last
 //
-// If not done in this order, we may create an outtage for a user's queries where RLS rejects their queries because
+// If not done in this order, we may create an outage for a user's queries where RLS rejects their queries because
 // the policy allowing them hasn't been created yet. The same is true for disabling RLS, but in the reverse order. RLS
 // must be disabled before policies are dropped.
 //
@@ -65,7 +65,8 @@ var (
 
 func enableRLSForTable(t schema.Table) Statement {
 	return Statement{
-		DDL:         fmt.Sprintf("%s ENABLE ROW LEVEL SECURITY", alterTablePrefix(t.SchemaQualifiedName)),
+		DDL: fmt.Sprintf("%s ENABLE ROW LEVEL SECURITY",
+			alterTablePrefix(t.SchemaQualifiedName)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     []MigrationHazard{migrationHazardRLSEnabled},
@@ -74,7 +75,8 @@ func enableRLSForTable(t schema.Table) Statement {
 
 func disableRLSForTable(t schema.Table) Statement {
 	return Statement{
-		DDL:         fmt.Sprintf("%s DISABLE ROW LEVEL SECURITY", alterTablePrefix(t.SchemaQualifiedName)),
+		DDL: fmt.Sprintf("%s DISABLE ROW LEVEL SECURITY",
+			alterTablePrefix(t.SchemaQualifiedName)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     []MigrationHazard{migrationHazardRLSDisabled},
@@ -83,17 +85,18 @@ func disableRLSForTable(t schema.Table) Statement {
 
 func forceRLSForTable(t schema.Table) Statement {
 	return Statement{
-		DDL:         fmt.Sprintf("%s FORCE ROW LEVEL SECURITY", alterTablePrefix(t.SchemaQualifiedName)),
+		DDL: fmt.Sprintf("%s FORCE ROW LEVEL SECURITY",
+			alterTablePrefix(t.SchemaQualifiedName)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     []MigrationHazard{migrationHazardRLSForced},
 	}
-
 }
 
 func unforceRLSForTable(t schema.Table) Statement {
 	return Statement{
-		DDL:         fmt.Sprintf("%s NO FORCE ROW LEVEL SECURITY", alterTablePrefix(t.SchemaQualifiedName)),
+		DDL: fmt.Sprintf("%s NO FORCE ROW LEVEL SECURITY",
+			alterTablePrefix(t.SchemaQualifiedName)),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     []MigrationHazard{migrationHazardRLSUnforced},
@@ -149,7 +152,8 @@ func newPolicySQLVertexGenerator(oldTable *schema.Table, table schema.Table) (sq
 	var oldSchemaColumnsByName map[string]schema.Column
 	if oldTable != nil {
 		if oldTable.SchemaQualifiedName != table.SchemaQualifiedName {
-			return nil, fmt.Errorf("old and new tables must have the same schema-qualified name. new=%s, old=%s", table.GetFQEscapedName(), oldTable.GetFQEscapedName())
+			return nil, fmt.Errorf("old and new tables must have the same schema-qualified name. new=%s, old=%s",
+				table.GetFQEscapedName(), oldTable.GetFQEscapedName())
 		}
 		oldSchemaColumnsByName = buildSchemaObjByNameMap(oldTable.Columns)
 	}
@@ -164,27 +168,27 @@ func newPolicySQLVertexGenerator(oldTable *schema.Table, table schema.Table) (sq
 
 func (psg *policySQLVertexGenerator) Add(p schema.Policy) ([]Statement, error) {
 	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("CREATE POLICY %s ON %s", p.EscapedName, psg.table.GetFQEscapedName()))
+	fmt.Fprintf(&sb, "CREATE POLICY %s ON %s", p.EscapedName, psg.table.GetFQEscapedName())
 
 	typeModifier := "RESTRICTIVE"
 	if p.IsPermissive {
 		typeModifier = "PERMISSIVE"
 	}
-	sb.WriteString(fmt.Sprintf("\n\tAS %s", typeModifier))
+	fmt.Fprintf(&sb, "\n\tAS %s", typeModifier)
 
 	cmdSQL, err := policyCharToSQL(p.Cmd)
 	if err != nil {
 		return nil, err
 	}
-	sb.WriteString(fmt.Sprintf("\n\tFOR %s", cmdSQL))
+	fmt.Fprintf(&sb, "\n\tFOR %s", cmdSQL)
 
-	sb.WriteString(fmt.Sprintf("\n\tTO %s", strings.Join(escapeRoleNames(p.AppliesTo), ", ")))
+	fmt.Fprintf(&sb, "\n\tTO %s", strings.Join(escapeRoleNames(p.AppliesTo), ", "))
 
 	if p.UsingExpression != "" {
-		sb.WriteString(fmt.Sprintf("\n\tUSING (%s)", p.UsingExpression))
+		fmt.Fprintf(&sb, "\n\tUSING (%s)", p.UsingExpression)
 	}
 	if p.CheckExpression != "" {
-		sb.WriteString(fmt.Sprintf("\n\tWITH CHECK (%s)", p.CheckExpression))
+		fmt.Fprintf(&sb, "\n\tWITH CHECK (%s)", p.CheckExpression)
 	}
 
 	hazard := migrationHazardRestrictivePolicyAdded
@@ -237,20 +241,23 @@ func (psg *policySQLVertexGenerator) Alter(diff policyDiff) ([]Statement, error)
 	var alterPolicyParts []string
 
 	if !cmp.Equal(oldCopy.AppliesTo, diff.new.AppliesTo) {
-		alterPolicyParts = append(alterPolicyParts, fmt.Sprintf("TO %s", strings.Join(escapeRoleNames(diff.new.AppliesTo), ", ")))
+		alterPolicyParts = append(alterPolicyParts,
+			fmt.Sprintf("TO %s", strings.Join(escapeRoleNames(diff.new.AppliesTo), ", ")))
 		oldCopy.AppliesTo = diff.new.AppliesTo
 	}
 
 	if oldCopy.UsingExpression != diff.new.UsingExpression && diff.new.UsingExpression != "" {
 		// Weirdly, you can't actually drop a "USING EXPRESSION" clause from an ALL policy even though you
 		// can have an ALL policy with only a check expression.
-		alterPolicyParts = append(alterPolicyParts, fmt.Sprintf("USING (%s)", diff.new.UsingExpression))
+		alterPolicyParts = append(alterPolicyParts,
+			fmt.Sprintf("USING (%s)", diff.new.UsingExpression))
 		oldCopy.UsingExpression = diff.new.UsingExpression
 	}
 
 	if oldCopy.CheckExpression != diff.new.CheckExpression && diff.new.CheckExpression != "" {
 		// Same quirk as above with ALL policies.
-		alterPolicyParts = append(alterPolicyParts, fmt.Sprintf("WITH CHECK (%s)", diff.new.CheckExpression))
+		alterPolicyParts = append(alterPolicyParts,
+			fmt.Sprintf("WITH CHECK (%s)", diff.new.CheckExpression))
 		oldCopy.CheckExpression = diff.new.CheckExpression
 	}
 	oldCopy.Columns = diff.new.Columns
@@ -265,7 +272,7 @@ func (psg *policySQLVertexGenerator) Alter(diff policyDiff) ([]Statement, error)
 	}
 
 	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("ALTER POLICY %s ON %s\n\t", diff.new.EscapedName, psg.table.GetFQEscapedName()))
+	fmt.Fprintf(&sb, "ALTER POLICY %s ON %s\n\t", diff.new.EscapedName, psg.table.GetFQEscapedName())
 	sb.WriteString(strings.Join(alterPolicyParts, "\n\t"))
 
 	return []Statement{{
@@ -286,7 +293,9 @@ func buildPolicyVertexId(owningTable schema.SchemaQualifiedName, policyEscapedNa
 
 func (psg *policySQLVertexGenerator) GetAddAlterDependencies(newPolicy, oldPolicy schema.Policy) ([]dependency, error) {
 	deps := []dependency{
-		mustRun(psg.GetSQLVertexId(newPolicy, diffTypeDelete)).before(psg.GetSQLVertexId(newPolicy, diffTypeAddAlter)),
+		mustRun(psg.GetSQLVertexId(newPolicy, diffTypeDelete)).before(
+			psg.GetSQLVertexId(newPolicy, diffTypeAddAlter),
+		),
 	}
 
 	newTargetColumns, err := getTargetColumns(newPolicy.Columns, psg.newSchemaColumnsByName)
@@ -296,7 +305,9 @@ func (psg *policySQLVertexGenerator) GetAddAlterDependencies(newPolicy, oldPolic
 
 	// Run after the new columns are added/altered
 	for _, tc := range newTargetColumns {
-		deps = append(deps, mustRun(psg.GetSQLVertexId(newPolicy, diffTypeAddAlter)).after(buildColumnVertexId(tc.Name, diffTypeAddAlter)))
+		deps = append(deps, mustRun(psg.GetSQLVertexId(newPolicy, diffTypeAddAlter)).after(
+			buildColumnVertexId(tc.Name, diffTypeAddAlter),
+		))
 	}
 
 	if !cmp.Equal(oldPolicy, schema.Policy{}) {
@@ -308,7 +319,8 @@ func (psg *policySQLVertexGenerator) GetAddAlterDependencies(newPolicy, oldPolic
 		for _, tc := range oldTargetColumns {
 			// It only needs to run before the delete if the column is actually being deleted
 			if _, stillExists := psg.newSchemaColumnsByName[tc.GetName()]; !stillExists {
-				deps = append(deps, mustRun(psg.GetSQLVertexId(newPolicy, diffTypeAddAlter)).before(buildColumnVertexId(tc.Name, diffTypeDelete)))
+				deps = append(deps, mustRun(psg.GetSQLVertexId(newPolicy,
+					diffTypeAddAlter)).before(buildColumnVertexId(tc.Name, diffTypeDelete)))
 			}
 		}
 	}
@@ -325,8 +337,12 @@ func (psg *policySQLVertexGenerator) GetDeleteDependencies(pol schema.Policy) ([
 	}
 	// The policy needs to be deleted before all the columns it references are deleted or add/altered
 	for _, c := range columns {
-		deps = append(deps, mustRun(psg.GetSQLVertexId(pol, diffTypeDelete)).before(buildColumnVertexId(c.Name, diffTypeDelete)))
-		deps = append(deps, mustRun(psg.GetSQLVertexId(pol, diffTypeDelete)).before(buildColumnVertexId(c.Name, diffTypeAddAlter)))
+		deps = append(deps, mustRun(psg.GetSQLVertexId(pol, diffTypeDelete)).before(
+			buildColumnVertexId(c.Name, diffTypeDelete),
+		))
+		deps = append(deps, mustRun(psg.GetSQLVertexId(pol, diffTypeDelete)).before(
+			buildColumnVertexId(c.Name, diffTypeAddAlter),
+		))
 	}
 
 	return deps, nil

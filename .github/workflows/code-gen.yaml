@@ -11,13 +11,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Build Docker image
-        run: docker build -t pg-schema-diff-code-gen-runner -f ./build/Dockerfile.codegen .
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: nix profile install nixpkgs#devenv
       - name: Run codegen
-        run: docker run -v $(pwd):/pg-schema-diff -w /pg-schema-diff  pg-schema-diff-code-gen-runner
+        run: devenv tasks run go:gen
       - name: Check for changes
         run: |
           chmod +x ./build/ci-scripts/assert-no-diff.sh
           ./build/ci-scripts/assert-no-diff.sh
         shell: bash
-

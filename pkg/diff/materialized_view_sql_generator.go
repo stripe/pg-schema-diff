@@ -18,7 +18,8 @@ type materializedViewDiff struct {
 func buildMaterializedViewDiff(
 	deletedTablesByName map[string]schema.Table,
 	tableDiffsByName map[string]tableDiff,
-	old, new schema.MaterializedView) (materializedViewDiff, bool, error) {
+	old, new schema.MaterializedView,
+) (materializedViewDiff, bool, error) {
 	// Assuming the materialized view's outputted columns do not change, there are few situations where the materialized view
 	// needs to be totally recreated (delete then re-add):
 	//- One of its dependent columns is deleted then added. As in, a column that it depends on in the old and new is recreated.
@@ -45,7 +46,8 @@ func buildMaterializedViewDiff(
 		// It's possible a dependent column was deleted (or recreated).
 		td, ok := tableDiffsByName[t.GetName()]
 		if !ok {
-			return materializedViewDiff{}, false, fmt.Errorf("processing materialized view table dependencies: expected a table diff to exist for %q. have=\n%s", t.GetName(),
+			return materializedViewDiff{}, false, fmt.Errorf(
+				"processing materialized view table dependencies: expected a table diff to exist for %q. have=\n%s", t.GetName(),
 				slices.Sorted(maps.Keys(tableDiffsByName)),
 			)
 		}
@@ -65,13 +67,14 @@ func buildMaterializedViewDiff(
 			// The SQL generator cannot alter the materialized view, so add and delete it.
 			return materializedViewDiff{}, true, nil
 		}
-		return materializedViewDiff{}, false, fmt.Errorf("generating materialized view alter statements: %w", err)
+		return materializedViewDiff{}, false, fmt.Errorf(
+			"generating materialized view alter statements: %w", err,
+		)
 	}
 	return d, false, nil
 }
 
-type materializedViewSQLGenerator struct {
-}
+type materializedViewSQLGenerator struct{}
 
 func newMaterializedViewSQLVertexGenerator() sqlVertexGenerator[schema.MaterializedView, materializedViewDiff] {
 	return &materializedViewSQLGenerator{}
@@ -79,7 +82,7 @@ func newMaterializedViewSQLVertexGenerator() sqlVertexGenerator[schema.Materiali
 
 func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (partialSQLGraph, error) {
 	materializedViewSb := strings.Builder{}
-	materializedViewSb.WriteString(fmt.Sprintf("CREATE MATERIALIZED VIEW %s", mv.GetFQEscapedName()))
+	fmt.Fprintf(&materializedViewSb, "CREATE MATERIALIZED VIEW %s", mv.GetFQEscapedName())
 	if len(mv.Options) > 0 {
 		var kvs []string
 		for k, v := range mv.Options {
@@ -88,10 +91,11 @@ func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (parti
 		// Sort kvs so the generated DDL is deterministic. This is unnecessarily verbose because the slices
 		// package is not yet available.
 		slices.Sort(kvs)
-		materializedViewSb.WriteString(fmt.Sprintf(" WITH (%s)", strings.Join(kvs, ", ")))
+		fmt.Fprintf(&materializedViewSb, " WITH (%s)", strings.Join(kvs, ", "))
 	}
 	if len(mv.Tablespace) > 0 {
-		materializedViewSb.WriteString(fmt.Sprintf(" TABLESPACE %s", schema.EscapeIdentifier(mv.Tablespace)))
+		fmt.Fprintf(&materializedViewSb, " TABLESPACE %s",
+			schema.EscapeIdentifier(mv.Tablespace))
 	}
 	materializedViewSb.WriteString(" AS\n")
 	materializedViewSb.WriteString(mv.ViewDefinition)
@@ -101,12 +105,18 @@ func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (parti
 	var deps []dependency
 
 	// Run after re-create (if recreated).
-	deps = append(deps, mustRun(addVertexId).after(buildMaterializedViewVertexId(mv.SchemaQualifiedName, diffTypeDelete)))
+	deps = append(deps, mustRun(addVertexId).after(
+		buildMaterializedViewVertexId(mv.SchemaQualifiedName, diffTypeDelete),
+	))
 
 	// Run after any dependent tables are added/altered.
 	for _, t := range mv.TableDependencies {
-		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)))
-		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(addVertexId).after(
+			buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete),
+		))
+		deps = append(deps, mustRun(addVertexId).after(
+			buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter),
+		))
 	}
 
 	return partialSQLGraph{
@@ -129,8 +139,12 @@ func (mvsg *materializedViewSQLGenerator) Delete(mv schema.MaterializedView) (pa
 	// Run before any dependent tables are deleted or added/altered.
 	var deps []dependency
 	for _, t := range mv.TableDependencies {
-		deps = append(deps, mustRun(deleteVertexId).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)))
-		deps = append(deps, mustRun(deleteVertexId).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(deleteVertexId).before(
+			buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete),
+		))
+		deps = append(deps, mustRun(deleteVertexId).before(
+			buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter),
+		))
 	}
 
 	return partialSQLGraph{

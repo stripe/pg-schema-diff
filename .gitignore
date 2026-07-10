@@ -27,3 +27,8 @@ vendor/
 
 # Claude settings
 .claude/settings.local.json
+
+# devenv
+.devenv
+.direnv
+.pre-commit-config.yaml

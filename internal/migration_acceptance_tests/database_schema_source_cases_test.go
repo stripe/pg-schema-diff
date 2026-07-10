@@ -10,7 +10,9 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
-func databaseSchemaSourcePlan(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (_ diff.Plan, retErr error) {
+func databaseSchemaSourcePlan(ctx context.Context, connPool sqldb.Queryable,
+	tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt,
+) (_ diff.Plan, retErr error) {
 	newSchemaDb, err := tempDbFactory.Create(ctx)
 	if err != nil {
 		return diff.Plan{}, fmt.Errorf("creating temp database: %w", err)
@@ -36,11 +38,14 @@ func databaseSchemaSourcePlan(ctx context.Context, connPool sqldb.Queryable, tem
 		opts = append(opts, diff.WithGetSchemaOpts(o))
 	}
 
-	return diff.Generate(ctx, diff.DBSchemaSource(connPool), diff.DBSchemaSource(newSchemaDb.ConnPool), opts...)
+	return diff.Generate(ctx, diff.DBSchemaSource(connPool),
+		diff.DBSchemaSource(newSchemaDb.ConnPool), opts...)
 }
 
 func dirSchemaSourcePlanFactory(schemaDirs []string) planFactory {
-	return func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt) (_ diff.Plan, retErr error) {
+	return func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory,
+		newSchemaDDL []string, opts ...diff.PlanOpt,
+	) (_ diff.Plan, retErr error) {
 		// Clone the opts so we don't modify the original.
 		opts = append([]diff.PlanOpt(nil), opts...)
 		opts = append(opts, diff.WithTempDbFactory(tempDbFactory))
@@ -145,7 +150,10 @@ var databaseSchemaSourceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		planFactory: dirSchemaSourcePlanFactory([]string{"testdata/dirsrc_happy_path/schema_0", "testdata/dirsrc_happy_path/schema_1"}),
+		planFactory: dirSchemaSourcePlanFactory([]string{
+			"testdata/dirsrc_happy_path/schema_0",
+			"testdata/dirsrc_happy_path/schema_1",
+		}),
 
 		name: "Dir src - happy path",
 		oldSchemaDDL: []string{

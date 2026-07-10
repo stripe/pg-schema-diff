@@ -405,7 +405,6 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
       `,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-
 			diff.MigrationHazardTypeDeletesData,
 		},
 	},
@@ -861,9 +860,9 @@ var foreignKeyConstraintCases = []acceptanceTestCase{
             );
             ALTER TABLE schema_1."foobar fk" ADD CONSTRAINT some_fk
                 FOREIGN KEY (fk_id, fk_val) REFERENCES schema_1.foobar(id, val);
-`},
+`,
+		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 			diff.MigrationHazardTypeIndexBuild,

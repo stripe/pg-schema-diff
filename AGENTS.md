@@ -54,7 +54,7 @@ Core types in `schema.go`:
 ### internal/queries/ - Database Queries
 Uses **sqlc** for type-safe SQL queries. To modify:
 1. Edit `queries.sql`
-2. Run `make sqlc` to regenerate `queries.sql.go`
+2. Run `devenv tasks run sql:gen` to regenerate `queries.sql.go`
 
 ## Development Commands
 
@@ -66,16 +66,16 @@ go test -v -race ./... -timeout 30m
 go test -v ./internal/migration_acceptance_tests/... -run TestIndexAcceptance
 
 # Lint
-make lint
+devenv tasks run go:lint
 
 # Fix lint issues
-make lint_fix
+devenv tasks run go:lint-fix
 
 # Regenerate sqlc code
-make sqlc
+devenv tasks run sql:gen
 
 # Tidy dependencies
-make go_mod_tidy
+devenv tasks run go:mod
 ```
 
 ## Testing
@@ -195,7 +195,7 @@ for _, stmt := range plan.Statements {
 
 ### Adding New Schema Object Support
 1. Add type to `internal/schema/schema.go`
-2. Add query to `internal/queries/queries.sql`, run `make sqlc`
+2. Add query to `internal/queries/queries.sql`, run `devenv tasks run sql:gen`
 3. Update schema fetching logic, schema structs, and tests in `internal/schema`
 4. Add diffing logic in `pkg/diff/diff.go`
 5. Add SQL generation logic in `pkg/diff/x_sql_generator.go`

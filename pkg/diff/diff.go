@@ -7,8 +7,10 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
-var ErrNotImplemented = fmt.Errorf("not implemented")
-var errDuplicateIdentifier = fmt.Errorf("duplicate identifier")
+var (
+	ErrNotImplemented      = fmt.Errorf("not implemented")
+	errDuplicateIdentifier = fmt.Errorf("duplicate identifier")
+)
 
 type (
 	diff[S schema.Object] interface {
@@ -53,21 +55,27 @@ func (ld listDiff[S, D]) resolveToSQLGroupedByEffect(sqlGenerator sqlGenerator[S
 	for _, a := range ld.adds {
 		statements, err := sqlGenerator.Add(a)
 		if err != nil {
-			return sqlGroupedByEffect[S, D]{}, fmt.Errorf("generating SQL for add %s: %w", a.GetName(), err)
+			return sqlGroupedByEffect[S, D]{}, fmt.Errorf(
+				"generating SQL for add %s: %w", a.GetName(), err,
+			)
 		}
 		adds = append(adds, statements...)
 	}
 	for _, d := range ld.deletes {
 		statements, err := sqlGenerator.Delete(d)
 		if err != nil {
-			return sqlGroupedByEffect[S, D]{}, fmt.Errorf("generating SQL for delete %s: %w", d.GetName(), err)
+			return sqlGroupedByEffect[S, D]{}, fmt.Errorf(
+				"generating SQL for delete %s: %w", d.GetName(), err,
+			)
 		}
 		deletes = append(deletes, statements...)
 	}
 	for _, a := range ld.alters {
 		statements, err := sqlGenerator.Alter(a)
 		if err != nil {
-			return sqlGroupedByEffect[S, D]{}, fmt.Errorf("generating SQL for diff %+v: %w", a, err)
+			return sqlGroupedByEffect[S, D]{}, fmt.Errorf(
+				"generating SQL for diff %+v: %w", a, err,
+			)
 		}
 		alters = append(alters, statements...)
 	}
@@ -96,7 +104,9 @@ func diffLists[S schema.Object, Diff diff[S]](
 	nameToOld := make(map[string]schemaObjectEntry[S])
 	for oldIndex, oldSchemaObject := range oldSchemaObjs {
 		if _, nameAlreadyTaken := nameToOld[oldSchemaObject.GetName()]; nameAlreadyTaken {
-			return listDiff[S, Diff]{}, fmt.Errorf("multiple objects have identifier %s: %w", oldSchemaObject.GetName(), errDuplicateIdentifier)
+			return listDiff[S, Diff]{}, fmt.Errorf(
+				"multiple objects have identifier %s: %w", oldSchemaObject.GetName(), errDuplicateIdentifier,
+			)
 		}
 		// store the old schema object and its index. if an alteration, the index might be used in the diff, e.g., for columns
 		nameToOld[oldSchemaObject.GetName()] = schemaObjectEntry[S]{
@@ -114,7 +124,8 @@ func diffLists[S schema.Object, Diff diff[S]](
 		} else {
 			delete(nameToOld, newSchemaObj.GetName())
 
-			diff, requiresRecreation, err := buildDiff(oldSchemaObjAndIndex.obj, newSchemaObj, oldSchemaObjAndIndex.index, newIndex)
+			diff, requiresRecreation, err := buildDiff(oldSchemaObjAndIndex.obj,
+				newSchemaObj, oldSchemaObjAndIndex.index, newIndex)
 			if err != nil {
 				return listDiff[S, Diff]{}, fmt.Errorf("diffing for %s: %w", newSchemaObj.GetName(), err)
 			}

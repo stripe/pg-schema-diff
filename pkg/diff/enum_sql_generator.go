@@ -76,9 +76,11 @@ func (e *enumSQLGenerator) Alter(diff enumDiff) ([]Statement, error) {
 			continue
 		}
 		sb := strings.Builder{}
-		sb.WriteString(fmt.Sprintf("ALTER TYPE %s ADD VALUE %s", diff.new.GetFQEscapedName(), schema.EscapeLiteral(val)))
+		fmt.Fprintf(&sb, "ALTER TYPE %s ADD VALUE %s",
+			diff.new.GetFQEscapedName(), schema.EscapeLiteral(val))
 		if i < len(diff.new.Labels)-1 {
-			sb.WriteString(fmt.Sprintf(" BEFORE %s", schema.EscapeLiteral(diff.new.Labels[i+1])))
+			fmt.Fprintf(&sb, " BEFORE %s",
+				schema.EscapeLiteral(diff.new.Labels[i+1]))
 		}
 		stmts = append(stmts, Statement{
 			DDL:         sb.String(),

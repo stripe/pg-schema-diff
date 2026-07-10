@@ -18,7 +18,8 @@ type viewDiff struct {
 func buildViewDiff(
 	deletedTablesByName map[string]schema.Table,
 	tableDiffsByName map[string]tableDiff,
-	old, new schema.View) (viewDiff, bool, error) {
+	old, new schema.View,
+) (viewDiff, bool, error) {
 	// Assuming the view's outputted columns do not change, there are few situations where the view
 	// needs to be totally recreated (delete then re-add):
 	//- One of its dependent columns is deleted then added. As in, a column that it depends on in the old and new is recreated.
@@ -45,7 +46,8 @@ func buildViewDiff(
 		// It's possible a dependent column was deleted (or recreated).
 		td, ok := tableDiffsByName[t.GetName()]
 		if !ok {
-			return viewDiff{}, false, fmt.Errorf("processing view table dependencies: expected a table diff to exist for %q. have=\n%s", t.GetName(), slices.Sorted(maps.Keys(tableDiffsByName)))
+			return viewDiff{}, false, fmt.Errorf("processing view table dependencies: expected a table diff to exist for %q. have=\n%s",
+				t.GetName(), slices.Sorted(maps.Keys(tableDiffsByName)))
 		}
 		deletedColumnsByName := buildSchemaObjByNameMap(td.columnsDiff.deletes)
 		for _, c := range t.Columns {
@@ -68,8 +70,7 @@ func buildViewDiff(
 	return d, false, nil
 }
 
-type viewSQLGenerator struct {
-}
+type viewSQLGenerator struct{}
 
 func newViewSQLVertexGenerator() sqlVertexGenerator[schema.View, viewDiff] {
 	return &viewSQLGenerator{}
@@ -77,7 +78,7 @@ func newViewSQLVertexGenerator() sqlVertexGenerator[schema.View, viewDiff] {
 
 func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 	viewSb := strings.Builder{}
-	viewSb.WriteString(fmt.Sprintf("CREATE VIEW %s", v.GetFQEscapedName()))
+	fmt.Fprintf(&viewSb, "CREATE VIEW %s", v.GetFQEscapedName())
 	if len(v.Options) > 0 {
 		var kvs []string
 		for k, v := range v.Options {
@@ -86,7 +87,7 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 		// Sort kvs so the generated DDL is deterministic. This is unnecessarily verbose because the slices
 		// package is not yet available.
 		slices.Sort(kvs)
-		viewSb.WriteString(fmt.Sprintf(" WITH (%s)", strings.Join(kvs, ", ")))
+		fmt.Fprintf(&viewSb, " WITH (%s)", strings.Join(kvs, ", "))
 	}
 	viewSb.WriteString(" AS\n")
 	viewSb.WriteString(v.ViewDefinition)
@@ -96,12 +97,18 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 	var deps []dependency
 
 	// Run after re-create (if recreated).
-	deps = append(deps, mustRun(addVertexId).after(buildViewVertexId(v.SchemaQualifiedName, diffTypeDelete)))
+	deps = append(deps, mustRun(addVertexId).after(
+		buildViewVertexId(v.SchemaQualifiedName, diffTypeDelete),
+	))
 
 	// Run after any dependent tables are added/altered.
 	for _, t := range v.TableDependencies {
-		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)))
-		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(addVertexId).after(
+			buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete),
+		))
+		deps = append(deps, mustRun(addVertexId).after(
+			buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter),
+		))
 	}
 
 	return partialSQLGraph{
@@ -124,8 +131,12 @@ func (vsg *viewSQLGenerator) Delete(v schema.View) (partialSQLGraph, error) {
 	// Run before any dependent tables are deleted or added/altered.
 	var deps []dependency
 	for _, t := range v.TableDependencies {
-		deps = append(deps, mustRun(deleteVertexId).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)))
-		deps = append(deps, mustRun(deleteVertexId).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(deleteVertexId).before(
+			buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete),
+		))
+		deps = append(deps, mustRun(deleteVertexId).before(
+			buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter),
+		))
 	}
 
 	return partialSQLGraph{

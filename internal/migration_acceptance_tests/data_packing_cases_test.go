@@ -37,7 +37,8 @@ var dataPackingCases = []acceptanceTestCase{
 			`,
 		},
 
-		expectedDBSchemaDDL: []string{`
+		expectedDBSchemaDDL: []string{
+			`
             CREATE TABLE foobar(
                 bar TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 id INT PRIMARY KEY CHECK (id > 0), CHECK (id < buzz),
@@ -101,7 +102,8 @@ var dataPackingCases = []acceptanceTestCase{
 			`,
 		},
 
-		expectedDBSchemaDDL: []string{`
+		expectedDBSchemaDDL: []string{
+			`
             CREATE SCHEMA schema_1;
             CREATE TABLE schema_1."Foobar"(
                 id INT,

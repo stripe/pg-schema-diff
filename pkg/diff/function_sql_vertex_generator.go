@@ -78,13 +78,17 @@ func buildFunctionVertexId(name schema.SchemaQualifiedName, diffType diffType) s
 	return buildSchemaObjVertexId("function", name.GetFQEscapedName(), diffType)
 }
 
-func (f *functionSQLVertexGenerator) GetAddAlterDependencies(newFunction, oldFunction schema.Function) ([]dependency, error) {
+func (f *functionSQLVertexGenerator) GetAddAlterDependencies(
+	newFunction, oldFunction schema.Function,
+) ([]dependency, error) {
 	// Since functions can just be `CREATE OR REPLACE`, there will never be a case where a function is
 	// added and dropped in the same migration. Thus, we don't need a dependency on the delete vertex of a function
 	// because there won't be one if it is being added/altered
 	var deps []dependency
 	for _, depFunction := range newFunction.DependsOnFunctions {
-		deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).after(buildFunctionVertexId(depFunction, diffTypeAddAlter)))
+		deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).after(
+			buildFunctionVertexId(depFunction, diffTypeAddAlter),
+		))
 	}
 
 	if !cmp.Equal(oldFunction, schema.Function{}) {
@@ -92,7 +96,9 @@ func (f *functionSQLVertexGenerator) GetAddAlterDependencies(newFunction, oldFun
 		// If the old version of the function calls other functions that are being deleted come, those deletions
 		// must come after the function is altered, so it is no longer dependent on those dropped functions
 		for _, depFunction := range oldFunction.DependsOnFunctions {
-			deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).before(buildFunctionVertexId(depFunction, diffTypeDelete)))
+			deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).before(
+				buildFunctionVertexId(depFunction, diffTypeDelete),
+			))
 		}
 	}
 
@@ -102,7 +108,9 @@ func (f *functionSQLVertexGenerator) GetAddAlterDependencies(newFunction, oldFun
 func (f *functionSQLVertexGenerator) GetDeleteDependencies(function schema.Function) ([]dependency, error) {
 	var deps []dependency
 	for _, depFunction := range function.DependsOnFunctions {
-		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeDelete)).before(buildFunctionVertexId(depFunction, diffTypeDelete)))
+		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeDelete)).before(
+			buildFunctionVertexId(depFunction, diffTypeDelete),
+		))
 	}
 	return deps, nil
 }

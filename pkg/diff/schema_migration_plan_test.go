@@ -75,7 +75,6 @@ var (
 					},
 				},
 				Indexes: []schema.Index{
-
 					{
 						OwningRelName: schema.SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Name:          "some_idx", Columns: []string{"foo", "bar"},
@@ -193,7 +192,7 @@ var (
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:         "ALTER INDEX \"public\".\"foobar_1_some_idx\" RENAME TO \"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVRheYGRobHB0eHw\"",
+					DDL:         "ALTER INDEX \"public\".\"foobar_1_some_idx\" RENAME TO \"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVTheYGRobHB0eHw\"",
 					Timeout:     statementTimeoutDefault,
 					LockTimeout: lockTimeoutDefault,
 				},
@@ -211,7 +210,7 @@ var (
 					LockTimeout: lockTimeoutDefault,
 				},
 				{
-					DDL:         "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVRheYGRobHB0eHw\"",
+					DDL:         "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_foobar_1_some_idx_EBESExQVTheYGRobHB0eHw\"",
 					Timeout:     statementTimeoutConcurrentIndexDrop,
 					LockTimeout: lockTimeoutDefault,
 					Hazards: []MigrationHazard{

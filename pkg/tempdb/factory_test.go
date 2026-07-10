@@ -207,7 +207,8 @@ func (suite *onInstanceTempDbFactorySuite) TestDropTempDB_CannotDropNonTempDb() 
 		suite.Require().NoError(factory.Close())
 	}(factory)
 
-	suite.ErrorContains(factory.(*onInstanceFactory).dropTempDatabase(context.Background(), "some_db"), "drop non-temporary database")
+	suite.ErrorContains(factory.(*onInstanceFactory).dropTempDatabase(context.Background(),
+		"some_db"), "drop non-temporary database")
 }
 
 func TestOnInstanceFactorySuite(t *testing.T) {

@@ -7,8 +7,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/stripe/pg-schema-diff/internal/concurrent"
-	"github.com/stripe/pg-schema-diff/internal/queries"
+	dbsqlc "github.com/stripe/pg-schema-diff/internal/queries"
 	"go.inout.gg/foundations/pointer"
 )
 
@@ -210,7 +211,8 @@ type checkConstraintAndTable struct {
 }
 
 // fetchCheckCons fetches the check constraints
-func fetchCheckCons(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory func() concurrent.GoroutineRunner) ([]checkConstraintAndTable, error) {
+func fetchCheckCons(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory func() concurrent.GoroutineRunner,
+) ([]checkConstraintAndTable, error) {
 	rawCheckCons, err := dbsqlc.New().GetCheckConstraints(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetCheckConstraints: %w", err)
@@ -427,7 +429,8 @@ func fetchDependsOnFunctions(ctx context.Context, db dbsqlc.DBTX, systemCatalog 
 
 	var functionNames []SchemaQualifiedName
 	for _, rawFunction := range dependsOnFunctions {
-		functionNames = append(functionNames, buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName))
+		functionNames = append(functionNames, buildProcName(rawFunction.FuncName,
+			rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName))
 	}
 
 	return functionNames, nil
@@ -442,8 +445,9 @@ func fetchProcedures(ctx context.Context, db dbsqlc.DBTX) ([]Procedure, error) {
 	var procedures []Procedure
 	for _, rawProcedure := range rawProcedures {
 		p := Procedure{
-			SchemaQualifiedName: buildProcName(rawProcedure.FuncName, rawProcedure.FuncIdentityArguments, rawProcedure.FuncSchemaName),
-			Def:                 rawProcedure.FuncDef,
+			SchemaQualifiedName: buildProcName(rawProcedure.FuncName,
+				rawProcedure.FuncIdentityArguments, rawProcedure.FuncSchemaName),
+			Def: rawProcedure.FuncDef,
 		}
 		procedures = append(procedures, p)
 	}
@@ -524,9 +528,10 @@ func fetchTriggers(ctx context.Context, db dbsqlc.DBTX) ([]Trigger, error) {
 	var triggers []Trigger
 	for _, rawTrigger := range rawTriggers {
 		triggers = append(triggers, Trigger{
-			EscapedName:       EscapeIdentifier(rawTrigger.TriggerName),
-			OwningTable:       buildNameFromUnescaped(rawTrigger.OwningTableName, rawTrigger.OwningTableSchemaName),
-			Function:          buildProcName(rawTrigger.FuncName, rawTrigger.FuncIdentityArguments, rawTrigger.FuncSchemaName),
+			EscapedName: EscapeIdentifier(rawTrigger.TriggerName),
+			OwningTable: buildNameFromUnescaped(rawTrigger.OwningTableName, rawTrigger.OwningTableSchemaName),
+			Function: buildProcName(rawTrigger.FuncName,
+				rawTrigger.FuncIdentityArguments, rawTrigger.FuncSchemaName),
 			GetTriggerDefStmt: GetTriggerDefStatement(rawTrigger.TriggerDef),
 			IsConstraint:      rawTrigger.IsConstraint,
 		})

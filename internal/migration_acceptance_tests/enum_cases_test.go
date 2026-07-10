@@ -77,25 +77,29 @@ var enumAcceptanceTestCases = []acceptanceTestCase{
             CREATE TABLE foo(
                 val some_enum_1
             );
-		`},
+		`,
+		},
 		newSchemaDDL: []string{
 			`
             CREATE TYPE some_enum_1 AS ENUM ('0', '1', '1.5', '2', '2.5', '3', '4');
             CREATE TABLE foo(
                 val some_enum_1 DEFAULT '1.5'
             );
-		`},
+		`,
+		},
 	},
 	{
 		name: "delete value and add value (enum not used)",
 		oldSchemaDDL: []string{
 			`
             CREATE TYPE some_enum_1 AS ENUM ('1', '2', '3');
-		`},
+		`,
+		},
 		newSchemaDDL: []string{
 			`
             CREATE TYPE some_enum_1 AS ENUM ('0', '1', '3');
-		`},
+		`,
+		},
 	},
 	{
 		name: "delete value and add value (enum used)",
@@ -105,14 +109,16 @@ var enumAcceptanceTestCases = []acceptanceTestCase{
             CREATE TABLE foo(
                 val some_enum_1
             );
-		`},
+		`,
+		},
 		newSchemaDDL: []string{
 			`
             CREATE TYPE some_enum_1 AS ENUM ('0', '1', '3');
             CREATE TABLE foo(
                 val some_enum_1
             );
-		`},
+		`,
+		},
 
 		// Removing a value from an enum in-use is impossible in Postgres. pg-schema-diff will currently identify this
 		// as a validation error. In the future, we can identify this in the actual plan generation stage.

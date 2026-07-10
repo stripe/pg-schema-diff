@@ -77,13 +77,16 @@ func (psg *privilegeSQLVertexGenerator) Alter(diff privilegeDiff) ([]Statement, 
 }
 
 func (psg *privilegeSQLVertexGenerator) GetSQLVertexId(p schema.TablePrivilege, diffType diffType) sqlVertexId {
-	return buildSchemaObjVertexId("privilege", fmt.Sprintf("%s.%s", psg.tableName.GetFQEscapedName(), p.GetName()), diffType)
+	return buildSchemaObjVertexId("privilege", fmt.Sprintf("%s.%s",
+		psg.tableName.GetFQEscapedName(), p.GetName()), diffType)
 }
 
 func (psg *privilegeSQLVertexGenerator) GetAddAlterDependencies(newPriv, _ schema.TablePrivilege) ([]dependency, error) {
 	// Ensure delete runs before add/alter (for recreate scenarios)
 	return []dependency{
-		mustRun(psg.GetSQLVertexId(newPriv, diffTypeDelete)).before(psg.GetSQLVertexId(newPriv, diffTypeAddAlter)),
+		mustRun(psg.GetSQLVertexId(newPriv, diffTypeDelete)).before(
+			psg.GetSQLVertexId(newPriv, diffTypeAddAlter),
+		),
 	}, nil
 }
 

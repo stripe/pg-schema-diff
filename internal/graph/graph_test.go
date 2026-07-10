@@ -382,7 +382,6 @@ func TestTopologicallySortWithPriority(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-
 			// Highest number vertices should be prioritized first
 			orderedNodes, err := g.TopologicallySortWithPriority(tc.isLowerPriority)
 			assert.NoError(t, err)

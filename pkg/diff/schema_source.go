@@ -89,10 +89,12 @@ func getDDLFromPath(path string) ([]ddlStatement, error) {
 func DDLSchemaSource(stmts []string) SchemaSource {
 	var ddl []ddlStatement
 	for _, stmt := range stmts {
-		ddl = append(ddl, ddlStatement{
-			stmt: stmt,
-			// There is no file name associated with the DDL statement.
-			file: ""},
+		ddl = append(
+			ddl, ddlStatement{
+				stmt: stmt,
+				// There is no file name associated with the DDL statement.
+				file: "",
+			},
 		)
 	}
 
@@ -110,7 +112,8 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 	}
 	defer func(closer tempdb.ContextualCloser) {
 		if err := closer.Close(ctx); err != nil {
-			deps.logger.ErrorContext(ctx, "failed to drop temporary database",
+			deps.logger.ErrorContext(
+				ctx, "failed to drop temporary database",
 				slog.Any("error", err),
 			)
 		}

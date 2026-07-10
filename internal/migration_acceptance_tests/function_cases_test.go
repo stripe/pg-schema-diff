@@ -100,7 +100,8 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                             RETURN i + 1;
                     END;
             $$ LANGUAGE plpgsql;
-		`},
+		`,
+		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
 	{
@@ -141,7 +142,8 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                 IMMUTABLE
                 RETURNS NULL ON NULL INPUT
                 RETURN CONCAT(a, b);
-		`},
+		`,
+		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
 	{
@@ -208,7 +210,8 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                             RETURN i + 1;
                     END;
             $$ LANGUAGE plpgsql;
-		`},
+		`,
+		},
 		newSchemaDDL:        nil,
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
@@ -372,7 +375,8 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                             RETURN i + 1;
                     END;
             $$ LANGUAGE plpgsql;
-		`},
+		`,
+		},
 		newSchemaDDL: []string{
 			`
             CREATE FUNCTION non_sql_func(i integer) RETURNS integer AS $$
@@ -380,7 +384,8 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                             RETURN i + 5;
                     END;
             $$ LANGUAGE plpgsql;
-		`},
+		`,
+		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
 	{
@@ -391,7 +396,8 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                 LANGUAGE SQL
                 IMMUTABLE
                 RETURN i + 5;
-		`},
+		`,
+		},
 		newSchemaDDL: []string{
 			`
             CREATE FUNCTION some_func(i integer) RETURNS integer AS $$
@@ -399,7 +405,8 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                             RETURN i + 1;
                     END;
             $$ LANGUAGE plpgsql;
-		`},
+		`,
+		},
 		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeHasUntrackableDependencies},
 	},
 	{
@@ -411,14 +418,16 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
                             RETURN i + 1;
                     END;
             $$ LANGUAGE plpgsql;
-		`},
+		`,
+		},
 		newSchemaDDL: []string{
 			`
             CREATE FUNCTION some_func(i integer) RETURNS integer
                 LANGUAGE SQL
                 IMMUTABLE
                 RETURN i + 5;
-		`},
+		`,
+		},
 	},
 	{
 		name: "Alter a function's dependencies",

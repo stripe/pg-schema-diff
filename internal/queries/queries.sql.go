@@ -248,7 +248,9 @@ type GetDependsOnFunctionsRow struct {
 	FuncIdentityArguments string
 }
 
-func (q *Queries) GetDependsOnFunctions(ctx context.Context, db DBTX, arg GetDependsOnFunctionsParams) ([]GetDependsOnFunctionsRow, error) {
+func (q *Queries) GetDependsOnFunctions(ctx context.Context, db DBTX,
+	arg GetDependsOnFunctionsParams,
+) ([]GetDependsOnFunctionsRow, error) {
 	rows, err := db.Query(ctx, getDependsOnFunctions, arg.SystemCatalog, arg.ObjectID)
 	if err != nil {
 		return nil, err
@@ -674,7 +676,7 @@ WITH roles AS (
     UNION
     (
         SELECT
-            0 AS ois,
+            0 AS is,
             'PUBLIC' AS role_name
     )
 )

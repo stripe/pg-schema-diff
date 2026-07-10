@@ -1,5 +1,4 @@
 name: run_tests
-
 on:
   push:
     branches:
