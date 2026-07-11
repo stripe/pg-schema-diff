@@ -31,6 +31,7 @@ internal/               # Internal implementation
 ├── schema/             # Complete schema representation types (schema.go is 46KB)
 ├── queries/            # SQL queries via sqlc for schema introspection
 ├── migration_acceptance_tests/  # Comprehensive test suite (24 test files)
+├── pgengine/           # Postgres engine management for tests
 ├── pgdump/             # pg_dump integration
 ├── graph/              # Dependency graph for statement ordering
 ```
@@ -204,5 +205,5 @@ Use `fmt.Errorf` with `%w` for error wrapping. Functions return `error` as last 
 
 ### Testing Conventions
 - Use `testify/assert` and `testify/require`
-- Tests use `go.segfaultmedaddy.com/pgxephemeraltest` directly from package-level `TestMain` setup
+- Acceptance tests use shared Postgres via `pgengine`
 - Test cases are typically table-driven

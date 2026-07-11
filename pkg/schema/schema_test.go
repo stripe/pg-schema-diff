@@ -4,12 +4,29 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/suite"
+	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
 	"github.com/stripe/pg-schema-diff/pkg/schema"
 )
 
-func TestGetPublicSchemaHash(t *testing.T) {
+type schemaTestSuite struct {
+	suite.Suite
+	pgEngine *pgengine.Engine
+}
+
+func (suite *schemaTestSuite) SetupSuite() {
+	engine, err := pgengine.StartEngine()
+	suite.Require().NoError(err)
+	suite.pgEngine = engine
+}
+
+func (suite *schemaTestSuite) TearDownSuite() {
+	suite.pgEngine.Close()
+}
+
+func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 	const (
 		ddl = `
 			CREATE EXTENSION pg_trgm WITH VERSION '1.6';
@@ -62,22 +79,32 @@ func TestGetPublicSchemaHash(t *testing.T) {
 			CREATE TABLE schema_filtered_1.bar()
 		`
 	)
-	connPool := poolFactory.Pool(t)
+	db, err := suite.pgEngine.CreateDatabase()
+	suite.Require().NoError(err)
+	defer db.DropDB()
 
-	_, err := connPool.Exec(context.Background(), ddl)
-	require.NoError(t, err)
+	connPool, err := pgxpool.New(context.Background(), db.GetDSN())
+	suite.Require().NoError(err)
+	defer connPool.Close()
+
+	_, err = connPool.Exec(context.Background(), ddl)
+	suite.Require().NoError(err)
 
 	conn, err := connPool.Acquire(context.Background())
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 	defer conn.Release()
 
 	hash, err := schema.GetSchemaHash(context.Background(), conn, schema.WithIncludeSchemas("public"))
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 
 	schema, err := internalschema.GetSchema(context.Background(), conn,
 		internalschema.WithIncludeSchemas("public"))
-	require.NoError(t, err)
+	suite.Require().NoError(err)
 	expectedHash, err := schema.Hash()
-	require.NoError(t, err)
-	require.Equal(t, expectedHash, hash)
+	suite.Require().NoError(err)
+	suite.Equal(expectedHash, hash)
+}
+
+func TestSchemaTestSuite(t *testing.T) {
+	suite.Run(t, new(schemaTestSuite))
 }
