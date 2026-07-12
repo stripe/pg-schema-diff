@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
-	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
-func databaseSchemaSourcePlan(ctx context.Context, connPool sqldb.Queryable,
+func databaseSchemaSourcePlan(ctx context.Context, connPool *pgxpool.Pool,
 	tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt,
 ) (_ diff.Plan, retErr error) {
 	newSchemaDb, err := tempDbFactory.Create(ctx)
@@ -40,7 +40,7 @@ func databaseSchemaSourcePlan(ctx context.Context, connPool sqldb.Queryable,
 }
 
 func dirSchemaSourcePlanFactory(schemaDirs []string) planFactory {
-	return func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory,
+	return func(ctx context.Context, connPool *pgxpool.Pool, tempDbFactory tempdb.Factory,
 		newSchemaDDL []string, opts ...diff.PlanOpt,
 	) (_ diff.Plan, retErr error) {
 		// Clone the opts so we don't modify the original.

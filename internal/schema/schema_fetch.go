@@ -7,13 +7,14 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/stripe/pg-schema-diff/internal/concurrent"
 	dbsqlc "github.com/stripe/pg-schema-diff/internal/queries"
 	"go.inout.gg/foundations/pointer"
 )
 
-func fetchNamedSchemas(ctx context.Context, db dbsqlc.DBTX) ([]NamedSchema, error) {
+func fetchNamedSchemas(ctx context.Context, db *pgxpool.Pool) ([]NamedSchema, error) {
 	schemaNames, err := dbsqlc.New().GetSchemas(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetSchemas(): %w", err)
@@ -29,7 +30,7 @@ func fetchNamedSchemas(ctx context.Context, db dbsqlc.DBTX) ([]NamedSchema, erro
 	return schemas, nil
 }
 
-func fetchExtensions(ctx context.Context, db dbsqlc.DBTX) ([]Extension, error) {
+func fetchExtensions(ctx context.Context, db *pgxpool.Pool) ([]Extension, error) {
 	rawExtensions, err := dbsqlc.New().GetExtensions(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetExtensions(): %w", err)
@@ -49,7 +50,7 @@ func fetchExtensions(ctx context.Context, db dbsqlc.DBTX) ([]Extension, error) {
 	return extensions, nil
 }
 
-func fetchEnums(ctx context.Context, db dbsqlc.DBTX) ([]Enum, error) {
+func fetchEnums(ctx context.Context, db *pgxpool.Pool) ([]Enum, error) {
 	rawEnums, err := dbsqlc.New().GetEnums(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetEnums: %w", err)
@@ -69,7 +70,7 @@ func fetchEnums(ctx context.Context, db dbsqlc.DBTX) ([]Enum, error) {
 	return enums, nil
 }
 
-func fetchTables(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory func() concurrent.GoroutineRunner) ([]Table, error) {
+func fetchTables(ctx context.Context, db *pgxpool.Pool, goroutineRunnerFactory func() concurrent.GoroutineRunner) ([]Table, error) {
 	rawTables, err := dbsqlc.New().GetTables(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetTables(): %w", err)
@@ -127,7 +128,7 @@ func fetchTables(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory fun
 
 func buildTable(
 	ctx context.Context,
-	db dbsqlc.DBTX,
+	db *pgxpool.Pool,
 	table dbsqlc.GetTablesRow,
 	checkConsByTable map[string][]CheckConstraint,
 	policiesByTable map[string][]Policy,
@@ -214,7 +215,7 @@ type checkConstraintAndTable struct {
 }
 
 // fetchCheckCons fetches the check constraints
-func fetchCheckCons(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory func() concurrent.GoroutineRunner,
+func fetchCheckCons(ctx context.Context, db *pgxpool.Pool, goroutineRunnerFactory func() concurrent.GoroutineRunner,
 ) ([]checkConstraintAndTable, error) {
 	rawCheckCons, err := dbsqlc.New().GetCheckConstraints(ctx, db)
 	if err != nil {
@@ -250,7 +251,7 @@ func fetchCheckCons(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory 
 	return ccs, nil
 }
 
-func buildCheckConstraint(ctx context.Context, db dbsqlc.DBTX, cc dbsqlc.GetCheckConstraintsRow) (CheckConstraint, error) {
+func buildCheckConstraint(ctx context.Context, db *pgxpool.Pool, cc dbsqlc.GetCheckConstraintsRow) (CheckConstraint, error) {
 	dependsOnFunctions, err := fetchDependsOnFunctions(ctx, db, "pg_constraint", cc.Oid)
 	if err != nil {
 		return CheckConstraint{}, fmt.Errorf("fetchDependsOnFunctions(%v): %w", cc.Oid, err)
@@ -266,7 +267,7 @@ func buildCheckConstraint(ctx context.Context, db dbsqlc.DBTX, cc dbsqlc.GetChec
 }
 
 // fetchIndexes fetches the indexes. We fetch all the indexes at once to minimize the number of queries.
-func fetchIndexes(ctx context.Context, db dbsqlc.DBTX) ([]Index, error) {
+func fetchIndexes(ctx context.Context, db *pgxpool.Pool) ([]Index, error) {
 	rawIndexes, err := dbsqlc.New().GetIndexes(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetIndexes: %w", err)
@@ -317,7 +318,7 @@ func buildIndex(rawIndex dbsqlc.GetIndexesRow) Index {
 	}
 }
 
-func fetchForeignKeyCons(ctx context.Context, db dbsqlc.DBTX) ([]ForeignKeyConstraint, error) {
+func fetchForeignKeyCons(ctx context.Context, db *pgxpool.Pool) ([]ForeignKeyConstraint, error) {
 	rawFkCons, err := dbsqlc.New().GetForeignKeyConstraints(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetForeignKeyConstraints: %w", err)
@@ -343,7 +344,7 @@ func fetchForeignKeyCons(ctx context.Context, db dbsqlc.DBTX) ([]ForeignKeyConst
 	return fkCons, nil
 }
 
-func fetchSequences(ctx context.Context, db dbsqlc.DBTX) ([]Sequence, error) {
+func fetchSequences(ctx context.Context, db *pgxpool.Pool) ([]Sequence, error) {
 	rawSeqs, err := dbsqlc.New().GetSequences(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetSequences: %w", err)
@@ -380,7 +381,7 @@ func fetchSequences(ctx context.Context, db dbsqlc.DBTX) ([]Sequence, error) {
 	return seqs, nil
 }
 
-func fetchFunctions(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory func() concurrent.GoroutineRunner) ([]Function, error) {
+func fetchFunctions(ctx context.Context, db *pgxpool.Pool, goroutineRunnerFactory func() concurrent.GoroutineRunner) ([]Function, error) {
 	rawFunctions, err := dbsqlc.New().GetProcs(ctx, db, 'f')
 	if err != nil {
 		return nil, fmt.Errorf("GetProcs: %w", err)
@@ -407,7 +408,7 @@ func fetchFunctions(ctx context.Context, db dbsqlc.DBTX, goroutineRunnerFactory 
 	return functions, nil
 }
 
-func buildFunction(ctx context.Context, db dbsqlc.DBTX, rawFunction dbsqlc.GetProcsRow) (Function, error) {
+func buildFunction(ctx context.Context, db *pgxpool.Pool, rawFunction dbsqlc.GetProcsRow) (Function, error) {
 	dependsOnFunctions, err := fetchDependsOnFunctions(ctx, db, "pg_proc", rawFunction.Oid)
 	if err != nil {
 		return Function{}, fmt.Errorf("fetchDependsOnFunctions(%v): %w", rawFunction.Oid, err)
@@ -421,7 +422,7 @@ func buildFunction(ctx context.Context, db dbsqlc.DBTX, rawFunction dbsqlc.GetPr
 	}, nil
 }
 
-func fetchDependsOnFunctions(ctx context.Context, db dbsqlc.DBTX, systemCatalog string, oid pgtype.Uint32) ([]SchemaQualifiedName, error) {
+func fetchDependsOnFunctions(ctx context.Context, db *pgxpool.Pool, systemCatalog string, oid pgtype.Uint32) ([]SchemaQualifiedName, error) {
 	dependsOnFunctions, err := dbsqlc.New().GetDependsOnFunctions(ctx, db, dbsqlc.GetDependsOnFunctionsParams{
 		SystemCatalog: systemCatalog,
 		ObjectID:      oid,
@@ -439,7 +440,7 @@ func fetchDependsOnFunctions(ctx context.Context, db dbsqlc.DBTX, systemCatalog 
 	return functionNames, nil
 }
 
-func fetchProcedures(ctx context.Context, db dbsqlc.DBTX) ([]Procedure, error) {
+func fetchProcedures(ctx context.Context, db *pgxpool.Pool) ([]Procedure, error) {
 	rawProcedures, err := dbsqlc.New().GetProcs(ctx, db, 'p')
 	if err != nil {
 		return nil, fmt.Errorf("GetProcs: %w", err)
@@ -468,7 +469,7 @@ type privilegeAndTable struct {
 	table     SchemaQualifiedName
 }
 
-func fetchPolicies(ctx context.Context, db dbsqlc.DBTX) ([]policyAndTable, error) {
+func fetchPolicies(ctx context.Context, db *pgxpool.Pool) ([]policyAndTable, error) {
 	rawPolicies, err := dbsqlc.New().GetPolicies(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetPolicies: %w", err)
@@ -493,7 +494,7 @@ func fetchPolicies(ctx context.Context, db dbsqlc.DBTX) ([]policyAndTable, error
 	return policies, nil
 }
 
-func fetchPrivileges(ctx context.Context, db dbsqlc.DBTX) ([]privilegeAndTable, error) {
+func fetchPrivileges(ctx context.Context, db *pgxpool.Pool) ([]privilegeAndTable, error) {
 	rawPrivileges, err := dbsqlc.New().GetTablePrivileges(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetTablePrivileges: %w", err)
@@ -522,7 +523,7 @@ func fetchPrivileges(ctx context.Context, db dbsqlc.DBTX) ([]privilegeAndTable, 
 	return privileges, nil
 }
 
-func fetchTriggers(ctx context.Context, db dbsqlc.DBTX) ([]Trigger, error) {
+func fetchTriggers(ctx context.Context, db *pgxpool.Pool) ([]Trigger, error) {
 	rawTriggers, err := dbsqlc.New().GetTriggers(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetTriggers: %w", err)
@@ -543,7 +544,7 @@ func fetchTriggers(ctx context.Context, db dbsqlc.DBTX) ([]Trigger, error) {
 	return triggers, nil
 }
 
-func fetchViews(ctx context.Context, db dbsqlc.DBTX) ([]View, error) {
+func fetchViews(ctx context.Context, db *pgxpool.Pool) ([]View, error) {
 	rawViews, err := dbsqlc.New().GetViews(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetViews: %w", err)
@@ -573,7 +574,7 @@ func fetchViews(ctx context.Context, db dbsqlc.DBTX) ([]View, error) {
 	return views, nil
 }
 
-func fetchMaterializedViews(ctx context.Context, db dbsqlc.DBTX) ([]MaterializedView, error) {
+func fetchMaterializedViews(ctx context.Context, db *pgxpool.Pool) ([]MaterializedView, error) {
 	rawMaterializedViews, err := dbsqlc.New().GetMaterializedViews(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetMaterializedViews: %w", err)

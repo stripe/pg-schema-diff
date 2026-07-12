@@ -25,7 +25,6 @@ pkg/                    # Public API packages
 ├── tempdb/             # Temporary database factory for plan validation
 ├── log/                # Logging interface
 ├── schema/             # Public schema API wrapper
-├── sqldb/              # Database queryable interface
 
 internal/               # Internal implementation
 ├── schema/             # Complete schema representation types (schema.go is 46KB)
@@ -172,7 +171,7 @@ import (
 tempDbFactory, _ := tempdb.NewOnInstanceFactory(ctx, connPool.Config())
 
 // Define schema sources
-currentSchema := diff.DBSchemaSource(db)  // db is *sql.DB or sqldb.Queryable
+currentSchema := diff.DBSchemaSource(connPool)  // connPool is *pgxpool.Pool
 targetSchema, _ := diff.DirSchemaSource([]string{"./schema"})  // returns (SchemaSource, error)
 
 // Generate plan

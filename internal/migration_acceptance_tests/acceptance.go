@@ -13,7 +13,6 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/pgdump"
 	"github.com/stripe/pg-schema-diff/internal/testdb"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
-	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
@@ -21,7 +20,7 @@ import (
 var errValidatingPlan = fmt.Errorf("validating migration plan")
 
 type (
-	planFactory func(ctx context.Context, connPool sqldb.Queryable, tempDbFactory tempdb.Factory,
+	planFactory func(ctx context.Context, connPool *pgxpool.Pool, tempDbFactory tempdb.Factory,
 		newSchemaDDL []string, opts ...diff.PlanOpt) (diff.Plan, error)
 
 	acceptanceTestCase struct {
@@ -117,7 +116,7 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 		tc.expectedDBSchemaDDL = tc.newSchemaDDL
 	}
 	if tc.planFactory == nil {
-		tc.planFactory = func(ctx context.Context, connPool sqldb.Queryable,
+		tc.planFactory = func(ctx context.Context, connPool *pgxpool.Pool,
 			tempDbFactory tempdb.Factory, newSchemaDDL []string, opts ...diff.PlanOpt,
 		) (diff.Plan, error) {
 			connSource := diff.DBSchemaSource(connPool)

@@ -12,7 +12,6 @@ import (
 	"github.com/mitchellh/hashstructure/v2"
 
 	"github.com/stripe/pg-schema-diff/internal/concurrent"
-	dbsqlc "github.com/stripe/pg-schema-diff/internal/queries"
 )
 
 type (
@@ -572,13 +571,9 @@ type getSchemaOptions struct {
 }
 
 // GetSchema fetches the database schema. It is a non-atomic operation.
-func GetSchema(ctx context.Context, db dbsqlc.DBTX, opts ...GetSchemaOpt) (Schema, error) {
-	// Use concurrency for pools, but not single connections because pgx.Conn is not safe for concurrent use.
-	goroutineRunnerFactory := concurrent.NewSynchronousGoroutineRunner
-	if _, ok := db.(*pgxpool.Pool); ok {
-		goroutineRunnerFactory = func() concurrent.GoroutineRunner {
-			return concurrent.NewGoroutineLimiter(50)
-		}
+func GetSchema(ctx context.Context, db *pgxpool.Pool, opts ...GetSchemaOpt) (Schema, error) {
+	goroutineRunnerFactory := func() concurrent.GoroutineRunner {
+		return concurrent.NewGoroutineLimiter(50)
 	}
 
 	options := getSchemaOptions{}
@@ -668,7 +663,7 @@ type (
 	}
 )
 
-func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (Schema, error) {
+func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (Schema, error) {
 	goroutineRunner := s.goroutineRunnerFactory()
 
 	namedSchemasFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]NamedSchema, error) {

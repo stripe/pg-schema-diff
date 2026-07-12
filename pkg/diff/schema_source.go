@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stripe/pg-schema-diff/internal/schema"
-	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
@@ -133,15 +133,14 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 }
 
 type dbSchemaSource struct {
-	queryable sqldb.Queryable
+	connPool *pgxpool.Pool
 }
 
-// DBSchemaSource returns a SchemaSource that returns a schema based on the provided queryable. It is recommended
-// that the sqldb.Queryable is a *pgxpool.Pool with a max # of connections set.
-func DBSchemaSource(queryable sqldb.Queryable) SchemaSource {
-	return &dbSchemaSource{queryable: queryable}
+// DBSchemaSource returns a SchemaSource that returns a schema based on the provided connection pool.
+func DBSchemaSource(connPool *pgxpool.Pool) SchemaSource {
+	return &dbSchemaSource{connPool: connPool}
 }
 
 func (s *dbSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (schema.Schema, error) {
-	return schema.GetSchema(ctx, s.queryable, deps.getSchemaOpts...)
+	return schema.GetSchema(ctx, s.connPool, deps.getSchemaOpts...)
 }

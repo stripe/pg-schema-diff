@@ -87,14 +87,10 @@ func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 	_, err = db.ConnPool.Exec(context.Background(), ddl)
 	suite.Require().NoError(err)
 
-	conn, err := db.ConnPool.Acquire(context.Background())
-	suite.Require().NoError(err)
-	defer conn.Release()
-
-	hash, err := schema.GetSchemaHash(context.Background(), conn, schema.WithIncludeSchemas("public"))
+	hash, err := schema.GetSchemaHash(context.Background(), db.ConnPool, schema.WithIncludeSchemas("public"))
 	suite.Require().NoError(err)
 
-	schema, err := internalschema.GetSchema(context.Background(), conn,
+	schema, err := internalschema.GetSchema(context.Background(), db.ConnPool,
 		internalschema.WithIncludeSchemas("public"))
 	suite.Require().NoError(err)
 	expectedHash, err := schema.Hash()

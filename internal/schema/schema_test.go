@@ -5,11 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	queries "github.com/stripe/pg-schema-diff/internal/queries"
 	"github.com/stripe/pg-schema-diff/internal/testdb"
 )
 
@@ -1341,33 +1339,16 @@ var (
 	}
 )
 
-type closeFunc func()
-
-func (f closeFunc) Close() {
-	f()
-}
-
 func TestSchemaTestCases(t *testing.T) {
 	factory := testdb.MustNewFactory(t)
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Run("Conn pool", func(t *testing.T) {
-				runTestCase(t, factory, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
-					return db, nil
-				})
-			})
-			t.Run("Connection", func(t *testing.T) {
-				runTestCase(t, factory, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
-					conn, err := db.Acquire(context.Background())
-					require.NoError(t, err)
-					return conn, conn.Release
-				})
-			})
+			runTestCase(t, factory, tc)
 		})
 	}
 }
 
-func runTestCase(t *testing.T, factory *testdb.Factory, testCase *testCase, getDBTX func(db *pgxpool.Pool) (queries.DBTX, closeFunc)) {
+func runTestCase(t *testing.T, factory *testdb.Factory, testCase *testCase) {
 	for _, ddl := range testCase.ddl {
 		if strings.Contains(ddl, "CREATE ROLE") {
 			factory.LockRoles(t, "some_role_1", "some_role_2")
@@ -1381,12 +1362,7 @@ func runTestCase(t *testing.T, factory *testdb.Factory, testCase *testCase, getD
 		require.NoError(t, err)
 	}
 
-	dbtx, closer := getDBTX(db.ConnPool)
-	if closer != nil {
-		defer closer.Close()
-	}
-
-	fetchedSchema, err := GetSchema(context.Background(), dbtx, testCase.opts...)
+	fetchedSchema, err := GetSchema(context.Background(), db.ConnPool, testCase.opts...)
 	if testCase.expectedErrIs != nil {
 		require.ErrorIs(t, err, testCase.expectedErrIs)
 		return

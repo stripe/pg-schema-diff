@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
-	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 )
 
 type GetSchemaOpt = internalschema.GetSchemaOpt
@@ -19,8 +19,8 @@ var (
 // plan to determine if the plan is still valid.
 //
 // We do not expose the Schema struct yet because it is subject to change, and we do not want folks depending on its API.
-func GetSchemaHash(ctx context.Context, queryable sqldb.Queryable, opts ...GetSchemaOpt) (string, error) {
-	schema, err := internalschema.GetSchema(ctx, queryable, opts...)
+func GetSchemaHash(ctx context.Context, connPool *pgxpool.Pool, opts ...GetSchemaOpt) (string, error) {
+	schema, err := internalschema.GetSchema(ctx, connPool, opts...)
 	if err != nil {
 		return "", fmt.Errorf("getting public schema: %w", err)
 	}
