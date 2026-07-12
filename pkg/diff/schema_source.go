@@ -20,7 +20,7 @@ type schemaSourcePlanDeps struct {
 }
 
 type SchemaSource interface {
-	GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (schema.Schema, error)
+	GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (*schema.Schema, error)
 }
 
 type (
@@ -101,14 +101,14 @@ func DDLSchemaSource(stmts []string) SchemaSource {
 	return &ddlSchemaSource{ddl: ddl}
 }
 
-func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (schema.Schema, error) {
+func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (*schema.Schema, error) {
 	if deps.tempDBFactory == nil {
-		return schema.Schema{}, errTempDbFactoryRequired
+		return nil, errTempDbFactoryRequired
 	}
 
 	tempDb, err := deps.tempDBFactory.Create(ctx)
 	if err != nil {
-		return schema.Schema{}, fmt.Errorf("creating temp database: %w", err)
+		return nil, fmt.Errorf("creating temp database: %w", err)
 	}
 	defer func() {
 		if err := tempDb.Close(ctx); err != nil {
@@ -125,7 +125,7 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 			if ddlStmt.file != "" {
 				debugInfo = fmt.Sprintf(" (from %s)", ddlStmt.file)
 			}
-			return schema.Schema{}, fmt.Errorf("running DDL%s: %w", debugInfo, err)
+			return nil, fmt.Errorf("running DDL%s: %w", debugInfo, err)
 		}
 	}
 
@@ -141,6 +141,6 @@ func DBSchemaSource(connPool *pgxpool.Pool) SchemaSource {
 	return &dbSchemaSource{connPool: connPool}
 }
 
-func (s *dbSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (schema.Schema, error) {
+func (s *dbSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (*schema.Schema, error) {
 	return schema.GetSchema(ctx, s.connPool, deps.getSchemaOpts...)
 }

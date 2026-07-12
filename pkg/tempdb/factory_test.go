@@ -131,7 +131,7 @@ func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
 	// A newly created temporary database should contain no user-defined objects.
 	schema, err := internalschema.GetSchema(context.Background(), tempDb.ConnPool)
 	suite.Require().NoError(err)
-	suite.Equal(internalschema.Schema{
+	suite.Equal(&internalschema.Schema{
 		NamedSchemas: []internalschema.NamedSchema{{
 			Name: "public",
 		}},

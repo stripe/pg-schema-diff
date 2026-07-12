@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
 
-	"github.com/stripe/pg-schema-diff/internal/concurrent"
 	dbsqlc "github.com/stripe/pg-schema-diff/internal/queries"
 	"go.inout.gg/foundations/pointer"
 )
@@ -70,13 +70,15 @@ func fetchEnums(ctx context.Context, db *pgxpool.Pool) ([]Enum, error) {
 	return enums, nil
 }
 
-func fetchTables(ctx context.Context, db *pgxpool.Pool, goroutineRunnerFactory func() concurrent.GoroutineRunner) ([]Table, error) {
+const maxConcurrentSchemaQueries = 50
+
+func fetchTables(ctx context.Context, db *pgxpool.Pool) ([]Table, error) {
 	rawTables, err := dbsqlc.New().GetTables(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetTables(): %w", err)
 	}
 
-	checkCons, err := fetchCheckCons(ctx, db, goroutineRunnerFactory)
+	checkCons, err := fetchCheckCons(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("fetchCheckCons(): %w", err)
 	}
@@ -106,21 +108,21 @@ func fetchTables(ctx context.Context, db *pgxpool.Pool, goroutineRunnerFactory f
 			append(privilegesByTable[p.table.GetFQEscapedName()], p.privilege)
 	}
 
-	goroutineRunner := goroutineRunnerFactory()
-	var tableFutures []concurrent.Future[Table]
-	for _, _rawTable := range rawTables {
-		rawTable := _rawTable // Capture loop variables for go routine
-		tableFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() (Table, error) {
-			return buildTable(ctx, db, rawTable, checkConsByTable, policiesByTable, privilegesByTable)
+	tables := make([]Table, len(rawTables))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(maxConcurrentSchemaQueries)
+	for i, rawTable := range rawTables {
+		group.Go(func() error {
+			table, err := buildTable(groupCtx, db, rawTable, checkConsByTable, policiesByTable, privilegesByTable)
+			if err != nil {
+				return err
+			}
+			tables[i] = table
+			return nil
 		})
-		if err != nil {
-			return nil, fmt.Errorf("starting table future: %w", err)
-		}
-		tableFutures = append(tableFutures, tableFuture)
 	}
-	tables, err := concurrent.GetAll(ctx, tableFutures...)
-	if err != nil {
-		return nil, fmt.Errorf("getting tables: %w", err)
+	if err := group.Wait(); err != nil {
+		return nil, fmt.Errorf("building tables: %w", err)
 	}
 
 	return tables, nil
@@ -215,37 +217,30 @@ type checkConstraintAndTable struct {
 }
 
 // fetchCheckCons fetches the check constraints
-func fetchCheckCons(ctx context.Context, db *pgxpool.Pool, goroutineRunnerFactory func() concurrent.GoroutineRunner,
-) ([]checkConstraintAndTable, error) {
+func fetchCheckCons(ctx context.Context, db *pgxpool.Pool) ([]checkConstraintAndTable, error) {
 	rawCheckCons, err := dbsqlc.New().GetCheckConstraints(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("GetCheckConstraints: %w", err)
 	}
 
-	goroutineRunner := goroutineRunnerFactory()
-	var ccFutures []concurrent.Future[checkConstraintAndTable]
-	for _, _rawCC := range rawCheckCons {
-		rawCC := _rawCC // Capture loop variable for go routine
-		f, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() (checkConstraintAndTable, error) {
-			cc, err := buildCheckConstraint(ctx, db, rawCC)
+	ccs := make([]checkConstraintAndTable, len(rawCheckCons))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(maxConcurrentSchemaQueries)
+	for i, rawCC := range rawCheckCons {
+		group.Go(func() error {
+			cc, err := buildCheckConstraint(groupCtx, db, rawCC)
 			if err != nil {
-				return checkConstraintAndTable{}, fmt.Errorf("building check constraint: %w", err)
+				return fmt.Errorf("building check constraint: %w", err)
 			}
-			return checkConstraintAndTable{
+			ccs[i] = checkConstraintAndTable{
 				checkConstraint: cc,
 				table:           buildNameFromUnescaped(rawCC.TableName, rawCC.TableSchemaName),
-			}, nil
+			}
+			return nil
 		})
-		if err != nil {
-			return nil, fmt.Errorf("starting check constraint future: %w", err)
-		}
-
-		ccFutures = append(ccFutures, f)
 	}
-
-	ccs, err := concurrent.GetAll(ctx, ccFutures...)
-	if err != nil {
-		return nil, fmt.Errorf("getting check constraints: %w", err)
+	if err := group.Wait(); err != nil {
+		return nil, err
 	}
 
 	return ccs, nil
@@ -381,28 +376,27 @@ func fetchSequences(ctx context.Context, db *pgxpool.Pool) ([]Sequence, error) {
 	return seqs, nil
 }
 
-func fetchFunctions(ctx context.Context, db *pgxpool.Pool, goroutineRunnerFactory func() concurrent.GoroutineRunner) ([]Function, error) {
+func fetchFunctions(ctx context.Context, db *pgxpool.Pool) ([]Function, error) {
 	rawFunctions, err := dbsqlc.New().GetProcs(ctx, db, 'f')
 	if err != nil {
 		return nil, fmt.Errorf("GetProcs: %w", err)
 	}
 
-	goroutineRunner := goroutineRunnerFactory()
-	var functionFutures []concurrent.Future[Function]
-	for _, _rawFunction := range rawFunctions {
-		rawFunction := _rawFunction // Capture loop variable for go routine
-		f, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() (Function, error) {
-			return buildFunction(ctx, db, rawFunction)
+	functions := make([]Function, len(rawFunctions))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(maxConcurrentSchemaQueries)
+	for i, rawFunction := range rawFunctions {
+		group.Go(func() error {
+			function, err := buildFunction(groupCtx, db, rawFunction)
+			if err != nil {
+				return err
+			}
+			functions[i] = function
+			return nil
 		})
-		if err != nil {
-			return nil, fmt.Errorf("starting function future: %w", err)
-		}
-		functionFutures = append(functionFutures, f)
 	}
-
-	functions, err := concurrent.GetAll(ctx, functionFutures...)
-	if err != nil {
-		return nil, fmt.Errorf("getting functions: %w", err)
+	if err := group.Wait(); err != nil {
+		return nil, fmt.Errorf("building functions: %w", err)
 	}
 
 	return functions, nil

@@ -10,8 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mitchellh/hashstructure/v2"
-
-	"github.com/stripe/pg-schema-diff/internal/concurrent"
+	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -571,11 +570,7 @@ type getSchemaOptions struct {
 }
 
 // GetSchema fetches the database schema. It is a non-atomic operation.
-func GetSchema(ctx context.Context, db *pgxpool.Pool, opts ...GetSchemaOpt) (Schema, error) {
-	goroutineRunnerFactory := func() concurrent.GoroutineRunner {
-		return concurrent.NewGoroutineLimiter(50)
-	}
-
+func GetSchema(ctx context.Context, db *pgxpool.Pool, opts ...GetSchemaOpt) (*Schema, error) {
 	options := getSchemaOptions{}
 	for _, opt := range opts {
 		opt(&options)
@@ -583,13 +578,10 @@ func GetSchema(ctx context.Context, db *pgxpool.Pool, opts ...GetSchemaOpt) (Sch
 
 	nameFilter, err := buildNameFilter(options)
 	if err != nil {
-		return Schema{}, fmt.Errorf("building name filter: %w", err)
+		return nil, fmt.Errorf("building name filter: %w", err)
 	}
 
-	return (&schemaFetcher{
-		goroutineRunnerFactory: goroutineRunnerFactory,
-		nameFilter:             nameFilter,
-	}).getSchema(ctx, db)
+	return (&schemaFetcher{nameFilter: nameFilter}).getSchema(ctx, db)
 }
 
 func buildNameFilter(options getSchemaOptions) (nameFilter, error) {
@@ -646,9 +638,6 @@ func buildExcludeSchemasFilter(schemas []string) nameFilter {
 
 type (
 	schemaFetcher struct {
-		// goroutineRunnerFactory is a factory function that returns a GoroutineRunner. We need to be able to construct
-		// multiple GoroutineRunners to avoid deadlock created by circular dependencies of submitted go routines.
-		goroutineRunnerFactory func() concurrent.GoroutineRunner
 		// nameFilter is a filter that determines which schema objects to include in the schema via their
 		// schema name and object name.
 		//
@@ -663,155 +652,77 @@ type (
 	}
 )
 
-func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (Schema, error) {
-	goroutineRunner := s.goroutineRunnerFactory()
-
-	namedSchemasFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]NamedSchema, error) {
-		return fetchNamedSchemas(ctx, db)
+func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (*Schema, error) {
+	var result Schema
+	// Fetch object types in parallel. Tables, check constraints, and functions also parallelize their per-object queries.
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(maxConcurrentSchemaQueries)
+	group.Go(func() error {
+		var err error
+		result.NamedSchemas, err = fetchNamedSchemas(groupCtx, db)
+		return wrapSchemaFetchError("named schemas", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting named schemas future: %w", err)
-	}
-
-	extensionsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Extension, error) {
-		return fetchExtensions(ctx, db)
+	group.Go(func() error {
+		var err error
+		result.Extensions, err = fetchExtensions(groupCtx, db)
+		return wrapSchemaFetchError("extensions", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting extensions future: %w", err)
-	}
-
-	enumsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Enum, error) {
-		return fetchEnums(ctx, db)
+	group.Go(func() error {
+		var err error
+		result.Enums, err = fetchEnums(groupCtx, db)
+		return wrapSchemaFetchError("enums", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting enums future: %w", err)
-	}
-
-	tablesFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Table, error) {
-		return fetchTables(ctx, db, s.goroutineRunnerFactory)
+	group.Go(func() error {
+		var err error
+		result.Tables, err = fetchTables(groupCtx, db)
+		return wrapSchemaFetchError("tables", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting tables future: %w", err)
-	}
-
-	indexesFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Index, error) {
-		return fetchIndexes(ctx, db)
+	group.Go(func() error {
+		var err error
+		result.Indexes, err = fetchIndexes(groupCtx, db)
+		return wrapSchemaFetchError("indexes", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting indexes future: %w", err)
-	}
-
-	fkConsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]ForeignKeyConstraint, error) {
-		return fetchForeignKeyCons(ctx, db)
+	group.Go(func() error {
+		var err error
+		result.ForeignKeyConstraints, err = fetchForeignKeyCons(groupCtx, db)
+		return wrapSchemaFetchError("foreign key constraints", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting foreign key constraints future: %w", err)
-	}
-
-	sequencesFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Sequence, error) {
-		return fetchSequences(ctx, db)
+	group.Go(func() error {
+		var err error
+		result.Sequences, err = fetchSequences(groupCtx, db)
+		return wrapSchemaFetchError("sequences", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting sequences future: %w", err)
-	}
-
-	functionsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Function, error) {
-		return fetchFunctions(ctx, db, s.goroutineRunnerFactory)
+	group.Go(func() error {
+		var err error
+		result.Functions, err = fetchFunctions(groupCtx, db)
+		return wrapSchemaFetchError("functions", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting functions future: %w", err)
-	}
-
-	proceduresFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Procedure, error) {
-		return fetchProcedures(ctx, db)
+	group.Go(func() error {
+		var err error
+		result.Procedures, err = fetchProcedures(groupCtx, db)
+		return wrapSchemaFetchError("procedures", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting functions future: %w", err)
-	}
-
-	triggersFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Trigger, error) {
-		return fetchTriggers(ctx, db)
+	group.Go(func() error {
+		var err error
+		result.Triggers, err = fetchTriggers(groupCtx, db)
+		return wrapSchemaFetchError("triggers", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting triggers future: %w", err)
-	}
-
-	viewsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]View, error) {
-		return fetchViews(ctx, db)
+	group.Go(func() error {
+		var err error
+		result.Views, err = fetchViews(groupCtx, db)
+		return wrapSchemaFetchError("views", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting views future: %w", err)
-	}
-
-	materializedViewsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]MaterializedView, error) {
-		return fetchMaterializedViews(ctx, db)
+	group.Go(func() error {
+		var err error
+		result.MaterializedViews, err = fetchMaterializedViews(groupCtx, db)
+		return wrapSchemaFetchError("materialized views", err)
 	})
-	if err != nil {
-		return Schema{}, fmt.Errorf("starting materialized views future: %w", err)
+	if err := group.Wait(); err != nil {
+		return nil, err
 	}
 
-	schemas, err := namedSchemasFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting named schemas: %w", err)
-	}
-
-	extensions, err := extensionsFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting extensions: %w", err)
-	}
-
-	enums, err := enumsFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting enums: %w", err)
-	}
-
-	tables, err := tablesFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting tables: %w", err)
-	}
-
-	indexes, err := indexesFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting indexes: %w", err)
-	}
-
-	fkCons, err := fkConsFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting foreign key constraints: %w", err)
-	}
-
-	sequences, err := sequencesFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting sequences: %w", err)
-	}
-
-	functions, err := functionsFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting functions: %w", err)
-	}
-
-	procedures, err := proceduresFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting procedures: %w", err)
-	}
-
-	triggers, err := triggersFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting triggers: %w", err)
-	}
-
-	views, err := viewsFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting views: %w", err)
-	}
-
-	materializedViews, err := materializedViewsFuture.Get(ctx)
-	if err != nil {
-		return Schema{}, fmt.Errorf("getting materialized views: %w", err)
-	}
-
-	schemas = filterSliceByName(
-		schemas,
+	result.NamedSchemas = filterSliceByName(
+		result.NamedSchemas,
 		func(s NamedSchema) SchemaQualifiedName {
 			return SchemaQualifiedName{
 				SchemaName:  s.Name,
@@ -820,15 +731,15 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (Schema
 		},
 		s.nameFilter,
 	)
-	extensions = filterSliceByName(
-		extensions,
+	result.Extensions = filterSliceByName(
+		result.Extensions,
 		func(e Extension) SchemaQualifiedName {
 			return e.SchemaQualifiedName
 		},
 		s.nameFilter,
 	)
-	enums = filterSliceByName(
-		enums,
+	result.Enums = filterSliceByName(
+		result.Enums,
 		func(enum Enum) SchemaQualifiedName {
 			return enum.SchemaQualifiedName
 		},
@@ -836,7 +747,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (Schema
 	)
 
 	var filteredTables []Table
-	for _, table := range tables {
+	for _, table := range result.Tables {
 		table.CheckConstraints = filterSliceByName(
 			table.CheckConstraints,
 			func(cc CheckConstraint) SchemaQualifiedName {
@@ -866,22 +777,22 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (Schema
 		)
 		filteredTables = append(filteredTables, table)
 	}
-	tables = filterSliceByName(
+	result.Tables = filterSliceByName(
 		filteredTables,
 		func(t Table) SchemaQualifiedName {
 			return t.SchemaQualifiedName
 		},
 		s.nameFilter,
 	)
-	indexes = filterSliceByName(
-		indexes,
+	result.Indexes = filterSliceByName(
+		result.Indexes,
 		func(idx Index) SchemaQualifiedName {
 			return idx.GetSchemaQualifiedName()
 		},
 		s.nameFilter,
 	)
-	fkCons = filterSliceByName(
-		fkCons,
+	result.ForeignKeyConstraints = filterSliceByName(
+		result.ForeignKeyConstraints,
 		func(fkCon ForeignKeyConstraint) SchemaQualifiedName {
 			return SchemaQualifiedName{
 				SchemaName:  fkCon.OwningTable.SchemaName,
@@ -890,8 +801,8 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (Schema
 		},
 		s.nameFilter,
 	)
-	sequences = filterSliceByName(
-		sequences,
+	result.Sequences = filterSliceByName(
+		result.Sequences,
 		func(seq Sequence) SchemaQualifiedName {
 			return SchemaQualifiedName{
 				SchemaName:  seq.SchemaName,
@@ -900,22 +811,22 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (Schema
 		},
 		s.nameFilter,
 	)
-	functions = filterSliceByName(
-		functions,
+	result.Functions = filterSliceByName(
+		result.Functions,
 		func(function Function) SchemaQualifiedName {
 			return function.SchemaQualifiedName
 		},
 		s.nameFilter,
 	)
-	procedures = filterSliceByName(
-		procedures,
+	result.Procedures = filterSliceByName(
+		result.Procedures,
 		func(procedure Procedure) SchemaQualifiedName {
 			return procedure.SchemaQualifiedName
 		},
 		s.nameFilter,
 	)
-	triggers = filterSliceByName(
-		triggers,
+	result.Triggers = filterSliceByName(
+		result.Triggers,
 		func(trigger Trigger) SchemaQualifiedName {
 			return SchemaQualifiedName{
 				SchemaName:  trigger.OwningTable.SchemaName,
@@ -924,35 +835,29 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (Schema
 		},
 		s.nameFilter,
 	)
-	views = filterSliceByName(
-		views,
+	result.Views = filterSliceByName(
+		result.Views,
 		func(view View) SchemaQualifiedName {
 			return view.SchemaQualifiedName
 		},
 		s.nameFilter,
 	)
-	materializedViews = filterSliceByName(
-		materializedViews,
+	result.MaterializedViews = filterSliceByName(
+		result.MaterializedViews,
 		func(materializedView MaterializedView) SchemaQualifiedName {
 			return materializedView.SchemaQualifiedName
 		},
 		s.nameFilter,
 	)
 
-	return Schema{
-		NamedSchemas:          schemas,
-		Extensions:            extensions,
-		Enums:                 enums,
-		Tables:                tables,
-		Indexes:               indexes,
-		ForeignKeyConstraints: fkCons,
-		Sequences:             sequences,
-		Functions:             functions,
-		Procedures:            procedures,
-		Triggers:              triggers,
-		Views:                 views,
-		MaterializedViews:     materializedViews,
-	}, nil
+	return &result, nil
+}
+
+func wrapSchemaFetchError(name string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("fetching %s: %w", name, err)
 }
 
 // FQEscapedColumnName builds a fully-qualified escape column name

@@ -149,7 +149,7 @@ func Generate(
 		return Plan{}, fmt.Errorf("getting new schema: %w", err)
 	}
 
-	statements, err := generateMigrationStatements(currentSchema, newSchema, planOptions)
+	statements, err := generateMigrationStatements(*currentSchema, *newSchema, planOptions)
 	if err != nil {
 		return Plan{}, fmt.Errorf("generating plan statements: %w", err)
 	}
@@ -168,7 +168,8 @@ func Generate(
 		if planOptions.tempDbFactory == nil {
 			return Plan{}, fmt.Errorf("cannot validate plan without a tempDbFactory: %w", errTempDbFactoryRequired)
 		}
-		if err := assertValidPlan(ctx, planOptions.tempDbFactory, currentSchema, newSchema, plan, planOptions); err != nil {
+		if err := assertValidPlan(ctx, planOptions.tempDbFactory, *currentSchema,
+			*newSchema, plan, planOptions); err != nil {
 			return Plan{}, fmt.Errorf("validating migration plan: %w \n%# v", err, pretty.Formatter(plan))
 		}
 	}
@@ -232,7 +233,7 @@ func assertValidPlan(ctx context.Context,
 		return fmt.Errorf("fetching schema from migrated database: %w", err)
 	}
 
-	return assertMigratedSchemaMatchesTarget(migratedSchema, newSchema, planOptions)
+	return assertMigratedSchemaMatchesTarget(*migratedSchema, newSchema, planOptions)
 }
 
 func setSchemaForEmptyDatabase(ctx context.Context, emptyDb *tempdb.Database, targetSchema schema.Schema, options *planOptions) error {
@@ -254,7 +255,7 @@ func setSchemaForEmptyDatabase(ctx context.Context, emptyDb *tempdb.Database, ta
 		return fmt.Errorf("getting schema from empty database: %w", err)
 	}
 
-	statements, err := generateMigrationStatements(startingSchema, targetSchema, &planOptions{})
+	statements, err := generateMigrationStatements(*startingSchema, targetSchema, &planOptions{})
 	if err != nil {
 		return fmt.Errorf("building schema diff: %w", err)
 	}
@@ -264,7 +265,7 @@ func setSchemaForEmptyDatabase(ctx context.Context, emptyDb *tempdb.Database, ta
 	return nil
 }
 
-func schemaFromTempDb(ctx context.Context, db *tempdb.Database, plan *planOptions) (schema.Schema, error) {
+func schemaFromTempDb(ctx context.Context, db *tempdb.Database, plan *planOptions) (*schema.Schema, error) {
 	return schema.GetSchema(ctx, db.ConnPool, plan.getSchemaOpts...)
 }
 

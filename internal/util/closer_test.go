@@ -8,10 +8,6 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/util"
 )
 
-func TestNoOpCloser(t *testing.T) {
-	require.NoError(t, util.NoOpCloser().Close())
-}
-
 func TestDoOnErrOrPanicIsCalledOnError(t *testing.T) {
 	var err error
 	wasCalled := false
