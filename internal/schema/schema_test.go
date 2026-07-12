@@ -2,14 +2,15 @@ package schema
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	queries "github.com/stripe/pg-schema-diff/internal/queries"
+	"github.com/stripe/pg-schema-diff/internal/testdb"
 )
 
 type testCase struct {
@@ -1347,18 +1348,16 @@ func (f closeFunc) Close() {
 }
 
 func TestSchemaTestCases(t *testing.T) {
-	engine, err := pgengine.StartEngine()
-	require.NoError(t, err)
-	defer engine.Close()
+	factory := testdb.MustNewFactory(t)
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("Conn pool", func(t *testing.T) {
-				runTestCase(t, engine, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
+				runTestCase(t, factory, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
 					return db, nil
 				})
 			})
 			t.Run("Connection", func(t *testing.T) {
-				runTestCase(t, engine, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
+				runTestCase(t, factory, tc, func(db *pgxpool.Pool) (queries.DBTX, closeFunc) {
 					conn, err := db.Acquire(context.Background())
 					require.NoError(t, err)
 					return conn, conn.Release
@@ -1368,30 +1367,21 @@ func TestSchemaTestCases(t *testing.T) {
 	}
 }
 
-func runTestCase(t *testing.T, engine *pgengine.Engine, testCase *testCase, getDBTX func(db *pgxpool.Pool) (queries.DBTX, closeFunc)) {
-	defer func() {
-		db, err := pgxpool.New(context.Background(), engine.GetPostgresDatabaseDSN())
-		require.NoError(t, err)
-		defer db.Close()
-		require.NoError(t, pgengine.ResetInstance(context.Background(), db))
-	}()
-
-	db, err := engine.CreateDatabase()
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, db.DropDB())
-	}()
-
-	connPool, err := pgxpool.New(context.Background(), db.GetDSN())
-	require.NoError(t, err)
-	defer connPool.Close()
+func runTestCase(t *testing.T, factory *testdb.Factory, testCase *testCase, getDBTX func(db *pgxpool.Pool) (queries.DBTX, closeFunc)) {
+	for _, ddl := range testCase.ddl {
+		if strings.Contains(ddl, "CREATE ROLE") {
+			factory.LockRoles(t, "some_role_1", "some_role_2")
+			break
+		}
+	}
+	db := factory.CreateDatabase(t)
 
 	for _, stmt := range testCase.ddl {
-		_, err := connPool.Exec(context.Background(), stmt)
+		_, err := db.ConnPool.Exec(context.Background(), stmt)
 		require.NoError(t, err)
 	}
 
-	dbtx, closer := getDBTX(connPool)
+	dbtx, closer := getDBTX(db.ConnPool)
 	if closer != nil {
 		defer closer.Close()
 	}

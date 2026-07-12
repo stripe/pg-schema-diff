@@ -3,18 +3,15 @@ package migration_acceptance_tests
 import (
 	"context"
 	"fmt"
-	stdlog "log"
 	"log/slog"
-	"os"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stripe/pg-schema-diff/internal/pgdump"
-	"github.com/stripe/pg-schema-diff/internal/pgengine"
+	"github.com/stripe/pg-schema-diff/internal/testdb"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 
@@ -63,21 +60,6 @@ type (
 	}
 )
 
-var pgEngine *pgengine.Engine
-
-func TestMain(m *testing.M) {
-	engine, err := pgengine.StartEngine()
-	if err != nil {
-		stdlog.Fatalf("Failed to start engine: %v", err)
-	}
-	pgEngine = engine
-	exitCode := m.Run()
-	if err := pgEngine.Close(); err != nil {
-		stdlog.Fatalf("Failed to close engine: %v", err)
-	}
-	os.Exit(exitCode)
-}
-
 // Simulates migrating a database and uses pgdump to compare the actual state to the expected state
 func runTestCases(t *testing.T, acceptanceTestCases []acceptanceTestCase) {
 	t.Parallel()
@@ -114,53 +96,18 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 		}
 	}
 
-	engine := pgEngine
+	tempDbFactory := testdb.MustNewFactory(t)
 	if len(tc.roles) > 0 {
-		// If the test needs roles (server-wide), provide isolation by spinning out a dedicated pgengine.
-		dedicatedEngine, err := pgengine.StartEngine()
-		require.NoError(t, err)
-		defer dedicatedEngine.Close()
-		engine = dedicatedEngine
-	}
-
-	// Create roles since they are global
-	rootDb, err := pgxpool.New(context.Background(), engine.GetPostgresDatabaseDSN())
-	require.NoError(t, err)
-	defer rootDb.Close()
-	for _, r := range tc.roles {
-		_, err := rootDb.Exec(context.Background(), fmt.Sprintf("CREATE ROLE %s", r))
-		require.NoError(t, err)
+		roleGuard := tempDbFactory.LockRoles(t, tc.roles...)
+		roleGuard.CreateRoles()
 	}
 
 	// Apply old schema DDL to old DB
-	require.NoError(t, err)
-	oldDb, err := engine.CreateDatabaseWithName(fmt.Sprintf("pgtemp_%s", uuid.NewString()))
-	require.NoError(t, err)
-	defer oldDb.DropDB()
+	oldDb := tempDbFactory.CreateDatabase(t)
 	// Apply the old schema
-	require.NoError(t, applyDDL(oldDb, tc.oldSchemaDDL))
+	require.NoError(t, applyDDL(oldDb.ConnPool, tc.oldSchemaDDL))
 
-	// Migrate the old DB
-	oldDbConfig, err := pgxpool.ParseConfig(oldDb.GetDSN())
-	require.NoError(t, err)
-	oldDbConfig.MaxConns = 1
-	oldDBConnPool, err := pgxpool.NewWithConfig(context.Background(), oldDbConfig)
-	require.NoError(t, err)
-	defer oldDBConnPool.Close()
-
-	tempDbFactory, err := tempdb.NewOnInstanceFactory(context.Background(), func(
-		ctx context.Context, dbName string,
-	) (*pgxpool.Pool, error) {
-		return pgxpool.New(ctx, engine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
-	}, tempdb.WithRandReader(deterministicRandReader))
-	require.NoError(t, err)
-	defer func(tempDbFactory tempdb.Factory) {
-		// It's important that this closes properly (the temp database is dropped),
-		// so assert it has no error for acceptance tests
-		require.NoError(t, tempDbFactory.Close())
-	}(tempDbFactory)
-
-	plan, err := tc.planFactory(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
+	plan, err := tc.planFactory(context.Background(), oldDb.ConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
 	if tc.expectedPlanErrorIs != nil || len(tc.expectedPlanErrorContains) > 0 {
 		if tc.expectedPlanErrorIs != nil {
 			assert.ErrorIs(t, err, tc.expectedPlanErrorIs)
@@ -181,15 +128,15 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 		getUniqueHazardTypesFromStatements(plan.Statements), prettySprintPlan(plan))
 
 	// Apply the plan
-	require.NoError(t, applyPlan(oldDb, plan), prettySprintPlan(plan))
+	require.NoError(t, applyPlan(oldDb.ConnPool, plan), prettySprintPlan(plan))
 
 	// Make sure the pgdump after running the migration is the same as the
 	// pgdump from a database where we directly run the newSchemaDDL
-	oldDbDump, err := pgdump.GetDump(oldDb, pgdump.WithSchemaOnly(),
+	oldDbDump, err := pgdump.GetDump(oldDb.ConnPool, pgdump.WithSchemaOnly(),
 		pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
 	require.NoError(t, err)
 
-	newDbDump := directlyRunDDLAndGetDump(t, engine, tc.expectedDBSchemaDDL)
+	newDbDump := directlyRunDDLAndGetDump(t, tempDbFactory, tc.expectedDBSchemaDDL)
 	assert.Equal(t, newDbDump, oldDbDump, prettySprintPlan(plan))
 
 	if tc.expectedPlanDDL != nil {
@@ -207,7 +154,7 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	}
 
 	// Make sure no diff is found if we try to regenerate a plan
-	plan, err = tc.planFactory(context.Background(), oldDBConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
+	plan, err = tc.planFactory(context.Background(), oldDb.ConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
 	require.NoError(t, err)
 	assert.Empty(t, plan.Statements, prettySprintPlan(plan))
 }
@@ -221,35 +168,27 @@ func assertValidPlan(t *testing.T, plan diff.Plan) {
 	}
 }
 
-func directlyRunDDLAndGetDump(t *testing.T, engine *pgengine.Engine, ddl []string) string {
-	newDb, err := engine.CreateDatabase()
-	require.NoError(t, err)
-	defer newDb.DropDB()
-	require.NoError(t, applyDDL(newDb, ddl))
+func directlyRunDDLAndGetDump(t *testing.T, factory *testdb.Factory, ddl []string) string {
+	newDb := factory.CreateDatabase(t)
+	require.NoError(t, applyDDL(newDb.ConnPool, ddl))
 
-	newDbDump, err := pgdump.GetDump(newDb, pgdump.WithSchemaOnly(),
+	newDbDump, err := pgdump.GetDump(newDb.ConnPool, pgdump.WithSchemaOnly(),
 		pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
 	require.NoError(t, err)
 	return newDbDump
 }
 
-func applyDDL(db *pgengine.DB, ddl []string) error {
-	conn, err := pgxpool.New(context.Background(), db.GetDSN())
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
+func applyDDL(db *pgxpool.Pool, ddl []string) error {
 	for _, stmt := range ddl {
-		_, err := conn.Exec(context.Background(), stmt)
+		_, err := db.Exec(context.Background(), stmt)
 		if err != nil {
-			return fmt.Errorf("DDL:\n: %w"+stmt, err)
+			return fmt.Errorf("executing DDL:\n%s\n: %w", stmt, err)
 		}
 	}
 	return nil
 }
 
-func applyPlan(db *pgengine.DB, plan diff.Plan) error {
+func applyPlan(db *pgxpool.Pool, plan diff.Plan) error {
 	var ddl []string
 	for _, stmt := range plan.Statements {
 		ddl = append(ddl, stmt.ToSQL())

@@ -4,26 +4,25 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/suite"
-	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
+	"github.com/stripe/pg-schema-diff/internal/testdb"
 	"github.com/stripe/pg-schema-diff/pkg/schema"
 )
 
 type schemaTestSuite struct {
 	suite.Suite
-	pgEngine *pgengine.Engine
+	factory *testdb.Factory
 }
 
 func (suite *schemaTestSuite) SetupSuite() {
-	engine, err := pgengine.StartEngine()
+	factory, err := testdb.NewFactory(context.Background())
 	suite.Require().NoError(err)
-	suite.pgEngine = engine
+	suite.factory = factory
 }
 
 func (suite *schemaTestSuite) TearDownSuite() {
-	suite.pgEngine.Close()
+	suite.Require().NoError(suite.factory.Close())
 }
 
 func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
@@ -79,18 +78,16 @@ func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 			CREATE TABLE schema_filtered_1.bar()
 		`
 	)
-	db, err := suite.pgEngine.CreateDatabase()
+	db, err := suite.factory.Create(context.Background())
 	suite.Require().NoError(err)
-	defer db.DropDB()
+	defer func() {
+		suite.Require().NoError(db.Close(context.Background()))
+	}()
 
-	connPool, err := pgxpool.New(context.Background(), db.GetDSN())
-	suite.Require().NoError(err)
-	defer connPool.Close()
-
-	_, err = connPool.Exec(context.Background(), ddl)
+	_, err = db.ConnPool.Exec(context.Background(), ddl)
 	suite.Require().NoError(err)
 
-	conn, err := connPool.Acquire(context.Background())
+	conn, err := db.ConnPool.Acquire(context.Background())
 	suite.Require().NoError(err)
 	defer conn.Release()
 

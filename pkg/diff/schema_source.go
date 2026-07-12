@@ -110,14 +110,14 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 	if err != nil {
 		return schema.Schema{}, fmt.Errorf("creating temp database: %w", err)
 	}
-	defer func(closer tempdb.ContextualCloser) {
-		if err := closer.Close(ctx); err != nil {
+	defer func() {
+		if err := tempDb.Close(ctx); err != nil {
 			deps.logger.ErrorContext(
 				ctx, "failed to drop temporary database",
 				slog.Any("error", err),
 			)
 		}
-	}(tempDb.ContextualCloser)
+	}()
 
 	for _, ddlStmt := range s.ddl {
 		if _, err := tempDb.ConnPool.Exec(ctx, ddlStmt.stmt); err != nil {
@@ -129,7 +129,7 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 		}
 	}
 
-	return schema.GetSchema(ctx, tempDb.ConnPool, append(deps.getSchemaOpts, tempDb.ExcludeMetadataOptions...)...)
+	return schema.GetSchema(ctx, tempDb.ConnPool, deps.getSchemaOpts...)
 }
 
 type dbSchemaSource struct {

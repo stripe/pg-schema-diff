@@ -120,11 +120,7 @@ Docs to use the library can be found [here](https://pkg.go.dev/github.com/stripe
 ## 1. Generating plan
 ```go
 // The tempDbFactory is used in plan generation to extract the new schema and validate the plan
-tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*sql.DB, error) {
-	copiedConfig := connConfig.Copy()
-	copiedConfig.Database = dbName
-	return openDbWithPgxConfig(copiedConfig)
-})
+tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, connPool.Config())
 if err != nil {
 	panic("Generating the TempDbFactory failed")
 }

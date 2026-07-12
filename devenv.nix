@@ -41,7 +41,7 @@ in
   services.postgres = {
     enable = true;
     package = pkgs.postgresql_17;
-    port = 6543;
+    port = 6544;
     listen_addresses = "localhost";
 
     settings = {

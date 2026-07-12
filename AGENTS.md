@@ -31,7 +31,7 @@ internal/               # Internal implementation
 ├── schema/             # Complete schema representation types (schema.go is 46KB)
 ├── queries/            # SQL queries via sqlc for schema introspection
 ├── migration_acceptance_tests/  # Comprehensive test suite (24 test files)
-├── pgengine/           # Postgres engine management for tests
+├── testdb/             # Test database isolation on the devenv Postgres service
 ├── pgdump/             # pg_dump integration
 ├── graph/              # Dependency graph for statement ordering
 ```
@@ -169,9 +169,7 @@ import (
 )
 
 // Create temp database factory for plan validation
-tempDbFactory, _ := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*sql.DB, error) {
-    return sql.Open("postgres", fmt.Sprintf(".../%s", dbName))
-})
+tempDbFactory, _ := tempdb.NewOnInstanceFactory(ctx, connPool.Config())
 
 // Define schema sources
 currentSchema := diff.DBSchemaSource(db)  // db is *sql.DB or sqldb.Queryable
@@ -205,5 +203,6 @@ Use `fmt.Errorf` with `%w` for error wrapping. Functions return `error` as last 
 
 ### Testing Conventions
 - Use `testify/assert` and `testify/require`
-- Acceptance tests use shared Postgres via `pgengine`
+- Database tests use `TEST_DATABASE_URL` and isolate databases through `internal/testdb`
+- Never change existing test case data or expectations without explicit user permission
 - Test cases are typically table-driven

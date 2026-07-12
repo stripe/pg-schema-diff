@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	"github.com/stripe/pg-schema-diff/internal/schema"
+	"github.com/stripe/pg-schema-diff/internal/testdb"
 	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
@@ -35,52 +35,35 @@ func (f fakeSchemaSource) GetSchema(_ context.Context, deps schemaSourcePlanDeps
 type planGeneratorTestSuite struct {
 	suite.Suite
 
-	pgEngine *pgengine.Engine
-	db       *pgengine.DB
-}
-
-func (suite *planGeneratorTestSuite) mustGetTestDBPool() *pgxpool.Pool {
-	pool, err := pgxpool.New(context.Background(), suite.db.GetDSN())
-	suite.NoError(err)
-	return pool
-}
-
-func (suite *planGeneratorTestSuite) mustBuildTempDbFactory(ctx context.Context) tempdb.Factory {
-	tempDbFactory, err := tempdb.NewOnInstanceFactory(ctx, func(ctx context.Context, dbName string) (*pgxpool.Pool, error) {
-		return pgxpool.New(ctx, suite.pgEngine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
-	})
-	suite.Require().NoError(err)
-	return tempDbFactory
+	factory *testdb.Factory
+	db      *tempdb.Database
 }
 
 func (suite *planGeneratorTestSuite) mustApplyDDLToTestDb(ddl []string) {
-	conn := suite.mustGetTestDBPool()
-	defer conn.Close()
-
 	for _, stmt := range ddl {
-		_, err := conn.Exec(context.Background(), stmt)
+		_, err := suite.db.ConnPool.Exec(context.Background(), stmt)
 		suite.NoError(err)
 	}
 }
 
 func (suite *planGeneratorTestSuite) SetupSuite() {
-	engine, err := pgengine.StartEngine()
+	factory, err := testdb.NewFactory(context.Background())
 	suite.Require().NoError(err)
-	suite.pgEngine = engine
+	suite.factory = factory
 }
 
 func (suite *planGeneratorTestSuite) TearDownSuite() {
-	suite.pgEngine.Close()
+	suite.Require().NoError(suite.factory.Close())
 }
 
 func (suite *planGeneratorTestSuite) SetupTest() {
-	db, err := suite.pgEngine.CreateDatabase()
+	db, err := suite.factory.Create(context.Background())
 	suite.NoError(err)
 	suite.db = db
 }
 
 func (suite *planGeneratorTestSuite) TearDownTest() {
-	suite.db.DropDB()
+	suite.Require().NoError(suite.db.Close(context.Background()))
 }
 
 func (suite *planGeneratorTestSuite) TestGenerate() {
@@ -97,28 +80,19 @@ func (suite *planGeneratorTestSuite) TestGenerate() {
 
 	suite.mustApplyDDLToTestDb([]string{initialDDL})
 
-	connPool := suite.mustGetTestDBPool()
-	defer connPool.Close()
-
-	tempDbFactory := suite.mustBuildTempDbFactory(context.Background())
-	defer tempDbFactory.Close()
-
-	plan, err := Generate(context.Background(), DBSchemaSource(connPool),
-		DDLSchemaSource([]string{newSchemaDDL}), WithTempDbFactory(tempDbFactory))
+	plan, err := Generate(context.Background(), DBSchemaSource(suite.db.ConnPool),
+		DDLSchemaSource([]string{newSchemaDDL}), WithTempDbFactory(suite.factory))
 	suite.NoError(err)
 
-	suite.mustApplyMigrationPlan(connPool, plan)
+	suite.mustApplyMigrationPlan(suite.db.ConnPool, plan)
 	// Ensure that some sort of migration ran. we're really not testing the correctness of the
 	// migration in this test suite
-	_, err = connPool.Exec(context.Background(),
+	_, err = suite.db.ConnPool.Exec(context.Background(),
 		"SELECT new_column FROM foobar;")
 	suite.NoError(err)
 }
 
 func (suite *planGeneratorTestSuite) TestGeneratePlan_SchemaSourceErr() {
-	tempDbFactory := suite.mustBuildTempDbFactory(context.Background())
-	defer tempDbFactory.Close()
-
 	logger := slog.Default()
 
 	getSchemaOpts := []externalschema.GetSchemaOpt{
@@ -130,19 +104,16 @@ func (suite *planGeneratorTestSuite) TestGeneratePlan_SchemaSourceErr() {
 	fakeSchemaSource := fakeSchemaSource{
 		t: suite.T(),
 		expectedDeps: schemaSourcePlanDeps{
-			tempDBFactory: tempDbFactory,
+			tempDBFactory: suite.factory,
 			logger:        logger,
 			getSchemaOpts: getSchemaOpts,
 		},
 		err: expectedErr,
 	}
 
-	connPool := suite.mustGetTestDBPool()
-	defer connPool.Close()
-
 	_, err := Generate(
-		context.Background(), DBSchemaSource(connPool), fakeSchemaSource,
-		WithTempDbFactory(tempDbFactory),
+		context.Background(), DBSchemaSource(suite.db.ConnPool), fakeSchemaSource,
+		WithTempDbFactory(suite.factory),
 		WithGetSchemaOpts(getSchemaOpts...),
 		WithLogger(logger),
 	)
@@ -158,15 +129,9 @@ func (suite *planGeneratorTestSuite) mustApplyMigrationPlan(db *pgxpool.Pool, pl
 }
 
 func (suite *planGeneratorTestSuite) TestGenerate_CannotPackNewTablesWithoutIgnoringChangesToColumnOrder() {
-	tempDbFactory := suite.mustBuildTempDbFactory(context.Background())
-	defer tempDbFactory.Close()
-
-	connPool := suite.mustGetTestDBPool()
-	defer connPool.Close()
-
 	_, err := Generate(
-		context.Background(), DBSchemaSource(connPool), DDLSchemaSource([]string{``}),
-		WithTempDbFactory(tempDbFactory),
+		context.Background(), DBSchemaSource(suite.db.ConnPool), DDLSchemaSource([]string{``}),
+		WithTempDbFactory(suite.factory),
 		WithDataPackNewTables(),
 		WithRespectColumnOrder(),
 	)
@@ -174,10 +139,8 @@ func (suite *planGeneratorTestSuite) TestGenerate_CannotPackNewTablesWithoutIgno
 }
 
 func (suite *planGeneratorTestSuite) TestGenerate_CannotBuildMigrationFromDDLWithoutTempDbFactory() {
-	pool := suite.mustGetTestDBPool()
-	defer pool.Close()
 	_, err := Generate(
-		context.Background(), DBSchemaSource(pool), DDLSchemaSource([]string{``}),
+		context.Background(), DBSchemaSource(suite.db.ConnPool), DDLSchemaSource([]string{``}),
 		WithIncludeSchemas("public"),
 		WithDoNotValidatePlan(),
 	)
@@ -185,10 +148,8 @@ func (suite *planGeneratorTestSuite) TestGenerate_CannotBuildMigrationFromDDLWit
 }
 
 func (suite *planGeneratorTestSuite) TestGenerate_CannotValidateWithoutTempDbFactory() {
-	pool := suite.mustGetTestDBPool()
-	defer pool.Close()
 	_, err := Generate(
-		context.Background(), DBSchemaSource(pool), DDLSchemaSource([]string{``}),
+		context.Background(), DBSchemaSource(suite.db.ConnPool), DDLSchemaSource([]string{``}),
 		WithIncludeSchemas("public"),
 		WithDoNotValidatePlan(),
 	)

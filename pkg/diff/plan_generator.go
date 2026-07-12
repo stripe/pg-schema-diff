@@ -211,14 +211,14 @@ func assertValidPlan(ctx context.Context,
 	if err != nil {
 		return err
 	}
-	defer func(closer tempdb.ContextualCloser) {
-		if err := closer.Close(ctx); err != nil {
+	defer func() {
+		if err := tempDb.Close(ctx); err != nil {
 			planOptions.logger.ErrorContext(
 				ctx, "failed to drop temporary database",
 				slog.Any("error", err),
 			)
 		}
-	}(tempDb.ContextualCloser)
+	}()
 	if err := setSchemaForEmptyDatabase(ctx, tempDb, currentSchema, planOptions); err != nil {
 		return fmt.Errorf("inserting schema in temporary database: %w", err)
 	}
@@ -265,7 +265,7 @@ func setSchemaForEmptyDatabase(ctx context.Context, emptyDb *tempdb.Database, ta
 }
 
 func schemaFromTempDb(ctx context.Context, db *tempdb.Database, plan *planOptions) (schema.Schema, error) {
-	return schema.GetSchema(ctx, db.ConnPool, append(plan.getSchemaOpts, db.ExcludeMetadataOptions...)...)
+	return schema.GetSchema(ctx, db.ConnPool, plan.getSchemaOpts...)
 }
 
 // clearTablePrivileges returns a copy of the schema with all table privileges cleared.
