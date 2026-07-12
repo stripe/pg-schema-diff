@@ -58,7 +58,41 @@ type (
 		// If no expectedDBSchemaDDL is specified, the newSchemaDDL will be used
 		expectedDBSchemaDDL []string
 	}
+
+	// DBMSWideAcceptanceTestCase describes an acceptance test that requires cluster-level objects.
+	DBMSWideAcceptanceTestCase struct {
+		Name                string
+		Roles               []string
+		OldSchemaDDL        []string
+		NewSchemaDDL        []string
+		ExpectedHazardTypes []diff.MigrationHazardType
+		ExpectedPlanErrorIs error
+		ExpectedPlanDDL     []string
+		ExpectEmptyPlan     bool
+		ExpectedDBSchemaDDL []string
+	}
 )
+
+// RunDBMSWideTestCases runs acceptance tests that use cluster-level objects serially.
+func RunDBMSWideTestCases(t *testing.T, testCases []DBMSWideAcceptanceTestCase) {
+	t.Helper()
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTest(t, acceptanceTestCase{
+				name:                tc.Name,
+				roles:               tc.Roles,
+				oldSchemaDDL:        tc.OldSchemaDDL,
+				newSchemaDDL:        tc.NewSchemaDDL,
+				expectedHazardTypes: tc.ExpectedHazardTypes,
+				expectedPlanErrorIs: tc.ExpectedPlanErrorIs,
+				expectedPlanDDL:     tc.ExpectedPlanDDL,
+				expectEmptyPlan:     tc.ExpectEmptyPlan,
+				expectedDBSchemaDDL: tc.ExpectedDBSchemaDDL,
+			})
+		})
+	}
+}
 
 // Simulates migrating a database and uses pgdump to compare the actual state to the expected state
 func runTestCases(t *testing.T, acceptanceTestCases []acceptanceTestCase) {

@@ -1,4 +1,4 @@
-package migration_acceptance_tests
+package dbmswide_tests
 
 import (
 	"testing"
