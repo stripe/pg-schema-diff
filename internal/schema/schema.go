@@ -64,8 +64,8 @@ type Schema struct {
 	MaterializedViews     []MaterializedView
 }
 
-// Normalize normalizes the schema (alphabetically sorts tables and columns in tables).
-// Useful for hashing and testing.
+// Normalize sorts schema objects while preserving the physical order of table columns.
+// It is useful for hashing and testing.
 func (s Schema) Normalize() Schema {
 	s.NamedSchemas = sortSchemaObjectsByName(s.NamedSchemas)
 	s.Extensions = sortSchemaObjectsByName(s.Extensions)
@@ -108,7 +108,6 @@ func (s Schema) Normalize() Schema {
 
 func normalizeTable(t Table) Table {
 	// Don't normalize columns order. their order is derived from the postgres catalogs
-	// (relevant to data packing)
 	var normCheckConstraints []CheckConstraint
 	for _, checkConstraint := range sortSchemaObjectsByName(t.CheckConstraints) {
 		checkConstraint.DependsOnFunctions = sortSchemaObjectsByName(checkConstraint.DependsOnFunctions)
@@ -297,10 +296,7 @@ type (
 		IsNullable           bool
 		// HasMissingValOptimization refers to the 'attmissingval' optimization for adding columns with a default.
 		HasMissingValOptimization bool
-		// Size is the number of bytes required to store the value.
-		// It is used for data-packing purposes
-		Size     int
-		Identity *ColumnIdentity
+		Identity                  *ColumnIdentity
 	}
 )
 

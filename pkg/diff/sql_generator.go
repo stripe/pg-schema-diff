@@ -37,10 +37,6 @@ const (
 )
 
 var (
-	// ErrColumnOrderingChanged is returned when the ordering of columns changes and column ordering is not ignored.
-	// It is recommended to ignore column ordering changes to column order
-	ErrColumnOrderingChanged = fmt.Errorf("column ordering changed: %w", ErrNotImplemented)
-
 	migrationHazardIndexDroppedQueryPerf = MigrationHazard{
 		Type: MigrationHazardTypeIndexDropped,
 		Message: "Dropping this index means queries that use this index might perform worse because " +
@@ -100,8 +96,6 @@ type (
 
 	columnDiff struct {
 		oldAndNew[schema.Column]
-		oldOrdering int
-		newOrdering int
 	}
 
 	checkConstraintDiff struct {
@@ -195,7 +189,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	schemaDiffs, err := diffLists(
 		old.NamedSchemas,
 		new.NamedSchemas,
-		func(old, new schema.NamedSchema, _, _ int) (namedSchemaDiff, bool, error) {
+		func(old, new schema.NamedSchema) (namedSchemaDiff, bool, error) {
 			return namedSchemaDiff{
 				oldAndNew[schema.NamedSchema]{
 					old: old,
@@ -211,7 +205,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	extensionDiffs, err := diffLists(
 		old.Extensions,
 		new.Extensions,
-		func(old, new schema.Extension, _, _ int) (extensionDiff, bool, error) {
+		func(old, new schema.Extension) (extensionDiff, bool, error) {
 			return extensionDiff{
 				oldAndNew[schema.Extension]{
 					old: old,
@@ -224,7 +218,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing extensions: %w", err)
 	}
 
-	enumDiffs, err := diffLists(old.Enums, new.Enums, func(old, new schema.Enum, _, _ int) (enumDiff, bool, error) {
+	enumDiffs, err := diffLists(old.Enums, new.Enums, func(old, new schema.Enum) (enumDiff, bool, error) {
 		return enumDiff{
 			oldAndNew[schema.Enum]{
 				old: old,
@@ -246,14 +240,14 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	deletedTablesByName := buildSchemaObjByNameMap(tableDiffs.deletes)
 	tableDiffsByName := buildDiffByNameMap[schema.Table, tableDiff](tableDiffs.alters)
 	indexesDiff, err := diffLists(old.Indexes, new.Indexes, func(
-		oldIndex, newIndex schema.Index, _, _ int,
+		oldIdx, newIdx schema.Index,
 	) (indexDiff, bool, error) {
 		return buildIndexDiff(indexDiffConfig{
 			newSchemaTablesByName:  newSchemaTablesByName,
 			addedTablesByName:      addedTablesByName,
 			oldSchemaIndexesByName: buildSchemaObjByNameMap(old.Indexes),
 			newSchemaIndexesByName: buildSchemaObjByNameMap(new.Indexes),
-		}, oldIndex, newIndex)
+		}, oldIdx, newIdx)
 	})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing indexes: %w", err)
@@ -261,7 +255,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 
 	fsg := newForeignKeyConstraintSQLVertexGenerator(oldAndNew[schema.Schema]{old: old, new: new}, tableDiffs)
 	foreignKeyConstraintDiffs, err := diffLists(old.ForeignKeyConstraints,
-		new.ForeignKeyConstraints, func(old, new schema.ForeignKeyConstraint, _, _ int) (
+		new.ForeignKeyConstraints, func(old, new schema.ForeignKeyConstraint) (
 			foreignKeyConstraintDiff, bool, error,
 		) {
 			return buildForeignKeyConstraintDiff(fsg, addedTablesByName, old, new)
@@ -271,7 +265,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	sequencesDiffs, err := diffLists(old.Sequences, new.Sequences, func(
-		old, new schema.Sequence, oldIndex, newIndex int,
+		old, new schema.Sequence,
 	) (diff sequenceDiff, requiresRecreation bool, error error) {
 		seqDiff := sequenceDiff{
 			oldAndNew[schema.Sequence]{
@@ -293,7 +287,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing sequences: %w", err)
 	}
 
-	functionDiffs, err := diffLists(old.Functions, new.Functions, func(old, new schema.Function, _, _ int) (functionDiff, bool, error) {
+	functionDiffs, err := diffLists(old.Functions, new.Functions, func(old, new schema.Function) (functionDiff, bool, error) {
 		return functionDiff{
 			oldAndNew[schema.Function]{
 				old: old,
@@ -306,7 +300,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	procedureDiffs, err := diffLists(old.Procedures, new.Procedures, func(
-		old, new schema.Procedure, _, _ int,
+		old, new schema.Procedure,
 	) (procedureDiff, bool, error) {
 		return procedureDiff{
 			oldAndNew[schema.Procedure]{
@@ -319,7 +313,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing procedures: %w", err)
 	}
 
-	triggerDiffs, err := diffLists(old.Triggers, new.Triggers, func(old, new schema.Trigger, _, _ int) (triggerDiff, bool, error) {
+	triggerDiffs, err := diffLists(old.Triggers, new.Triggers, func(old, new schema.Trigger) (triggerDiff, bool, error) {
 		if _, isOnNewTable := addedTablesByName[new.OwningTable.GetName()]; isOnNewTable {
 			// If the table is new, then it must be re-created (this occurs if the base table has been
 			// re-created). In other words, a trigger must be re-created if the owning table is re-created
@@ -336,7 +330,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing triggers: %w", err)
 	}
 
-	viewDiffs, err := diffLists(old.Views, new.Views, func(old, new schema.View, _, _ int) (
+	viewDiffs, err := diffLists(old.Views, new.Views, func(old, new schema.View) (
 		diff viewDiff, requiresRecreation bool, error error,
 	) {
 		return buildViewDiff(deletedTablesByName, tableDiffsByName, old, new)
@@ -346,7 +340,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	materializedViewDiffs, err := diffLists(old.MaterializedViews, new.MaterializedViews, func(
-		old, new schema.MaterializedView, _, _ int,
+		old, new schema.MaterializedView,
 	) (diff materializedViewDiff, requiresRecreation bool, error error) {
 		return buildMaterializedViewDiff(deletedTablesByName, tableDiffsByName, old, new)
 	})
@@ -374,7 +368,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}, false, nil
 }
 
-func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, requiresRecreation bool, err error) {
+func buildTableDiff(oldTable, newTable schema.Table) (diff tableDiff, requiresRecreation bool, err error) {
 	if oldTable.IsPartitioned() != newTable.IsPartitioned() {
 		return tableDiff{}, true, nil
 	} else if oldTable.PartitionKeyDef != newTable.PartitionKeyDef {
@@ -402,11 +396,9 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 	columnsDiff, err := diffLists(
 		oldTable.Columns,
 		newTable.Columns,
-		func(old, new schema.Column, oldIndex, newIndex int) (columnDiff, bool, error) {
+		func(old, new schema.Column) (columnDiff, bool, error) {
 			return columnDiff{
-				oldAndNew:   oldAndNew[schema.Column]{old: old, new: new},
-				oldOrdering: oldIndex,
-				newOrdering: newIndex,
+				oldAndNew: oldAndNew[schema.Column]{old: old, new: new},
 			}, false, nil
 		},
 	)
@@ -417,7 +409,7 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 	checkConsDiff, err := diffLists(
 		oldTable.CheckConstraints,
 		newTable.CheckConstraints,
-		func(old, new schema.CheckConstraint, _, _ int) (checkConstraintDiff, bool, error) {
+		func(old, new schema.CheckConstraint) (checkConstraintDiff, bool, error) {
 			recreateConstraint := (old.Expression != new.Expression) ||
 				(old.IsValid && !new.IsValid) ||
 				(old.IsInheritable != new.IsInheritable)
@@ -446,7 +438,7 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 	privilegesDiff, err := diffLists(
 		oldTable.Privileges,
 		newTable.Privileges,
-		func(old, new schema.TablePrivilege, _, _ int) (privilegeDiff, bool, error) {
+		func(old, new schema.TablePrivilege) (privilegeDiff, bool, error) {
 			// Recreate the privilege if IsGrantable changes
 			recreate := old.IsGrantable != new.IsGrantable
 			return privilegeDiff{oldAndNew[schema.TablePrivilege]{old: old, new: new}}, recreate, nil
@@ -1341,9 +1333,6 @@ func (csg *columnSQLVertexGenerator) Delete(column schema.Column) ([]Statement, 
 }
 
 func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error) {
-	if diff.oldOrdering != diff.newOrdering {
-		return nil, fmt.Errorf("old=%d; new=%d: %w", diff.oldOrdering, diff.newOrdering, ErrColumnOrderingChanged)
-	}
 	oldColumn, newColumn := diff.old, diff.new
 	var stmts []Statement
 	alterColumnPrefix := fmt.Sprintf("%s ALTER COLUMN %s", alterTablePrefix(csg.tableName),

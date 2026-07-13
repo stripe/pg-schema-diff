@@ -115,20 +115,6 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 		assert.ErrorIs(t, err, expectedErr)
 	})
 
-	t.Run("TestGenerate_CannotPackNewTablesWithoutIgnoringChangesToColumnOrder", func(t *testing.T) {
-		t.Parallel()
-		factory := testdb.MustNewFactory(t)
-		db := factory.CreateDatabase(t)
-
-		_, err := Generate(
-			context.Background(), DBSchemaSource(db.ConnPool), DDLSchemaSource([]string{``}),
-			WithTempDbFactory(factory),
-			WithDataPackNewTables(),
-			WithRespectColumnOrder(),
-		)
-		assert.ErrorContains(t, err, "cannot data pack new tables without also ignoring changes to column order")
-	})
-
 	t.Run("TestGenerate_CannotBuildMigrationFromDDLWithoutTempDbFactory", func(t *testing.T) {
 		t.Parallel()
 		factory := testdb.MustNewFactory(t)

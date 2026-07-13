@@ -50,10 +50,6 @@ type (
 		expectEmptyPlan bool
 		// expectedDBSchemaDDL should be the DDL required to reconstruct the expected output state of the database
 		//
-		// The expectedDBSchemaDDL might differ from the newSchemaDDL due to options passed to the migrator. For example,
-		// the data packing option will cause the column ordering for new tables in the expectedDBSchemaDDL to differ from
-		// the column ordering of those tables defined in newSchemaDDL
-		//
 		// If no expectedDBSchemaDDL is specified, the newSchemaDDL will be used
 		expectedDBSchemaDDL []string
 	}
@@ -177,13 +173,10 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 		for _, stmt := range plan.Statements {
 			generatedDDL = append(generatedDDL, stmt.DDL)
 		}
-		// In the future, we might want to allow users to assert expectations for vanilla options and data packing
-		//
 		// We can also make the system more advanced by using tokens in place of the "randomly" generated UUIDs, such
 		// the test case doesn't need to be updated if the UUID generation changes. If we built this functionality, we
 		// should also integrate it with the schema_migration_plan_test.go tests.
-		assert.Equal(t, tc.expectedPlanDDL, generatedDDL,
-			"data packing can change the the generated UUID and DDL")
+		assert.Equal(t, tc.expectedPlanDDL, generatedDDL)
 	}
 
 	// Make sure no diff is found if we try to regenerate a plan

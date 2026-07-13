@@ -113,7 +113,6 @@ SELECT
     a.attname::TEXT AS column_name,
     a.attnotnull AS is_not_null,
     a.atthasmissing AS has_missing_val_optimization,
-    a.attlen AS column_size,
     a.attidentity::TEXT AS identity_type,
     identity_col_seq.seqstart AS start_value,
     identity_col_seq.seqincrement AS increment_value,
@@ -162,7 +161,6 @@ type GetColumnsForTableRow struct {
 	ColumnName                string
 	IsNotNull                 bool
 	HasMissingValOptimization bool
-	ColumnSize                int16
 	IdentityType              string
 	StartValue                *int64
 	IncrementValue            *int64
@@ -191,7 +189,6 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, db DBTX, attrelid pgty
 			&i.ColumnName,
 			&i.IsNotNull,
 			&i.HasMissingValOptimization,
-			&i.ColumnSize,
 			&i.IdentityType,
 			&i.StartValue,
 			&i.IncrementValue,

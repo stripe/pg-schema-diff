@@ -128,7 +128,6 @@ defer tempDbFactory.Close()
 // Generate the migration plan
 plan, err := diff.Generate(ctx, diff.DBSchemaSource(connPool), diff.DDLSchemaSource(ddl),
 	diff.WithTempDbFactory(tempDbFactory),
-	diff.WithDataPackNewTables(),
 )
 if err != nil {
 	panic("Generating the plan failed")

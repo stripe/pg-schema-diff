@@ -236,7 +236,7 @@ var (
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
 		`},
-			expectedHash: "4c2174e2cac3956b",
+			expectedHash: "e0eb26959a44566e",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -273,14 +273,14 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: "\"foo\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('schema_2.foo_id_seq'::regclass)"},
-							{Name: "author", Type: "text", IsNullable: true, Size: -1, Collation: cCollation},
-							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
-							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", Default: "0", Size: 4},
+							{Name: "id", Type: "integer", Default: "nextval('schema_2.foo_id_seq'::regclass)"},
+							{Name: "author", Type: "text", IsNullable: true, Collation: cCollation},
+							{Name: "content", Type: "text", Default: "''::text", Collation: defaultCollation},
+							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP"},
+							{Name: "version", Type: "integer", Default: "0"},
 							{
 								Name: "added_col", Type: "text", Default: "'some_default'::text", IsNullable: true,
-								Size: -1, Collation: defaultCollation, HasMissingValOptimization: true,
+								Collation: defaultCollation, HasMissingValOptimization: true,
 							},
 						},
 						CheckConstraints: []CheckConstraint{
@@ -331,7 +331,7 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foo\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: ""},
+							{Name: "id", Type: "integer", Default: ""},
 						},
 						CheckConstraints: []CheckConstraint{
 							{Name: "foo_id_check", Expression: "(id > 0)", IsValid: true, IsInheritable: true, KeyColumns: []string{"id"}},
@@ -359,7 +359,6 @@ var (
 								Collation:  SchemaQualifiedName{},
 								Default:    "",
 								IsNullable: true,
-								Size:       4,
 							},
 							{
 								Name:       "version",
@@ -367,7 +366,6 @@ var (
 								Collation:  SchemaQualifiedName{},
 								Default:    "",
 								IsNullable: true,
-								Size:       4,
 							},
 						},
 						CheckConstraints: nil,
@@ -606,7 +604,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "32c5a9c52dcfb15e",
+			expectedHash: "6acd88baea6c3b25",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -615,13 +613,13 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
-							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
-							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
-							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
-							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
+							{Name: "id", Type: "integer", Default: "nextval('foo_id_seq'::regclass)"},
+							{Name: "author", Type: "text", Collation: cCollation},
+							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Collation: defaultCollation},
+							{Name: "genre", Type: "character varying(256)", Collation: defaultCollation},
+							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP"},
 							{
-								Name: "version", Type: "integer", Size: 4,
+								Name: "version", Type: "integer",
 								Identity: &ColumnIdentity{
 									Type: "a", MinValue: 1, MaxValue: 2147483647, StartValue: 1,
 									Increment: 1, CacheSize: 1, Cycle: false,
@@ -646,12 +644,12 @@ var (
 						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
-							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
-							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
-							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
-							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", Size: 4},
+							{Name: "id", Type: "integer", Default: "nextval('foo_id_seq'::regclass)"},
+							{Name: "author", Type: "text", Collation: cCollation},
+							{Name: "content", Type: "text", Default: "''::text", Collation: defaultCollation},
+							{Name: "genre", Type: "character varying(256)", Collation: defaultCollation},
+							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP"},
+							{Name: "version", Type: "integer"},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityNothing,
@@ -661,12 +659,12 @@ var (
 						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
-							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
-							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
-							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
-							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", IsNullable: false, Size: 4},
+							{Name: "id", Type: "integer", Default: "nextval('foo_id_seq'::regclass)"},
+							{Name: "author", Type: "text", Collation: cCollation},
+							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Collation: defaultCollation},
+							{Name: "genre", Type: "character varying(256)", Collation: defaultCollation},
+							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP"},
+							{Name: "version", Type: "integer", IsNullable: false},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityDefault,
@@ -676,12 +674,12 @@ var (
 						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
-							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
-							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
-							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
-							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP", Size: 8},
-							{Name: "version", Type: "integer", IsNullable: false, Size: 4},
+							{Name: "id", Type: "integer", Default: "nextval('foo_id_seq'::regclass)"},
+							{Name: "author", Type: "text", Collation: cCollation},
+							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Collation: defaultCollation},
+							{Name: "genre", Type: "character varying(256)", Collation: defaultCollation},
+							{Name: "created_at", Type: "timestamp without time zone", Default: "CURRENT_TIMESTAMP"},
+							{Name: "version", Type: "integer", IsNullable: false},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityDefault,
@@ -696,7 +694,6 @@ var (
 								Collation:  SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
 								Default:    "",
 								IsNullable: true,
-								Size:       -1,
 							},
 							{
 								Name:       "id",
@@ -704,7 +701,6 @@ var (
 								Collation:  SchemaQualifiedName{},
 								Default:    "",
 								IsNullable: true,
-								Size:       4,
 							},
 							{
 								Name:       "content",
@@ -712,7 +708,6 @@ var (
 								Collation:  SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
 								Default:    "''::text",
 								IsNullable: true,
-								Size:       -1,
 							},
 						},
 						CheckConstraints: nil,
@@ -730,7 +725,6 @@ var (
 								Collation:  SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
 								Default:    "",
 								IsNullable: true,
-								Size:       -1,
 							},
 							{
 								Name:       "id",
@@ -738,7 +732,6 @@ var (
 								Collation:  SchemaQualifiedName{},
 								Default:    "",
 								IsNullable: true,
-								Size:       4,
 							},
 							{
 								Name:       "content",
@@ -746,7 +739,6 @@ var (
 								Collation:  SchemaQualifiedName{SchemaName: "pg_catalog", EscapedName: "\"default\""},
 								Default:    "''::text",
 								IsNullable: true,
-								Size:       -1,
 							},
 						},
 						CheckConstraints: nil,
@@ -974,8 +966,8 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", IsNullable: true, Size: 4},
-							{Name: "author", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
+							{Name: "id", Type: "integer", IsNullable: true},
+							{Name: "author", Type: "text", IsNullable: true, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityDefault,
@@ -985,8 +977,8 @@ var (
 						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4},
-							{Name: "author", Type: "text", Size: -1, Collation: defaultCollation},
+							{Name: "id", Type: "integer"},
+							{Name: "author", Type: "text", Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityDefault,
@@ -1034,22 +1026,22 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						Columns: []Column{
-							{Name: "varchar", Type: "character varying(128)", Default: "''::character varying", Size: -1, Collation: defaultCollation},
-							{Name: "text", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
-							{Name: "bool", Type: "boolean", Default: "false", Size: 1},
-							{Name: "blob", Type: "bytea", Default: `'\x'::bytea`, Size: -1},
-							{Name: "smallint", Type: "smallint", Default: "0", Size: 2},
-							{Name: "real", Type: "real", Default: "0.0", Size: 4},
-							{Name: "double_precision", Type: "double precision", Default: "0.0", Size: 8},
-							{Name: "integer", Type: "integer", Default: "0", Size: 4},
-							{Name: "big_integer", Type: "bigint", Default: "0", Size: 8},
-							{Name: "decimal", Type: "numeric(65,10)", Default: "0.0", Size: -1},
+							{Name: "varchar", Type: "character varying(128)", Default: "''::character varying", Collation: defaultCollation},
+							{Name: "text", Type: "text", Default: "''::text", Collation: defaultCollation},
+							{Name: "bool", Type: "boolean", Default: "false"},
+							{Name: "blob", Type: "bytea", Default: `'\x'::bytea`},
+							{Name: "smallint", Type: "smallint", Default: "0"},
+							{Name: "real", Type: "real", Default: "0.0"},
+							{Name: "double_precision", Type: "double precision", Default: "0.0"},
+							{Name: "integer", Type: "integer", Default: "0"},
+							{Name: "big_integer", Type: "bigint", Default: "0"},
+							{Name: "decimal", Type: "numeric(65,10)", Default: "0.0"},
 							{
 								Name: "serial", Type: "integer", Collation: SchemaQualifiedName{},
-								Default: "nextval('foo_serial_seq'::regclass)", IsNullable: false, Size: 4,
+								Default: "nextval('foo_serial_seq'::regclass)", IsNullable: false,
 							},
 							{
-								Name: "identity_always", Type: "bigint", Size: 8,
+								Name: "identity_always", Type: "bigint",
 								Identity: &ColumnIdentity{
 									Type:       ColumnIdentityTypeAlways,
 									MinValue:   2,
@@ -1061,7 +1053,7 @@ var (
 								},
 							},
 							{
-								Name: "identity_default", Type: "bigint", Size: 8,
+								Name: "identity_default", Type: "bigint",
 								Identity: &ColumnIdentity{
 									Type:       ColumnIdentityTypeByDefault,
 									MinValue:   20,
@@ -1112,7 +1104,7 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						Columns: []Column{
-							{Name: "renamed_value", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
+							{Name: "renamed_value", Type: "text", IsNullable: true, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityDefault,
@@ -1146,7 +1138,7 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []Column{
-							{Name: "id", Type: "character varying(255)", IsNullable: false, Size: -1, Collation: defaultCollation},
+							{Name: "id", Type: "character varying(255)", IsNullable: false, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  "d",
@@ -1174,7 +1166,7 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar\""},
 						Columns: []Column{
-							{Name: "id", Type: "character varying(255)", IsNullable: false, Size: -1, Collation: defaultCollation},
+							{Name: "id", Type: "character varying(255)", IsNullable: false, Collation: defaultCollation},
 						},
 						ReplicaIdentity: "d",
 						PartitionKeyDef: "LIST (id)",
@@ -1200,7 +1192,7 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foobar\""},
 						Columns: []Column{
-							{Name: "id", Type: "character varying(255)", IsNullable: false, Size: -1, Collation: defaultCollation},
+							{Name: "id", Type: "character varying(255)", IsNullable: false, Collation: defaultCollation},
 						},
 						ReplicaIdentity: "d",
 						PartitionKeyDef: "LIST (id)",
@@ -1208,7 +1200,7 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foobar_1\""},
 						Columns: []Column{
-							{Name: "id", Type: "character varying(255)", IsNullable: false, Size: -1, Collation: defaultCollation},
+							{Name: "id", Type: "character varying(255)", IsNullable: false, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  "d",
@@ -1258,7 +1250,7 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						Columns: []Column{
-							{Name: "value", Type: "text", IsNullable: true, Size: -1, Collation: defaultCollation},
+							{Name: "value", Type: "text", IsNullable: true, Collation: defaultCollation},
 						},
 						CheckConstraints: nil,
 						ReplicaIdentity:  ReplicaIdentityDefault,

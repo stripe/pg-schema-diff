@@ -21,14 +21,12 @@ var errTempDbFactoryRequired = fmt.Errorf("tempDbFactory is required. include th
 
 type (
 	planOptions struct {
-		tempDbFactory           tempdb.Factory
-		dataPackNewTables       bool
-		ignoreChangesToColOrder bool
-		logger                  *slog.Logger
-		validatePlan            bool
-		getSchemaOpts           []schema.GetSchemaOpt
-		randReader              io.Reader
-		noConcurrentIndexOps    bool
+		tempDbFactory        tempdb.Factory
+		logger               *slog.Logger
+		validatePlan         bool
+		getSchemaOpts        []schema.GetSchemaOpt
+		randReader           io.Reader
+		noConcurrentIndexOps bool
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -37,22 +35,6 @@ type (
 func WithTempDbFactory(factory tempdb.Factory) PlanOpt {
 	return func(opts *planOptions) {
 		opts.tempDbFactory = factory
-	}
-}
-
-// WithDataPackNewTables configures the plan generation such that it packs the columns in the new tables to minimize
-// padding. It will help minimize the storage used by the tables
-func WithDataPackNewTables() PlanOpt {
-	return func(opts *planOptions) {
-		opts.dataPackNewTables = true
-	}
-}
-
-// WithRespectColumnOrder configures the plan generation to respect any changes to the ordering of columns in
-// existing tables. You will most likely want this disabled, since column ordering changes are common
-func WithRespectColumnOrder() PlanOpt {
-	return func(opts *planOptions) {
-		opts.ignoreChangesToColOrder = false
 	}
 }
 
@@ -120,10 +102,9 @@ func Generate(
 	opts ...PlanOpt,
 ) (Plan, error) {
 	planOptions := &planOptions{
-		validatePlan:            true,
-		ignoreChangesToColOrder: true,
-		logger:                  slog.Default(),
-		randReader:              rand.Reader,
+		validatePlan: true,
+		logger:       slog.Default(),
+		randReader:   rand.Reader,
 	}
 	for _, opt := range opts {
 		opt(planOptions)
@@ -181,18 +162,6 @@ func generateMigrationStatements(oldSchema, newSchema schema.Schema, planOptions
 	diff, _, err := buildSchemaDiff(oldSchema, newSchema)
 	if err != nil {
 		return nil, err
-	}
-
-	if planOptions.dataPackNewTables {
-		// Instead of enabling ignoreChangesToColOrder by default, force the user to enable ignoreChangesToColOrder.
-		// This ensures the user knows what's going on behind-the-scenes
-		if !planOptions.ignoreChangesToColOrder {
-			return nil, fmt.Errorf("cannot data pack new tables without also ignoring changes to column order")
-		}
-		diff = dataPackNewTables(diff)
-	}
-	if planOptions.ignoreChangesToColOrder {
-		diff = removeChangesToColumnOrdering(diff)
 	}
 
 	statements, err := newSchemaSQLGenerator(planOptions.randReader, planOptions).Alter(diff)

@@ -122,7 +122,7 @@ type policyDiff struct {
 }
 
 func buildPolicyDiffs(psg sqlVertexGenerator[schema.Policy, policyDiff], old, new []schema.Policy) (listDiff[schema.Policy, policyDiff], error) {
-	return diffLists(old, new, func(old, new schema.Policy, _, _ int) (_ policyDiff, requiresRecreate bool, _ error) {
+	return diffLists(old, new, func(old, new schema.Policy) (_ policyDiff, requiresRecreate bool, _ error) {
 		diff := policyDiff{
 			oldAndNew: oldAndNew[schema.Policy]{
 				old: old, new: new,

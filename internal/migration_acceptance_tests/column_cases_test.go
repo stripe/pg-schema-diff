@@ -33,6 +33,37 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		expectEmptyPlan: true,
 	},
 	{
+		name: "Ignore column ordering changes",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                name TEXT,
+                created_at TIMESTAMP
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                created_at TIMESTAMP,
+                id INT,
+                name TEXT
+            );
+			`,
+		},
+		expectedDBSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                name TEXT,
+                created_at TIMESTAMP
+            );
+			`,
+		},
+		expectEmptyPlan: true,
+	},
+	{
 		name: "Add one column with default",
 		oldSchemaDDL: []string{
 			`

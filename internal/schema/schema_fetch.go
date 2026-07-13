@@ -178,7 +178,6 @@ func buildTable(
 			Default:              column.DefaultValue,
 			IsGenerated:          column.IsGenerated,
 			GenerationExpression: column.GenerationExpression,
-			Size:                 int(column.ColumnSize),
 			Identity:             identity,
 		})
 	}

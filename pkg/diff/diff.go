@@ -87,50 +87,40 @@ func (ld listDiff[S, D]) resolveToSQLGroupedByEffect(sqlGenerator sqlGenerator[S
 	}, nil
 }
 
-type schemaObjectEntry[S schema.Object] struct {
-	index int //  index is the index the schema object in the list
-	obj   S
-}
-
 // diffLists diffs two lists of schema objects using name.
 // If an object is present in both lists, it will use buildDiff function to build the diffs between the two objects. If
 // build diff returns as requiresRecreation, then the old schema object will be deleted and the new one will be added
 //
-// The List will outputted in a deterministic order by schema object name, which is important for tests
+// Additions and alterations preserve the new schema order. Deletions are sorted by name because they come from a map.
 func diffLists[S schema.Object, Diff diff[S]](
 	oldSchemaObjs, newSchemaObjs []S,
-	buildDiff func(old, new S, oldIndex, newIndex int) (diff Diff, requiresRecreation bool, error error),
+	buildDiff func(old, new S) (diff Diff, requiresRecreation bool, error error),
 ) (listDiff[S, Diff], error) {
-	nameToOld := make(map[string]schemaObjectEntry[S])
-	for oldIndex, oldSchemaObject := range oldSchemaObjs {
+	nameToOld := make(map[string]S)
+	for _, oldSchemaObject := range oldSchemaObjs {
 		if _, nameAlreadyTaken := nameToOld[oldSchemaObject.GetName()]; nameAlreadyTaken {
 			return listDiff[S, Diff]{}, fmt.Errorf(
 				"multiple objects have identifier %s: %w", oldSchemaObject.GetName(), errDuplicateIdentifier,
 			)
 		}
-		// store the old schema object and its index. if an alteration, the index might be used in the diff, e.g., for columns
-		nameToOld[oldSchemaObject.GetName()] = schemaObjectEntry[S]{
-			obj:   oldSchemaObject,
-			index: oldIndex,
-		}
+		nameToOld[oldSchemaObject.GetName()] = oldSchemaObject
 	}
 
 	var adds []S
 	var alters []Diff
 	var deletes []S
-	for newIndex, newSchemaObj := range newSchemaObjs {
-		if oldSchemaObjAndIndex, hasOldSchemaObj := nameToOld[newSchemaObj.GetName()]; !hasOldSchemaObj {
+	for _, newSchemaObj := range newSchemaObjs {
+		if oldSchemaObj, hasOldSchemaObj := nameToOld[newSchemaObj.GetName()]; !hasOldSchemaObj {
 			adds = append(adds, newSchemaObj)
 		} else {
 			delete(nameToOld, newSchemaObj.GetName())
 
-			diff, requiresRecreation, err := buildDiff(oldSchemaObjAndIndex.obj,
-				newSchemaObj, oldSchemaObjAndIndex.index, newIndex)
+			diff, requiresRecreation, err := buildDiff(oldSchemaObj, newSchemaObj)
 			if err != nil {
 				return listDiff[S, Diff]{}, fmt.Errorf("diffing for %s: %w", newSchemaObj.GetName(), err)
 			}
 			if requiresRecreation {
-				deletes = append(deletes, oldSchemaObjAndIndex.obj)
+				deletes = append(deletes, oldSchemaObj)
 				adds = append(adds, newSchemaObj)
 			} else {
 				alters = append(alters, diff)
@@ -140,7 +130,7 @@ func diffLists[S schema.Object, Diff diff[S]](
 
 	// Remaining schema objects in nameToOld have been deleted
 	for _, d := range nameToOld {
-		deletes = append(deletes, d.obj)
+		deletes = append(deletes, d)
 	}
 	// Iterating through a map is non-deterministic in go, so we'll sort the deletes by schema object name
 	sort.Slice(deletes, func(i, j int) bool {
