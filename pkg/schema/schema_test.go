@@ -4,30 +4,19 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
 	"github.com/stripe/pg-schema-diff/internal/testdb"
 	"github.com/stripe/pg-schema-diff/pkg/schema"
 )
 
-type schemaTestSuite struct {
-	suite.Suite
-	factory *testdb.Factory
-}
-
-func (suite *schemaTestSuite) SetupSuite() {
-	factory, err := testdb.NewFactory(context.Background())
-	suite.Require().NoError(err)
-	suite.factory = factory
-}
-
-func (suite *schemaTestSuite) TearDownSuite() {
-	suite.Require().NoError(suite.factory.Close())
-}
-
-func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
-	const (
-		ddl = `
+func TestSchemaTestSuite(t *testing.T) {
+	t.Parallel()
+	t.Run("TestGetPublicSchemaHash", func(t *testing.T) {
+		t.Parallel()
+		const (
+			ddl = `
 			CREATE EXTENSION pg_trgm WITH VERSION '1.6';
 
 			CREATE FUNCTION add(a integer, b integer) RETURNS integer
@@ -77,27 +66,21 @@ func (suite *schemaTestSuite) TestGetPublicSchemaHash() {
 	        CREATE SCHEMA schema_filtered_1;
 			CREATE TABLE schema_filtered_1.bar()
 		`
-	)
-	db, err := suite.factory.Create(context.Background())
-	suite.Require().NoError(err)
-	defer func() {
-		suite.Require().NoError(db.Close(context.Background()))
-	}()
+		)
+		factory := testdb.MustNewFactory(t)
+		db := factory.CreateDatabase(t)
 
-	_, err = db.ConnPool.Exec(context.Background(), ddl)
-	suite.Require().NoError(err)
+		_, err := db.ConnPool.Exec(context.Background(), ddl)
+		require.NoError(t, err)
 
-	hash, err := schema.GetSchemaHash(context.Background(), db.ConnPool, schema.WithIncludeSchemas("public"))
-	suite.Require().NoError(err)
+		hash, err := schema.GetSchemaHash(context.Background(), db.ConnPool, schema.WithIncludeSchemas("public"))
+		require.NoError(t, err)
 
-	schema, err := internalschema.GetSchema(context.Background(), db.ConnPool,
-		internalschema.WithIncludeSchemas("public"))
-	suite.Require().NoError(err)
-	expectedHash, err := schema.Hash()
-	suite.Require().NoError(err)
-	suite.Equal(expectedHash, hash)
-}
-
-func TestSchemaTestSuite(t *testing.T) {
-	suite.Run(t, new(schemaTestSuite))
+		schema, err := internalschema.GetSchema(context.Background(), db.ConnPool,
+			internalschema.WithIncludeSchemas("public"))
+		require.NoError(t, err)
+		expectedHash, err := schema.Hash()
+		require.NoError(t, err)
+		assert.Equal(t, expectedHash, hash)
+	})
 }

@@ -8,37 +8,27 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	internalschema "github.com/stripe/pg-schema-diff/internal/schema"
 )
 
-type onInstanceTempDbFactorySuite struct {
-	suite.Suite
-
-	config *pgxpool.Config
-}
-
-func (suite *onInstanceTempDbFactorySuite) SetupSuite() {
-	connString := os.Getenv("TEST_DATABASE_URL")
-	suite.Require().NotEmpty(connString)
-	config, err := pgxpool.ParseConfig(connString)
-	suite.Require().NoError(err)
-	suite.config = config
-}
-
-func (suite *onInstanceTempDbFactorySuite) mustBuildFactory(opt ...FactoryOption) Factory {
-	factory, err := NewFactory(context.Background(), suite.config, opt...)
-	suite.Require().NoError(err)
+func mustBuildFactory(t testing.TB, config *pgxpool.Config, opt ...FactoryOption) Factory {
+	t.Helper()
+	factory, err := NewFactory(context.Background(), config, opt...)
+	require.NoError(t, err)
 	return factory
 }
 
-func (suite *onInstanceTempDbFactorySuite) getConnPoolForDb(dbName string) (*pgxpool.Pool, error) {
-	config := suite.config.Copy()
+func getConnPoolForDb(t testing.TB, config *pgxpool.Config, dbName string) (*pgxpool.Pool, error) {
+	t.Helper()
+	config = config.Copy()
 	config.ConnConfig.Database = dbName
 	return pgxpool.NewWithConfig(context.Background(), config)
 }
 
-func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *pgxpool.Conn) {
+func mustRunSQL(t testing.TB, conn *pgxpool.Conn) {
+	t.Helper()
 	_, err := conn.Exec(context.Background(), `
 		CREATE TABLE foobar(
 		  id INT PRIMARY KEY,
@@ -46,28 +36,28 @@ func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *pgxpool.Conn) {
 		);
 		CREATE INDEX message_idx ON foobar(message);
 	  	`)
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 
 	_, err = conn.Exec(context.Background(), `
 		INSERT INTO foobar VALUES (1, 'some message'), (2, 'some other message'), (3, 'a final message');
 	`)
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 
 	res, err := conn.Query(context.Background(), `
 		SELECT id, message FROM foobar;
 	`)
-	suite.Require().NoError(err)
+	require.NoError(t, err)
 
 	var rows [][]any
 	for res.Next() {
 		var id int
 		var message string
-		suite.Require().NoError(res.Scan(&id, &message))
+		require.NoError(t, res.Scan(&id, &message))
 		rows = append(rows, []any{
 			id, message,
 		})
 	}
-	suite.ElementsMatch([][]any{
+	assert.ElementsMatch(t, [][]any{
 		{1, "some message"},
 		{2, "some other message"},
 		{3, "a final message"},
@@ -75,92 +65,106 @@ func (suite *onInstanceTempDbFactorySuite) mustRunSQL(conn *pgxpool.Conn) {
 
 	// Drop the table we just created
 	_, err = conn.Exec(context.Background(), "DROP TABLE foobar")
-	suite.Require().NoError(err)
-}
-
-func (suite *onInstanceTempDbFactorySuite) TestNew_ErrorsOnNonSimpleDbPrefix() {
-	_, err := NewFactory(context.Background(), suite.config, WithDbPrefix("non-simple identifier"))
-	suite.ErrorContains(err, "must be a simple Postgres identifier")
-}
-
-func (suite *onInstanceTempDbFactorySuite) TestNew_ErrorsOnNilConfig() {
-	_, err := NewFactory(context.Background(), nil)
-	suite.ErrorContains(err, "rootConfig must not be nil")
-}
-
-func (suite *onInstanceTempDbFactorySuite) TestCreate_CreateAndDropFlow() {
-	const (
-		dbPrefix = "some_prefix"
-	)
-
-	factory := suite.mustBuildFactory(
-		WithDbPrefix(dbPrefix),
-		WithLogger(slog.Default()),
-	)
-	defer func(factory Factory) {
-		suite.Require().NoError(factory.Close())
-	}(factory)
-
-	tempDb, err := factory.Create(context.Background())
-	suite.Require().NoError(err)
-	// Don't defer dropping. we want to run assertions after it drops. if dropping fails,
-	// it shouldn't be a problem because names shouldn't conflict
-
-	conn1, err := tempDb.ConnPool.Acquire(context.Background())
-	suite.Require().NoError(err)
-
-	var dbName string
-	suite.Require().NoError(conn1.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbName))
-	suite.True(strings.HasPrefix(dbName, dbPrefix))
-	suite.Regexp(`^`+dbPrefix+`[a-z]+_[a-z]+_[0-9a-f]{10}$`, dbName)
-
-	// Make sure SQL can run on the connection
-	suite.mustRunSQL(conn1)
-
-	// Get another connection from the pool and make sure it's also set to the correct db while
-	// the other connection is still open
-	conn2, err := tempDb.ConnPool.Acquire(context.Background())
-	suite.Require().NoError(err)
-	var dbNameFromConn2 string
-	suite.Require().NoError(conn2.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbNameFromConn2))
-	suite.Equal(dbName, dbNameFromConn2)
-
-	conn1.Release()
-	conn2.Release()
-
-	// A newly created temporary database should contain no user-defined objects.
-	schema, err := internalschema.GetSchema(context.Background(), tempDb.ConnPool)
-	suite.Require().NoError(err)
-	suite.Equal(&internalschema.Schema{
-		NamedSchemas: []internalschema.NamedSchema{{
-			Name: "public",
-		}},
-	}, schema)
-
-	// Drop database
-	suite.Require().NoError(tempDb.Close(context.Background()))
-	suite.Require().NoError(tempDb.Close(context.Background()))
-
-	// Expect an error when attempting to query the database, since it should be dropped.
-	// when a db pool is opened, it has no connections.
-	// a query is needed in order to find if the database still exists.
-	conn, err := suite.getConnPoolForDb(dbName)
-	suite.Require().NoError(err)
-	defer conn.Close()
-	var one int
-	suite.Require().ErrorContains(conn.QueryRow(context.Background(), "SELECT 1").Scan(&one), "SQLSTATE 3D000")
-}
-
-func (suite *onInstanceTempDbFactorySuite) TestDropTempDB_CannotDropNonTempDb() {
-	factory := suite.mustBuildFactory()
-	defer func(factory Factory) {
-		suite.Require().NoError(factory.Close())
-	}(factory)
-
-	suite.ErrorContains(factory.(*onInstanceFactory).dropTempDatabase(context.Background(),
-		"some_db"), "drop non-temporary database")
+	require.NoError(t, err)
 }
 
 func TestOnInstanceFactorySuite(t *testing.T) {
-	suite.Run(t, new(onInstanceTempDbFactorySuite))
+	t.Parallel()
+
+	connString := os.Getenv("TEST_DATABASE_URL")
+	require.NotEmpty(t, connString)
+	config, err := pgxpool.ParseConfig(connString)
+	require.NoError(t, err)
+
+	t.Run("TestNew_ErrorsOnNonSimpleDbPrefix", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewFactory(context.Background(), config, WithDbPrefix("non-simple identifier"))
+		assert.ErrorContains(t, err, "must be a simple Postgres identifier")
+	})
+
+	t.Run("TestNew_ErrorsOnNilConfig", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewFactory(context.Background(), nil)
+		assert.ErrorContains(t, err, "rootConfig must not be nil")
+	})
+
+	t.Run("TestCreate_CreateAndDropFlow", func(t *testing.T) {
+		t.Parallel()
+
+		const (
+			dbPrefix = "some_prefix"
+		)
+
+		factory := mustBuildFactory(
+			t, config,
+			WithDbPrefix(dbPrefix),
+			WithLogger(slog.Default()),
+		)
+		defer func(factory Factory) {
+			require.NoError(t, factory.Close())
+		}(factory)
+
+		tempDb, err := factory.Create(context.Background())
+		require.NoError(t, err)
+		// Don't defer dropping. we want to run assertions after it drops. if dropping fails,
+		// it shouldn't be a problem because names shouldn't conflict
+
+		conn1, err := tempDb.ConnPool.Acquire(context.Background())
+		require.NoError(t, err)
+
+		var dbName string
+		require.NoError(t, conn1.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbName))
+		assert.True(t, strings.HasPrefix(dbName, dbPrefix))
+		assert.Regexp(t, `^`+dbPrefix+`[a-z]+_[a-z]+_[0-9a-f]{10}$`, dbName)
+
+		// Make sure SQL can run on the connection
+		mustRunSQL(t, conn1)
+
+		// Get another connection from the pool and make sure it's also set to the correct db while
+		// the other connection is still open
+		conn2, err := tempDb.ConnPool.Acquire(context.Background())
+		require.NoError(t, err)
+		var dbNameFromConn2 string
+		require.NoError(t, conn2.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbNameFromConn2))
+		assert.Equal(t, dbName, dbNameFromConn2)
+
+		conn1.Release()
+		conn2.Release()
+
+		// A newly created temporary database should contain no user-defined objects.
+		schema, err := internalschema.GetSchema(context.Background(), tempDb.ConnPool)
+		require.NoError(t, err)
+		assert.Equal(t, &internalschema.Schema{
+			NamedSchemas: []internalschema.NamedSchema{{
+				Name: "public",
+			}},
+		}, schema)
+
+		// Drop database
+		require.NoError(t, tempDb.Close(context.Background()))
+		require.NoError(t, tempDb.Close(context.Background()))
+
+		// Expect an error when attempting to query the database, since it should be dropped.
+		// when a db pool is opened, it has no connections.
+		// a query is needed in order to find if the database still exists.
+		conn, err := getConnPoolForDb(t, config, dbName)
+		require.NoError(t, err)
+		defer conn.Close()
+		var one int
+		require.ErrorContains(t, conn.QueryRow(context.Background(), "SELECT 1").Scan(&one), "SQLSTATE 3D000")
+	})
+
+	t.Run("TestDropTempDB_CannotDropNonTempDb", func(t *testing.T) {
+		t.Parallel()
+
+		factory := mustBuildFactory(t, config)
+		defer func(factory Factory) {
+			require.NoError(t, factory.Close())
+		}(factory)
+
+		assert.ErrorContains(t, factory.(*onInstanceFactory).dropTempDatabase(context.Background(),
+			"some_db"), "drop non-temporary database")
+	})
 }
