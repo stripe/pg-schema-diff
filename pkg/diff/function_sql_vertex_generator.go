@@ -31,10 +31,8 @@ func (f *functionSQLVertexGenerator) Add(function schema.Function) ([]Statement,
 		})
 	}
 	return []Statement{{
-		DDL:         function.FunctionDef,
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     hazards,
+		DDL:     function.FunctionDef,
+		Hazards: hazards,
 	}}, nil
 }
 
@@ -50,10 +48,8 @@ func (f *functionSQLVertexGenerator) Delete(function schema.Function) ([]Stateme
 		})
 	}
 	return []Statement{{
-		DDL:         fmt.Sprintf("DROP FUNCTION %s", function.GetFQEscapedName()),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     hazards,
+		DDL:     fmt.Sprintf("DROP FUNCTION %s", function.GetFQEscapedName()),
+		Hazards: hazards,
 	}}, nil
 }
 

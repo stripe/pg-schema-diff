@@ -12,17 +12,13 @@ type namedSchemaSQLGenerator struct{}
 
 func (n *namedSchemaSQLGenerator) Add(s schema.NamedSchema) ([]Statement, error) {
 	return []Statement{{
-		DDL:         fmt.Sprintf("CREATE SCHEMA %s", schema.EscapeIdentifier(s.Name)),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
+		DDL: fmt.Sprintf("CREATE SCHEMA %s", schema.EscapeIdentifier(s.Name)),
 	}}, nil
 }
 
 func (n *namedSchemaSQLGenerator) Delete(s schema.NamedSchema) ([]Statement, error) {
 	return []Statement{{
-		DDL:         fmt.Sprintf("DROP SCHEMA %s", schema.EscapeIdentifier(s.Name)),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
+		DDL: fmt.Sprintf("DROP SCHEMA %s", schema.EscapeIdentifier(s.Name)),
 	}}, nil
 }
 

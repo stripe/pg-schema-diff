@@ -29,9 +29,7 @@ func (t *triggerSQLVertexGenerator) Add(trigger schema.Trigger) ([]Statement, er
 
 func (t *triggerSQLVertexGenerator) addStatements(trigger schema.Trigger) []Statement {
 	return []Statement{{
-		DDL:         string(trigger.GetTriggerDefStmt),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
+		DDL: string(trigger.GetTriggerDefStmt),
 	}}
 }
 
@@ -43,8 +41,6 @@ func (t *triggerSQLVertexGenerator) deleteStatements(trigger schema.Trigger) []S
 	return []Statement{{
 		DDL: fmt.Sprintf("DROP TRIGGER %s ON %s", trigger.EscapedName,
 			trigger.OwningTable.GetFQEscapedName()),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
 	}}
 }
 
@@ -64,9 +60,7 @@ func (t *triggerSQLVertexGenerator) Alter(diff triggerDiff) ([]Statement, error)
 		return nil, fmt.Errorf("modifying get trigger def statement to create or replace: %w", err)
 	}
 	return []Statement{{
-		DDL:         createOrReplaceStmt,
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
+		DDL: createOrReplaceStmt,
 	}}, nil
 }
 

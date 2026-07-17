@@ -124,9 +124,7 @@ func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (parti
 			id:       addVertexId,
 			priority: sqlPrioritySooner,
 			statements: []Statement{{
-				DDL:         materializedViewSb.String(),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
+				DDL: materializedViewSb.String(),
 			}},
 		}},
 		dependencies: deps,
@@ -152,9 +150,7 @@ func (mvsg *materializedViewSQLGenerator) Delete(mv schema.MaterializedView) (pa
 			id:       deleteVertexId,
 			priority: sqlPriorityLater,
 			statements: []Statement{{
-				DDL:         fmt.Sprintf("DROP MATERIALIZED VIEW %s", mv.GetFQEscapedName()),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
+				DDL: fmt.Sprintf("DROP MATERIALIZED VIEW %s", mv.GetFQEscapedName()),
 			}},
 		}},
 		dependencies: deps,

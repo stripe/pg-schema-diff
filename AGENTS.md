@@ -179,10 +179,8 @@ plan, _ := diff.Generate(ctx, currentSchema, targetSchema,
     diff.WithTempDbFactory(tempDbFactory),
 )
 
-// Apply statements (set timeouts before each statement)
+// Apply statements
 for _, stmt := range plan.Statements {
-    conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds()))
-    conn.ExecContext(ctx, fmt.Sprintf("SET SESSION lock_timeout = %d", stmt.LockTimeout.Milliseconds()))
     conn.ExecContext(ctx, stmt.ToSQL())
 }
 ```

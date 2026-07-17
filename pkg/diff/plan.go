@@ -3,8 +3,6 @@ package diff
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"time"
 )
 
 type MigrationHazardType = string
@@ -36,14 +34,6 @@ func (p MigrationHazard) String() string {
 
 type Statement struct {
 	DDL string
-	// Timeout is the statement_timeout to apply to this statement. If implementing your own plan executor, be sure to set
-	// the session-level statement_timeout to this value before executing the statement. A transaction-level statement_timeout
-	// will not work since building indexes concurrently cannot be done in a transaction
-	Timeout time.Duration
-	// LockTimeout is the lock_timeout to apply to this statement. If implementing your own plan executor, be sure to set
-	// the session-level lock_timeout to this value before executing the statement. A transaction-level lock_timeout
-	// will not work since building indexes concurrently cannot be done in a transaction
-	LockTimeout time.Duration
 	// The hazards this statement poses
 	Hazards []MigrationHazard
 	// SkipValidation indicates that this statement should be skipped during plan validation against a temporary
@@ -54,15 +44,11 @@ type Statement struct {
 
 func (s Statement) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		DDL         string            `json:"ddl"`
-		Timeout     int64             `json:"timeout_ms"`
-		LockTimeout int64             `json:"lock_timeout_ms"`
-		Hazards     []MigrationHazard `json:"hazards"`
+		DDL     string            `json:"ddl"`
+		Hazards []MigrationHazard `json:"hazards"`
 	}{
-		DDL:         s.DDL,
-		Timeout:     s.Timeout.Milliseconds(),
-		LockTimeout: s.LockTimeout.Milliseconds(),
-		Hazards:     s.Hazards,
+		DDL:     s.DDL,
+		Hazards: s.Hazards,
 	})
 }
 
@@ -78,34 +64,6 @@ type Plan struct {
 	// plan on running them later, you should verify that the current schema hash matches the current schema hash.
 	// To get the current schema hash, you can use schema.GetPublicSchemaHash(ctx, conn)
 	CurrentSchemaHash string `json:"current_schema_hash"`
-}
-
-// ApplyStatementTimeoutModifier applies the given timeout to all statements that match the given regex
-func (p Plan) ApplyStatementTimeoutModifier(regex *regexp.Regexp, timeout time.Duration) Plan {
-	return p.applyStatementModifier(regex, func(stmt Statement) Statement {
-		stmt.Timeout = timeout
-		return stmt
-	})
-}
-
-// ApplyLockTimeoutModifier applies the given timeout to all statements that match the given regex
-func (p Plan) ApplyLockTimeoutModifier(regex *regexp.Regexp, timeout time.Duration) Plan {
-	return p.applyStatementModifier(regex, func(stmt Statement) Statement {
-		stmt.LockTimeout = timeout
-		return stmt
-	})
-}
-
-func (p Plan) applyStatementModifier(regex *regexp.Regexp, modifier func(Statement) Statement) Plan {
-	var modifiedStmts []Statement
-	for _, stmt := range p.Statements {
-		if regex.MatchString(stmt.DDL) {
-			stmt = modifier(stmt)
-		}
-		modifiedStmts = append(modifiedStmts, stmt)
-	}
-	p.Statements = modifiedStmts
-	return p
 }
 
 // InsertStatement inserts the given statement at the given index. If index is equal to the length of the statements,

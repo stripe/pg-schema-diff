@@ -116,9 +116,7 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 			id:       addVertexId,
 			priority: sqlPrioritySooner,
 			statements: []Statement{{
-				DDL:         viewSb.String(),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
+				DDL: viewSb.String(),
 			}},
 		}},
 		dependencies: deps,
@@ -144,9 +142,7 @@ func (vsg *viewSQLGenerator) Delete(v schema.View) (partialSQLGraph, error) {
 			id:       deleteVertexId,
 			priority: sqlPriorityLater,
 			statements: []Statement{{
-				DDL:         fmt.Sprintf("DROP VIEW %s", v.GetFQEscapedName()),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
+				DDL: fmt.Sprintf("DROP VIEW %s", v.GetFQEscapedName()),
 			}},
 		}},
 		dependencies: deps,

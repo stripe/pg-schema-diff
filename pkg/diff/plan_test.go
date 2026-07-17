@@ -1,9 +1,7 @@
 package diff_test
 
 import (
-	"regexp"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11,224 +9,9 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 )
 
-func TestPlan_ApplyStatementTimeoutModifier(t *testing.T) {
-	for _, tc := range []struct {
-		name         string
-		regex        string
-		timeout      time.Duration
-		plan         diff.Plan
-		expectedPlan diff.Plan
-	}{
-		{
-			name:    "no matches",
-			regex:   "^.*x.*y$",
-			timeout: 2 * time.Hour,
-			plan: diff.Plan{
-				Statements: []diff.Statement{
-					{
-						DDL:         "does-not-match-1",
-						Timeout:     3 * time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "does-not-match-2",
-						Timeout:     time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "does-not-match-3",
-						Timeout:     2 * time.Second,
-						LockTimeout: time.Second,
-					},
-				},
-				CurrentSchemaHash: "some-hash",
-			},
-			expectedPlan: diff.Plan{
-				Statements: []diff.Statement{
-					{
-						DDL:         "does-not-match-1",
-						Timeout:     3 * time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "does-not-match-2",
-						Timeout:     time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "does-not-match-3",
-						Timeout:     2 * time.Second,
-						LockTimeout: time.Second,
-					},
-				},
-				CurrentSchemaHash: "some-hash",
-			},
-		},
-		{
-			name:    "some match",
-			regex:   "^.*x.*y$",
-			timeout: 2 * time.Hour,
-			plan: diff.Plan{
-				Statements: []diff.Statement{
-					{
-						DDL:         "some-letters-than-an-x--end-in-y",
-						Timeout:     3 * time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "does-not-match",
-						Timeout:     time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "other-letters xerox but ends in finally",
-						Timeout:     2 * time.Second,
-						LockTimeout: time.Second,
-					},
-				},
-				CurrentSchemaHash: "some-hash",
-			},
-			expectedPlan: diff.Plan{
-				Statements: []diff.Statement{
-					{
-						DDL:         "some-letters-than-an-x--end-in-y",
-						Timeout:     2 * time.Hour,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "does-not-match",
-						Timeout:     time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "other-letters xerox but ends in finally",
-						Timeout:     2 * time.Hour,
-						LockTimeout: time.Second,
-					},
-				},
-				CurrentSchemaHash: "some-hash",
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			regex := regexp.MustCompile(tc.regex)
-			resultingPlan := tc.plan.ApplyStatementTimeoutModifier(regex, tc.timeout)
-			assert.Equal(t, tc.expectedPlan, resultingPlan)
-		})
-	}
-}
-
-func TestPlan_ApplyLockTimeoutModifier(t *testing.T) {
-	for _, tc := range []struct {
-		name         string
-		regex        string
-		timeout      time.Duration
-		plan         diff.Plan
-		expectedPlan diff.Plan
-	}{
-		{
-			name:    "no matches",
-			regex:   "^.*x.*y$",
-			timeout: 2 * time.Hour,
-			plan: diff.Plan{
-				Statements: []diff.Statement{
-					{
-						DDL:         "does-not-match-1",
-						Timeout:     time.Second,
-						LockTimeout: 3 * time.Second,
-					},
-					{
-						DDL:         "does-not-match-2",
-						Timeout:     time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "does-not-match-3",
-						Timeout:     time.Second,
-						LockTimeout: 2 * time.Second,
-					},
-				},
-				CurrentSchemaHash: "some-hash",
-			},
-			expectedPlan: diff.Plan{
-				Statements: []diff.Statement{
-					{
-						DDL:         "does-not-match-1",
-						Timeout:     time.Second,
-						LockTimeout: 3 * time.Second,
-					},
-					{
-						DDL:         "does-not-match-2",
-						Timeout:     time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "does-not-match-3",
-						Timeout:     time.Second,
-						LockTimeout: 2 * time.Second,
-					},
-				},
-				CurrentSchemaHash: "some-hash",
-			},
-		},
-		{
-			name:    "some match",
-			regex:   "^.*x.*y$",
-			timeout: 2 * time.Hour,
-			plan: diff.Plan{
-				Statements: []diff.Statement{
-					{
-						DDL:         "some-letters-than-an-x--end-in-y",
-						Timeout:     time.Second,
-						LockTimeout: 3 * time.Second,
-					},
-					{
-						DDL:         "does-not-match",
-						Timeout:     time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "other-letters xerox but ends in finally",
-						Timeout:     time.Second,
-						LockTimeout: 2 * time.Second,
-					},
-				},
-				CurrentSchemaHash: "some-hash",
-			},
-			expectedPlan: diff.Plan{
-				Statements: []diff.Statement{
-					{
-						DDL:         "some-letters-than-an-x--end-in-y",
-						Timeout:     time.Second,
-						LockTimeout: 2 * time.Hour,
-					},
-					{
-						DDL:         "does-not-match",
-						Timeout:     time.Second,
-						LockTimeout: time.Second,
-					},
-					{
-						DDL:         "other-letters xerox but ends in finally",
-						Timeout:     time.Second,
-						LockTimeout: 2 * time.Hour,
-					},
-				},
-				CurrentSchemaHash: "some-hash",
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			regex := regexp.MustCompile(tc.regex)
-			resultingPlan := tc.plan.ApplyLockTimeoutModifier(regex, tc.timeout)
-			assert.Equal(t, tc.expectedPlan, resultingPlan)
-		})
-	}
-}
-
 func TestPlan_InsertStatement(t *testing.T) {
 	statementToInsert := diff.Statement{
-		DDL:     "some DDL",
-		Timeout: 3 * time.Second,
+		DDL: "some DDL",
 		Hazards: []diff.MigrationHazard{
 			{Type: diff.MigrationHazardTypeIsUserGenerated, Message: "user-generated"},
 			{Type: diff.MigrationHazardTypeAcquiresShareLock, Message: "acquires share lock"},
@@ -262,9 +45,9 @@ func TestPlan_InsertStatement(t *testing.T) {
 			name: "insert at start",
 			plan: diff.Plan{
 				Statements: []diff.Statement{
-					{DDL: "statement 1", Timeout: time.Second},
-					{DDL: "statement 2", Timeout: 2 * time.Second},
-					{DDL: "statement 3", Timeout: 3 * time.Second},
+					{DDL: "statement 1"},
+					{DDL: "statement 2"},
+					{DDL: "statement 3"},
 				},
 				CurrentSchemaHash: "some-hash",
 			},
@@ -273,9 +56,9 @@ func TestPlan_InsertStatement(t *testing.T) {
 			expectedPlan: diff.Plan{
 				Statements: []diff.Statement{
 					statementToInsert,
-					{DDL: "statement 1", Timeout: time.Second},
-					{DDL: "statement 2", Timeout: 2 * time.Second},
-					{DDL: "statement 3", Timeout: 3 * time.Second},
+					{DDL: "statement 1"},
+					{DDL: "statement 2"},
+					{DDL: "statement 3"},
 				},
 				CurrentSchemaHash: "some-hash",
 			},
@@ -284,9 +67,9 @@ func TestPlan_InsertStatement(t *testing.T) {
 			name: "insert after first statement",
 			plan: diff.Plan{
 				Statements: []diff.Statement{
-					{DDL: "statement 1", Timeout: time.Second},
-					{DDL: "statement 2", Timeout: 2 * time.Second},
-					{DDL: "statement 3", Timeout: 3 * time.Second},
+					{DDL: "statement 1"},
+					{DDL: "statement 2"},
+					{DDL: "statement 3"},
 				},
 				CurrentSchemaHash: "some-hash",
 			},
@@ -294,10 +77,10 @@ func TestPlan_InsertStatement(t *testing.T) {
 
 			expectedPlan: diff.Plan{
 				Statements: []diff.Statement{
-					{DDL: "statement 1", Timeout: time.Second},
+					{DDL: "statement 1"},
 					statementToInsert,
-					{DDL: "statement 2", Timeout: 2 * time.Second},
-					{DDL: "statement 3", Timeout: 3 * time.Second},
+					{DDL: "statement 2"},
+					{DDL: "statement 3"},
 				},
 				CurrentSchemaHash: "some-hash",
 			},
@@ -306,9 +89,9 @@ func TestPlan_InsertStatement(t *testing.T) {
 			name: "insert after last statement statement",
 			plan: diff.Plan{
 				Statements: []diff.Statement{
-					{DDL: "statement 1", Timeout: time.Second},
-					{DDL: "statement 2", Timeout: 2 * time.Second},
-					{DDL: "statement 3", Timeout: 3 * time.Second},
+					{DDL: "statement 1"},
+					{DDL: "statement 2"},
+					{DDL: "statement 3"},
 				},
 				CurrentSchemaHash: "some-hash",
 			},
@@ -316,9 +99,9 @@ func TestPlan_InsertStatement(t *testing.T) {
 
 			expectedPlan: diff.Plan{
 				Statements: []diff.Statement{
-					{DDL: "statement 1", Timeout: time.Second},
-					{DDL: "statement 2", Timeout: 2 * time.Second},
-					{DDL: "statement 3", Timeout: 3 * time.Second},
+					{DDL: "statement 1"},
+					{DDL: "statement 2"},
+					{DDL: "statement 3"},
 					statementToInsert,
 				},
 				CurrentSchemaHash: "some-hash",

@@ -21,9 +21,7 @@ func (e *enumSQLGenerator) Add(enum schema.Enum) ([]Statement, error) {
 	}
 	return []Statement{
 		{
-			DDL:         fmt.Sprintf("CREATE TYPE %s AS ENUM (%s)", enum.GetFQEscapedName(), strings.Join(escapedEnumVals, ", ")),
-			Timeout:     statementTimeoutDefault,
-			LockTimeout: lockTimeoutDefault,
+			DDL: fmt.Sprintf("CREATE TYPE %s AS ENUM (%s)", enum.GetFQEscapedName(), strings.Join(escapedEnumVals, ", ")),
 		},
 	}, nil
 }
@@ -31,9 +29,7 @@ func (e *enumSQLGenerator) Add(enum schema.Enum) ([]Statement, error) {
 func (e *enumSQLGenerator) Delete(enum schema.Enum) ([]Statement, error) {
 	return []Statement{
 		{
-			DDL:         fmt.Sprintf("DROP TYPE %s", enum.GetFQEscapedName()),
-			Timeout:     statementTimeoutDefault,
-			LockTimeout: lockTimeoutDefault,
+			DDL: fmt.Sprintf("DROP TYPE %s", enum.GetFQEscapedName()),
 		},
 	}, nil
 }
@@ -83,9 +79,7 @@ func (e *enumSQLGenerator) Alter(diff enumDiff) ([]Statement, error) {
 				schema.EscapeLiteral(diff.new.Labels[i+1]))
 		}
 		stmts = append(stmts, Statement{
-			DDL:         sb.String(),
-			Timeout:     statementTimeoutDefault,
-			LockTimeout: lockTimeoutDefault,
+			DDL: sb.String(),
 		})
 	}
 	oldCopy.Labels = diff.new.Labels

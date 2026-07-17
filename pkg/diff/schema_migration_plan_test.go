@@ -85,21 +85,15 @@ var (
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:         "ALTER INDEX \"public\".\"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
-					Timeout:     statementTimeoutDefault,
-					LockTimeout: lockTimeoutDefault,
+					DDL: "ALTER INDEX \"public\".\"some_idx\" RENAME TO \"pgschemadiff_tmpidx_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
 				},
 				{
-					DDL:         "CREATE INDEX CONCURRENTLY some_idx ON public.foobar USING btree (foo, bar)",
-					Timeout:     statementTimeoutConcurrentIndexBuild,
-					LockTimeout: lockTimeoutDefault,
-					Hazards:     []MigrationHazard{buildIndexBuildHazard()},
+					DDL:     "CREATE INDEX CONCURRENTLY some_idx ON public.foobar USING btree (foo, bar)",
+					Hazards: []MigrationHazard{buildIndexBuildHazard()},
 				},
 				{
-					DDL:         "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
-					Timeout:     statementTimeoutConcurrentIndexDrop,
-					LockTimeout: lockTimeoutDefault,
-					Hazards:     []MigrationHazard{buildIndexDroppedQueryPerfHazard()},
+					DDL:     "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
+					Hazards: []MigrationHazard{buildIndexDroppedQueryPerfHazard()},
 				},
 			},
 		},
@@ -192,27 +186,19 @@ var (
 			},
 			expectedStatements: []Statement{
 				{
-					DDL:         "ALTER INDEX \"public\".\"foobar_1_some_idx\" RENAME TO \"pgschemadiff_tmpidx_foobar_1_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
-					Timeout:     statementTimeoutDefault,
-					LockTimeout: lockTimeoutDefault,
+					DDL: "ALTER INDEX \"public\".\"foobar_1_some_idx\" RENAME TO \"pgschemadiff_tmpidx_foobar_1_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
 				},
 				{
-					DDL:         "CREATE INDEX CONCURRENTLY foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
-					Timeout:     statementTimeoutConcurrentIndexBuild,
-					LockTimeout: lockTimeoutDefault,
+					DDL: "CREATE INDEX CONCURRENTLY foobar_1_some_idx ON public.foobar_1 USING btree (foo, bar)",
 					Hazards: []MigrationHazard{
 						buildIndexBuildHazard(),
 					},
 				},
 				{
-					DDL:         "ALTER INDEX \"public\".\"some_idx\" ATTACH PARTITION \"public\".\"foobar_1_some_idx\"",
-					Timeout:     statementTimeoutDefault,
-					LockTimeout: lockTimeoutDefault,
+					DDL: "ALTER INDEX \"public\".\"some_idx\" ATTACH PARTITION \"public\".\"foobar_1_some_idx\"",
 				},
 				{
-					DDL:         "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_foobar_1_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
-					Timeout:     statementTimeoutConcurrentIndexDrop,
-					LockTimeout: lockTimeoutDefault,
+					DDL: "DROP INDEX CONCURRENTLY \"public\".\"pgschemadiff_tmpidx_foobar_1_some_idx_AAECAwQFRgeICQoLDA0ODw\"",
 					Hazards: []MigrationHazard{
 						buildIndexDroppedQueryPerfHazard(),
 					},

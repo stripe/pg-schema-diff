@@ -47,9 +47,7 @@ func (p procedureSQLVertexGenerator) Add(s schema.Procedure) (partialSQLGraph, e
 			id:       buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter),
 			priority: sqlPrioritySooner,
 			statements: []Statement{{
-				DDL:         s.Def,
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
+				DDL: s.Def,
 				Hazards: []MigrationHazard{{
 					Type: MigrationHazardTypeHasUntrackableDependencies,
 					Message: "Dependencies of procedures are not tracked by Postgres. " +
@@ -94,9 +92,7 @@ func (p procedureSQLVertexGenerator) Delete(s schema.Procedure) (partialSQLGraph
 			id:       buildProcedureVertexId(s.SchemaQualifiedName, diffTypeDelete),
 			priority: sqlPriorityLater,
 			statements: []Statement{{
-				DDL:         fmt.Sprintf("DROP PROCEDURE %s", s.GetFQEscapedName()),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
+				DDL: fmt.Sprintf("DROP PROCEDURE %s", s.GetFQEscapedName()),
 				Hazards: []MigrationHazard{{
 					Type: MigrationHazardTypeHasUntrackableDependencies,
 					Message: "Dependencies of procedures are not tracked by Postgres. " +

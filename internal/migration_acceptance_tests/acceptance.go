@@ -148,7 +148,6 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	}
 	require.NoError(t, err)
 
-	assertValidPlan(t, plan)
 	if tc.expectEmptyPlan {
 		// It shouldn't be necessary, but we'll run all checks below this point just in case rather than exiting early
 		assert.Empty(t, plan.Statements)
@@ -183,15 +182,6 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	plan, err = tc.planFactory(context.Background(), oldDb.ConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
 	require.NoError(t, err)
 	assert.Empty(t, plan.Statements, prettySprintPlan(plan))
-}
-
-func assertValidPlan(t *testing.T, plan diff.Plan) {
-	for _, stmt := range plan.Statements {
-		assert.Greater(t, stmt.Timeout.Nanoseconds(), int64(0),
-			"timeout should be greater than 0. stmt=%+v", stmt)
-		assert.Greater(t, stmt.LockTimeout.Nanoseconds(), int64(0),
-			"lock timeout should be greater than 0. stmt=%+v", stmt)
-	}
 }
 
 func directlyRunDDLAndGetDump(t *testing.T, factory *testdb.Factory, ddl []string) string {

@@ -42,8 +42,6 @@ func (psg *privilegeSQLVertexGenerator) Add(p schema.TablePrivilege) ([]Statemen
 
 	return []Statement{{
 		DDL:            ddl,
-		Timeout:        statementTimeoutDefault,
-		LockTimeout:    lockTimeoutDefault,
 		Hazards:        []MigrationHazard{migrationHazardPrivilegeGranted},
 		SkipValidation: true,
 	}}, nil
@@ -61,8 +59,6 @@ func (psg *privilegeSQLVertexGenerator) Delete(p schema.TablePrivilege) ([]State
 
 	return []Statement{{
 		DDL:            ddl,
-		Timeout:        statementTimeoutDefault,
-		LockTimeout:    lockTimeoutDefault,
 		Hazards:        []MigrationHazard{migrationHazardPrivilegeRevoked},
 		SkipValidation: true,
 	}}, nil

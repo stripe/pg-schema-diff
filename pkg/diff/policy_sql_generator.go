@@ -67,9 +67,7 @@ func enableRLSForTable(t schema.Table) Statement {
 	return Statement{
 		DDL: fmt.Sprintf("%s ENABLE ROW LEVEL SECURITY",
 			alterTablePrefix(t.SchemaQualifiedName)),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     []MigrationHazard{migrationHazardRLSEnabled},
+		Hazards: []MigrationHazard{migrationHazardRLSEnabled},
 	}
 }
 
@@ -77,9 +75,7 @@ func disableRLSForTable(t schema.Table) Statement {
 	return Statement{
 		DDL: fmt.Sprintf("%s DISABLE ROW LEVEL SECURITY",
 			alterTablePrefix(t.SchemaQualifiedName)),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     []MigrationHazard{migrationHazardRLSDisabled},
+		Hazards: []MigrationHazard{migrationHazardRLSDisabled},
 	}
 }
 
@@ -87,9 +83,7 @@ func forceRLSForTable(t schema.Table) Statement {
 	return Statement{
 		DDL: fmt.Sprintf("%s FORCE ROW LEVEL SECURITY",
 			alterTablePrefix(t.SchemaQualifiedName)),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     []MigrationHazard{migrationHazardRLSForced},
+		Hazards: []MigrationHazard{migrationHazardRLSForced},
 	}
 }
 
@@ -97,9 +91,7 @@ func unforceRLSForTable(t schema.Table) Statement {
 	return Statement{
 		DDL: fmt.Sprintf("%s NO FORCE ROW LEVEL SECURITY",
 			alterTablePrefix(t.SchemaQualifiedName)),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     []MigrationHazard{migrationHazardRLSUnforced},
+		Hazards: []MigrationHazard{migrationHazardRLSUnforced},
 	}
 }
 
@@ -197,10 +189,8 @@ func (psg *policySQLVertexGenerator) Add(p schema.Policy) ([]Statement, error) {
 	}
 
 	return []Statement{{
-		DDL:         sb.String(),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     []MigrationHazard{hazard},
+		DDL:     sb.String(),
+		Hazards: []MigrationHazard{hazard},
 	}}, nil
 }
 
@@ -227,10 +217,8 @@ func (psg *policySQLVertexGenerator) Delete(p schema.Policy) ([]Statement, error
 		hazard = migrationHazardPermissivePolicyRemoved
 	}
 	return []Statement{{
-		DDL:         fmt.Sprintf("DROP POLICY %s ON %s", p.EscapedName, psg.table.GetFQEscapedName()),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     []MigrationHazard{hazard},
+		DDL:     fmt.Sprintf("DROP POLICY %s ON %s", p.EscapedName, psg.table.GetFQEscapedName()),
+		Hazards: []MigrationHazard{hazard},
 	}}, nil
 }
 
@@ -276,10 +264,8 @@ func (psg *policySQLVertexGenerator) Alter(diff policyDiff) ([]Statement, error)
 	sb.WriteString(strings.Join(alterPolicyParts, "\n\t"))
 
 	return []Statement{{
-		DDL:         sb.String(),
-		Timeout:     statementTimeoutDefault,
-		LockTimeout: lockTimeoutDefault,
-		Hazards:     []MigrationHazard{migrationHazardPolicyAltered},
+		DDL:     sb.String(),
+		Hazards: []MigrationHazard{migrationHazardPolicyAltered},
 	}}, nil
 }
 
