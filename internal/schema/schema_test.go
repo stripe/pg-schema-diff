@@ -1,7 +1,6 @@
 package schema
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -1350,11 +1349,11 @@ func runTestCase(t *testing.T, factory *testdb.Factory, testCase *testCase) {
 	db := factory.CreateDatabase(t)
 
 	for _, stmt := range testCase.ddl {
-		_, err := db.ConnPool.Exec(context.Background(), stmt)
+		_, err := db.ConnPool.Exec(t.Context(), stmt)
 		require.NoError(t, err)
 	}
 
-	fetchedSchema, err := GetSchema(context.Background(), db.ConnPool, testCase.opts...)
+	fetchedSchema, err := GetSchema(t.Context(), db.ConnPool, testCase.opts...)
 	if testCase.expectedErrIs != nil {
 		require.ErrorIs(t, err, testCase.expectedErrIs)
 		return

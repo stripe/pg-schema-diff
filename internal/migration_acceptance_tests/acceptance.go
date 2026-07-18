@@ -134,9 +134,9 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	// Apply old schema DDL to old DB
 	oldDb := tempDbFactory.CreateDatabase(t)
 	// Apply the old schema
-	require.NoError(t, applyDDL(oldDb.ConnPool, tc.oldSchemaDDL))
+	require.NoError(t, applyDDL(t.Context(), oldDb.ConnPool, tc.oldSchemaDDL))
 
-	plan, err := tc.planFactory(context.Background(), oldDb.ConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
+	plan, err := tc.planFactory(t.Context(), oldDb.ConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
 	if tc.expectedPlanErrorIs != nil || len(tc.expectedPlanErrorContains) > 0 {
 		if tc.expectedPlanErrorIs != nil {
 			assert.ErrorIs(t, err, tc.expectedPlanErrorIs)
@@ -156,7 +156,7 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 		getUniqueHazardTypesFromStatements(plan.Statements), prettySprintPlan(plan))
 
 	// Apply the plan
-	require.NoError(t, applyPlan(oldDb.ConnPool, plan), prettySprintPlan(plan))
+	require.NoError(t, applyPlan(t.Context(), oldDb.ConnPool, plan), prettySprintPlan(plan))
 
 	// Make sure the pgdump after running the migration is the same as the
 	// pgdump from a database where we directly run the newSchemaDDL
@@ -179,14 +179,14 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	}
 
 	// Make sure no diff is found if we try to regenerate a plan
-	plan, err = tc.planFactory(context.Background(), oldDb.ConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
+	plan, err = tc.planFactory(t.Context(), oldDb.ConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
 	require.NoError(t, err)
 	assert.Empty(t, plan.Statements, prettySprintPlan(plan))
 }
 
 func directlyRunDDLAndGetDump(t *testing.T, factory *testdb.Factory, ddl []string) string {
 	newDb := factory.CreateDatabase(t)
-	require.NoError(t, applyDDL(newDb.ConnPool, ddl))
+	require.NoError(t, applyDDL(t.Context(), newDb.ConnPool, ddl))
 
 	newDbDump, err := pgdump.GetDump(newDb.ConnPool, pgdump.WithSchemaOnly(),
 		pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
@@ -194,9 +194,9 @@ func directlyRunDDLAndGetDump(t *testing.T, factory *testdb.Factory, ddl []strin
 	return newDbDump
 }
 
-func applyDDL(db *pgxpool.Pool, ddl []string) error {
+func applyDDL(ctx context.Context, db *pgxpool.Pool, ddl []string) error {
 	for _, stmt := range ddl {
-		_, err := db.Exec(context.Background(), stmt)
+		_, err := db.Exec(ctx, stmt)
 		if err != nil {
 			return fmt.Errorf("executing DDL:\n%s\n: %w", stmt, err)
 		}
@@ -204,12 +204,12 @@ func applyDDL(db *pgxpool.Pool, ddl []string) error {
 	return nil
 }
 
-func applyPlan(db *pgxpool.Pool, plan diff.Plan) error {
+func applyPlan(ctx context.Context, db *pgxpool.Pool, plan diff.Plan) error {
 	var ddl []string
 	for _, stmt := range plan.Statements {
 		ddl = append(ddl, stmt.ToSQL())
 	}
-	return applyDDL(db, ddl)
+	return applyDDL(ctx, db, ddl)
 }
 
 func getUniqueHazardTypesFromStatements(statements []diff.Statement) []diff.MigrationHazardType {

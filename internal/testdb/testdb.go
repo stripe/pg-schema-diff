@@ -41,7 +41,7 @@ func NewFactory(ctx context.Context, opts ...tempdb.FactoryOption) (*Factory, er
 func MustNewFactory(t testing.TB, opts ...tempdb.FactoryOption) *Factory {
 	t.Helper()
 
-	factory, err := NewFactory(context.Background(), opts...)
+	factory, err := NewFactory(t.Context(), opts...)
 	if err != nil {
 		t.Fatalf("creating test database factory: %v", err)
 	}
@@ -66,7 +66,7 @@ func (f *Factory) RootDatabaseName() string {
 func (f *Factory) CreateDatabase(t testing.TB) *tempdb.Database {
 	t.Helper()
 
-	db, err := f.Create(context.Background())
+	db, err := f.Create(t.Context())
 	if err != nil {
 		t.Fatalf("creating test database: %v", err)
 	}

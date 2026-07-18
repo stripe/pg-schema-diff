@@ -31,16 +31,16 @@ type testRole struct {
 func (f *Factory) LockRoles(t testing.TB, roles ...string) *RoleGuard {
 	t.Helper()
 
-	pool, err := f.NewPool(context.Background(), f.RootDatabaseName())
+	pool, err := f.NewPool(t.Context(), f.RootDatabaseName())
 	if err != nil {
 		t.Fatalf("connecting to root test database: %v", err)
 	}
-	conn, err := pool.Acquire(context.Background())
+	conn, err := pool.Acquire(t.Context())
 	if err != nil {
 		pool.Close()
 		t.Fatalf("acquiring root test database connection: %v", err)
 	}
-	if _, err := conn.Exec(context.Background(), "SELECT pg_advisory_lock($1)", roleLockID); err != nil {
+	if _, err := conn.Exec(t.Context(), "SELECT pg_advisory_lock($1)", roleLockID); err != nil {
 		conn.Release()
 		pool.Close()
 		t.Fatalf("locking test roles: %v", err)
@@ -65,7 +65,7 @@ func (f *Factory) LockRoles(t testing.TB, roles ...string) *RoleGuard {
 			t.Errorf("cleaning up test roles: %v", err)
 		}
 	})
-	if err := guard.dropRoles(context.Background()); err != nil {
+	if err := guard.dropRoles(t.Context()); err != nil {
 		t.Fatalf("removing stale test roles: %v", err)
 	}
 	return guard
@@ -74,7 +74,7 @@ func (f *Factory) LockRoles(t testing.TB, roles ...string) *RoleGuard {
 func (g *RoleGuard) CreateRoles() {
 	g.t.Helper()
 	for _, role := range g.roles {
-		if _, err := g.conn.Exec(context.Background(), "CREATE ROLE "+role.sqlIdentifier); err != nil {
+		if _, err := g.conn.Exec(g.t.Context(), "CREATE ROLE "+role.sqlIdentifier); err != nil {
 			g.t.Fatalf("creating test role %q: %v", role.name, err)
 		}
 	}

@@ -36,7 +36,7 @@ func (f fakeSchemaSource) GetSchema(_ context.Context, deps schemaSourcePlanDeps
 func mustApplyDDLToTestDB(t testing.TB, db *pgxpool.Pool, ddl []string) {
 	t.Helper()
 	for _, stmt := range ddl {
-		_, err := db.Exec(context.Background(), stmt)
+		_, err := db.Exec(t.Context(), stmt)
 		assert.NoError(t, err)
 	}
 }
@@ -45,7 +45,7 @@ func mustApplyMigrationPlan(t testing.TB, db *pgxpool.Pool, plan Plan) {
 	t.Helper()
 	// Run the migration
 	for _, stmt := range plan.Statements {
-		_, err := db.Exec(context.Background(), stmt.ToSQL())
+		_, err := db.Exec(t.Context(), stmt.ToSQL())
 		require.NoError(t, err)
 	}
 }
@@ -71,14 +71,14 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 
 		mustApplyDDLToTestDB(t, db.ConnPool, []string{initialDDL})
 
-		plan, err := Generate(context.Background(), DBSchemaSource(db.ConnPool),
+		plan, err := Generate(t.Context(), DBSchemaSource(db.ConnPool),
 			DDLSchemaSource([]string{newSchemaDDL}), WithTempDbFactory(factory))
 		assert.NoError(t, err)
 
 		mustApplyMigrationPlan(t, db.ConnPool, plan)
 		// Ensure that some sort of migration ran. we're really not testing the correctness of the
 		// migration in this test suite
-		_, err = db.ConnPool.Exec(context.Background(),
+		_, err = db.ConnPool.Exec(t.Context(),
 			"SELECT new_column FROM foobar;")
 		assert.NoError(t, err)
 	})
@@ -107,7 +107,7 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 		}
 
 		_, err := Generate(
-			context.Background(), DBSchemaSource(db.ConnPool), fakeSchemaSource,
+			t.Context(), DBSchemaSource(db.ConnPool), fakeSchemaSource,
 			WithTempDbFactory(factory),
 			WithGetSchemaOpts(getSchemaOpts...),
 			WithLogger(logger),
@@ -121,7 +121,7 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 		db := factory.CreateDatabase(t)
 
 		_, err := Generate(
-			context.Background(), DBSchemaSource(db.ConnPool), DDLSchemaSource([]string{``}),
+			t.Context(), DBSchemaSource(db.ConnPool), DDLSchemaSource([]string{``}),
 			WithIncludeSchemas("public"),
 			WithDoNotValidatePlan(),
 		)
@@ -134,7 +134,7 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 		db := factory.CreateDatabase(t)
 
 		_, err := Generate(
-			context.Background(), DBSchemaSource(db.ConnPool), DDLSchemaSource([]string{``}),
+			t.Context(), DBSchemaSource(db.ConnPool), DDLSchemaSource([]string{``}),
 			WithIncludeSchemas("public"),
 			WithDoNotValidatePlan(),
 		)

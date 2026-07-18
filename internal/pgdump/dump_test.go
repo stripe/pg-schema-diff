@@ -1,7 +1,6 @@
 package pgdump_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,7 +12,7 @@ func TestGetDump(t *testing.T) {
 	factory := testdb.MustNewFactory(t)
 	db := factory.CreateDatabase(t)
 
-	_, err := db.ConnPool.Exec(context.Background(), `
+	_, err := db.ConnPool.Exec(t.Context(), `
 			CREATE TABLE foobar(foobar_id text);
 
 			INSERT INTO foobar VALUES ('some-id');

@@ -1,7 +1,6 @@
 package schema_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,13 +69,13 @@ func TestSchemaTestSuite(t *testing.T) {
 		factory := testdb.MustNewFactory(t)
 		db := factory.CreateDatabase(t)
 
-		_, err := db.ConnPool.Exec(context.Background(), ddl)
+		_, err := db.ConnPool.Exec(t.Context(), ddl)
 		require.NoError(t, err)
 
-		hash, err := schema.GetSchemaHash(context.Background(), db.ConnPool, schema.WithIncludeSchemas("public"))
+		hash, err := schema.GetSchemaHash(t.Context(), db.ConnPool, schema.WithIncludeSchemas("public"))
 		require.NoError(t, err)
 
-		schema, err := internalschema.GetSchema(context.Background(), db.ConnPool,
+		schema, err := internalschema.GetSchema(t.Context(), db.ConnPool,
 			internalschema.WithIncludeSchemas("public"))
 		require.NoError(t, err)
 		expectedHash, err := schema.Hash()
