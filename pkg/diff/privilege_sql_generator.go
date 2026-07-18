@@ -21,13 +21,22 @@ type privilegeSQLVertexGenerator struct {
 	tableName schema.SchemaQualifiedName
 }
 
-func newPrivilegeSQLVertexGenerator(tableName schema.SchemaQualifiedName) sqlVertexGenerator[schema.TablePrivilege, privilegeDiff] {
-	return legacyToNewSqlVertexGenerator[schema.TablePrivilege, privilegeDiff](&privilegeSQLVertexGenerator{
+func newPrivilegeSQLVertexGenerator(tableName schema.SchemaQualifiedName) *privilegeSQLVertexGenerator {
+	return &privilegeSQLVertexGenerator{
 		tableName: tableName,
-	})
+	}
 }
 
-func (psg *privilegeSQLVertexGenerator) Add(p schema.TablePrivilege) ([]Statement, error) {
+func (psg *privilegeSQLVertexGenerator) Add(p schema.TablePrivilege) (partialSQLGraph, error) {
+	return buildPartialSQLGraph(
+		psg.vertexID(p, diffTypeAddAlter),
+		sqlPrioritySooner,
+		psg.addStatements(p),
+		psg.addAlterDependencies(p),
+	), nil
+}
+
+func (psg *privilegeSQLVertexGenerator) addStatements(p schema.TablePrivilege) []Statement {
 	grantee := p.Grantee
 	if grantee == "" {
 		grantee = "PUBLIC"
@@ -44,10 +53,19 @@ func (psg *privilegeSQLVertexGenerator) Add(p schema.TablePrivilege) ([]Statemen
 		DDL:            ddl,
 		Hazards:        []MigrationHazard{migrationHazardPrivilegeGranted},
 		SkipValidation: true,
-	}}, nil
+	}}
 }
 
-func (psg *privilegeSQLVertexGenerator) Delete(p schema.TablePrivilege) ([]Statement, error) {
+func (psg *privilegeSQLVertexGenerator) Delete(p schema.TablePrivilege) (partialSQLGraph, error) {
+	return buildPartialSQLGraph(
+		psg.vertexID(p, diffTypeDelete),
+		sqlPriorityLater,
+		psg.deleteStatements(p),
+		nil,
+	), nil
+}
+
+func (psg *privilegeSQLVertexGenerator) deleteStatements(p schema.TablePrivilege) []Statement {
 	grantee := p.Grantee
 	if grantee == "" {
 		grantee = "PUBLIC"
@@ -61,31 +79,30 @@ func (psg *privilegeSQLVertexGenerator) Delete(p schema.TablePrivilege) ([]State
 		DDL:            ddl,
 		Hazards:        []MigrationHazard{migrationHazardPrivilegeRevoked},
 		SkipValidation: true,
-	}}, nil
+	}}
 }
 
-func (psg *privilegeSQLVertexGenerator) Alter(diff privilegeDiff) ([]Statement, error) {
-	// Privileges don't support ALTER - if IsGrantable changes, we need to recreate
-	// (handled via requiresRecreation in buildTableDiff)
-	// This should not normally be called since only IsGrantable can change and that
-	// triggers recreation.
-	return nil, nil
+func (psg *privilegeSQLVertexGenerator) Alter(diff privilegeDiff) (partialSQLGraph, error) {
+	// Privileges don't support ALTER. IsGrantable changes are recreated by buildTableDiff;
+	// otherwise, Alter emits a no-op vertex to preserve graph dependencies.
+	return buildPartialSQLGraph(
+		psg.vertexID(diff.new, diffTypeAddAlter),
+		sqlPrioritySooner,
+		nil,
+		psg.addAlterDependencies(diff.new),
+	), nil
 }
 
-func (psg *privilegeSQLVertexGenerator) GetSQLVertexId(p schema.TablePrivilege, diffType diffType) sqlVertexId {
+func (psg *privilegeSQLVertexGenerator) vertexID(p schema.TablePrivilege, diffType diffType) sqlVertexId {
 	return buildSchemaObjVertexId("privilege", fmt.Sprintf("%s.%s",
 		psg.tableName.GetFQEscapedName(), p.GetName()), diffType)
 }
 
-func (psg *privilegeSQLVertexGenerator) GetAddAlterDependencies(newPriv, _ schema.TablePrivilege) ([]dependency, error) {
+func (psg *privilegeSQLVertexGenerator) addAlterDependencies(newPriv schema.TablePrivilege) []dependency {
 	// Ensure delete runs before add/alter (for recreate scenarios)
 	return []dependency{
-		mustRun(psg.GetSQLVertexId(newPriv, diffTypeDelete)).before(
-			psg.GetSQLVertexId(newPriv, diffTypeAddAlter),
+		mustRun(psg.vertexID(newPriv, diffTypeDelete)).before(
+			psg.vertexID(newPriv, diffTypeAddAlter),
 		),
-	}, nil
-}
-
-func (psg *privilegeSQLVertexGenerator) GetDeleteDependencies(_ schema.TablePrivilege) ([]dependency, error) {
-	return nil, nil
+	}
 }

@@ -24,8 +24,8 @@ const (
 	sqlPriorityLater sqlPriority = -1
 )
 
-// schemaObjSqlVertexId is a vertex id for a standard schema object node, i.e., indicating the creation/deletiion
-// of a schema object. It slots into the legacySqlVertexGenerator system.
+// schemaObjSqlVertexId is a vertex id for a standard schema object node, i.e., indicating the creation/deletion
+// of a schema object.
 type schemaObjSqlVertexId struct {
 	objType  string
 	objId    string
@@ -70,7 +70,7 @@ func (s sqlVertex) GetPriority() int {
 //
 // Most SchemaObjects will have two nodes in the SQL graph: a node for delete SQL and a node for add/alter SQL.
 // These nodes will almost always be present in the sqlGraph even if the schema object is not being deleted (or added/altered).
-// If a node is present for a schema object where the "diffType" is NOT occurring, it will just be a no-op (no SQl statements)
+// If a node is present for a schema object where the "diffType" is NOT occurring, it will just be a no-op (no SQL statements)
 type dependency struct {
 	// source must run before target
 	source sqlVertexId

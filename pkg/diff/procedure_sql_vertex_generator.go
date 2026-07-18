@@ -11,7 +11,7 @@ type procedureSQLVertexGenerator struct {
 	newSchema schema.Schema
 }
 
-func newProcedureSqlVertexGenerator(newSchema schema.Schema) sqlVertexGenerator[schema.Procedure, procedureDiff] {
+func newProcedureSQLVertexGenerator(newSchema schema.Schema) sqlVertexGenerator[schema.Procedure, procedureDiff] {
 	return &procedureSQLVertexGenerator{
 		newSchema: newSchema,
 	}
