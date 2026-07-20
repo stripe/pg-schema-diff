@@ -13,7 +13,6 @@ import (
 	"github.com/kr/pretty"
 	"github.com/stripe/pg-schema-diff/internal/schema"
 	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
-	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 
 	"github.com/stripe/pg-schema-diff/pkg/log"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
@@ -327,9 +326,6 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, stat
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", (10*time.Second).Milliseconds())); err != nil {
 		return fmt.Errorf("setting statement timeout: %w", err)
 	}
-	if err := sqldb.PinSearchPath(ctx, conn); err != nil {
-		return err
-	}
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.
 	//
@@ -342,8 +338,8 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, stat
 			// that don't exist in the temp DB)
 			continue
 		}
-		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
-			return fmt.Errorf("executing migration statement: %s: %w", stmt.DDL, err)
+		if err := ExecuteStatement(ctx, conn, stmt); err != nil {
+			return err
 		}
 	}
 	return nil

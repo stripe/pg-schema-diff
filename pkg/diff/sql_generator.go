@@ -1399,13 +1399,14 @@ func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
 	if strings.EqualFold(oldType, "bigint") &&
 		strings.EqualFold(newType, "timestamp without time zone") {
 		return Statement{
-			DDL: fmt.Sprintf("%s SET DATA TYPE %s using pg_catalog.to_timestamp(%s / 1000)",
+			DDL: fmt.Sprintf("%s SET DATA TYPE %s using pg_catalog.to_timestamp((%s / 1000.0)::pg_catalog.float8)",
 				csg.alterColumnPrefix(col),
 				newType,
 				schema.EscapeIdentifier(col.Name),
 			),
-			Timeout:     statementTimeoutDefault,
-			LockTimeout: lockTimeoutDefault,
+			Timeout:                 statementTimeoutDefault,
+			LockTimeout:             lockTimeoutDefault,
+			pinSearchPathBeforeExec: true,
 			Hazards: []MigrationHazard{{
 				Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
 				Message: "This will completely lock the table while the data is being " +

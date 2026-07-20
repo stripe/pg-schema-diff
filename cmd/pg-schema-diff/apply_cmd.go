@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/log"
-	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 )
 
 func buildApplyCmd() *cobra.Command {
@@ -134,10 +133,6 @@ func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig
 	}
 	defer conn.Close()
 
-	if err := sqldb.PinSearchPath(ctx, conn); err != nil {
-		return err
-	}
-
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.
 	//
@@ -154,8 +149,8 @@ func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig
 		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION lock_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
 			return fmt.Errorf("setting lock timeout: %w", err)
 		}
-		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
-			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt.DDL, err)
+		if err := diff.ExecuteStatement(ctx, conn, stmt); err != nil {
+			return fmt.Errorf("the database maybe be in a dirty state: %w", err)
 		}
 		cmdPrintf(cmd, "Finished executing statement. Duration: %s\n", time.Since(start))
 	}

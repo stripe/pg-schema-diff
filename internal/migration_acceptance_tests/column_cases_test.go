@@ -327,7 +327,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedPlanDDL: []string{
-			"ALTER TABLE \"public\".\"Foobar\" ALTER COLUMN \"some_time_col\" SET DATA TYPE timestamp without time zone using pg_catalog.to_timestamp(\"some_time_col\" / 1000)",
+			"ALTER TABLE \"public\".\"Foobar\" ALTER COLUMN \"some_time_col\" SET DATA TYPE timestamp without time zone using pg_catalog.to_timestamp((\"some_time_col\" / 1000.0)::pg_catalog.float8)",
 			"ANALYZE \"public\".\"Foobar\" (\"some_time_col\")",
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{

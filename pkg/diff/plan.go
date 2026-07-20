@@ -50,6 +50,10 @@ type Statement struct {
 	// database instance. This is useful for statements that depend on entities (like roles) that won't exist
 	// in the temp DB.
 	SkipValidation bool
+	// pinSearchPathBeforeExec pins search_path to pg_catalog immediately before executing this statement,
+	// then resets it afterward. Used for generated DDL that calls built-ins where user schemas might shadow
+	// exact overloads. Must not be set on statements that replay user-authored SQL (views, triggers, etc.).
+	pinSearchPathBeforeExec bool
 }
 
 func (s Statement) MarshalJSON() ([]byte, error) {

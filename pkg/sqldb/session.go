@@ -10,10 +10,20 @@ import (
 // by objects in user schemas when executing generated DDL.
 const pinSearchPathSQL = `SELECT pg_catalog.set_config('search_path', 'pg_catalog', false)`
 
+const resetSearchPathSQL = `RESET search_path`
+
 // PinSearchPath pins search_path on conn before executing generated or reconstructed DDL.
 func PinSearchPath(ctx context.Context, conn Queryable) error {
 	if _, err := conn.ExecContext(ctx, pinSearchPathSQL); err != nil {
 		return fmt.Errorf("pinning search_path: %w", err)
+	}
+	return nil
+}
+
+// ResetSearchPath restores the connection's default search_path after PinSearchPath.
+func ResetSearchPath(ctx context.Context, conn Queryable) error {
+	if _, err := conn.ExecContext(ctx, resetSearchPathSQL); err != nil {
+		return fmt.Errorf("resetting search_path: %w", err)
 	}
 	return nil
 }

@@ -250,13 +250,9 @@ func applyPlan(db *pgengine.DB, plan diff.Plan) error {
 	defer conn.Close()
 
 	ctx := context.Background()
-	if err := sqldb.PinSearchPath(ctx, conn); err != nil {
-		return err
-	}
-
 	for _, stmt := range plan.Statements {
-		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
-			return fmt.Errorf("executing migration statement: %s: %w", stmt.DDL, err)
+		if err := diff.ExecuteStatement(ctx, conn, stmt); err != nil {
+			return err
 		}
 	}
 	return nil
