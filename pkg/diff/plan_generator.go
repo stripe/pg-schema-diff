@@ -12,6 +12,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/kr/pretty"
 	"github.com/stripe/pg-schema-diff/internal/schema"
+	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 
 	"github.com/stripe/pg-schema-diff/pkg/log"
@@ -325,6 +326,9 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, stat
 	// Set a session-level statement_timeout to bound the execution of the migration plan.
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", (10*time.Second).Milliseconds())); err != nil {
 		return fmt.Errorf("setting statement timeout: %w", err)
+	}
+	if err := sqldb.PinSearchPath(ctx, conn); err != nil {
+		return err
 	}
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.

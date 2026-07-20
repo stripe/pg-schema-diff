@@ -1399,7 +1399,7 @@ func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
 	if strings.EqualFold(oldType, "bigint") &&
 		strings.EqualFold(newType, "timestamp without time zone") {
 		return Statement{
-			DDL: fmt.Sprintf("%s SET DATA TYPE %s using to_timestamp(%s / 1000)",
+			DDL: fmt.Sprintf("%s SET DATA TYPE %s using pg_catalog.to_timestamp(%s / 1000)",
 				csg.alterColumnPrefix(col),
 				newType,
 				schema.EscapeIdentifier(col.Name),
