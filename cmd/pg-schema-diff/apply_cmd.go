@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
-	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	"github.com/stripe/pg-schema-diff/pkg/log"
+	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 )
 
 func buildApplyCmd() *cobra.Command {
