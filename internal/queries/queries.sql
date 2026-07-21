@@ -523,6 +523,307 @@ ORDER BY
     security_label.provider,
     security_label.label;
 
+-- name: GetCatalogACLGrants :many
+WITH raw_acl AS (
+    SELECT
+        'schema'::TEXT AS object_class,
+        'pg_namespace'::REGCLASS::OID AS class_id,
+        namespace.oid AS object_id,
+        0::INTEGER AS sub_object_id,
+        namespace.nspowner AS owner_oid,
+        acl.grantor_oid,
+        acl.grantee_oid,
+        acl.privilege,
+        acl.is_grantable
+    FROM pg_catalog.pg_namespace AS namespace
+    CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(
+        namespace.nspacl,
+        pg_catalog.acldefault('n'::"char", namespace.nspowner)
+    )) AS acl (grantor_oid, grantee_oid, privilege, is_grantable)
+    WHERE
+        namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND namespace.nspname !~ '^pg_toast'
+        AND namespace.nspname !~ '^pg_temp'
+
+    UNION ALL
+
+    SELECT
+        'table'::TEXT,
+        'pg_class'::REGCLASS::OID,
+        relation.oid,
+        0::INTEGER,
+        relation.relowner,
+        acl.grantor_oid,
+        acl.grantee_oid,
+        acl.privilege,
+        acl.is_grantable
+    FROM pg_catalog.pg_class AS relation
+    INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+        ON relation.relnamespace = relation_namespace.oid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(
+        relation.relacl,
+        pg_catalog.acldefault('r'::"char", relation.relowner)
+    )) AS acl (grantor_oid, grantee_oid, privilege, is_grantable)
+    WHERE
+        relation.relkind IN ('r', 'p')
+        AND relation_namespace.nspname NOT IN (
+            'pg_catalog', 'information_schema'
+        )
+        AND relation_namespace.nspname !~ '^pg_toast'
+        AND relation_namespace.nspname !~ '^pg_temp'
+
+    UNION ALL
+
+    SELECT
+        'table'::TEXT,
+        'pg_class'::REGCLASS::OID,
+        relation.oid,
+        attribute.attnum::INTEGER,
+        relation.relowner,
+        acl.grantor_oid,
+        acl.grantee_oid,
+        acl.privilege,
+        acl.is_grantable
+    FROM pg_catalog.pg_attribute AS attribute
+    INNER JOIN pg_catalog.pg_class AS relation
+        ON attribute.attrelid = relation.oid
+    INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+        ON relation.relnamespace = relation_namespace.oid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl)
+        AS acl (grantor_oid, grantee_oid, privilege, is_grantable)
+    WHERE
+        relation.relkind IN ('r', 'p')
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+        AND attribute.attacl IS NOT NULL
+        AND relation_namespace.nspname NOT IN (
+            'pg_catalog', 'information_schema'
+        )
+        AND relation_namespace.nspname !~ '^pg_toast'
+        AND relation_namespace.nspname !~ '^pg_temp'
+
+    UNION ALL
+
+    SELECT
+        'sequence'::TEXT,
+        'pg_class'::REGCLASS::OID,
+        sequence_relation.oid,
+        0::INTEGER,
+        sequence_relation.relowner,
+        acl.grantor_oid,
+        acl.grantee_oid,
+        acl.privilege,
+        acl.is_grantable
+    FROM pg_catalog.pg_class AS sequence_relation
+    INNER JOIN pg_catalog.pg_namespace AS sequence_namespace
+        ON sequence_relation.relnamespace = sequence_namespace.oid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(
+        sequence_relation.relacl,
+        pg_catalog.acldefault('S'::"char", sequence_relation.relowner)
+    )) AS acl (grantor_oid, grantee_oid, privilege, is_grantable)
+    WHERE
+        sequence_relation.relkind = 'S'
+        AND sequence_namespace.nspname NOT IN (
+            'pg_catalog', 'information_schema'
+        )
+        AND sequence_namespace.nspname !~ '^pg_toast'
+        AND sequence_namespace.nspname !~ '^pg_temp'
+
+    UNION ALL
+
+    SELECT
+        'routine'::TEXT,
+        'pg_proc'::REGCLASS::OID,
+        routine.oid,
+        0::INTEGER,
+        routine.proowner,
+        acl.grantor_oid,
+        acl.grantee_oid,
+        acl.privilege,
+        acl.is_grantable
+    FROM pg_catalog.pg_proc AS routine
+    INNER JOIN pg_catalog.pg_namespace AS routine_namespace
+        ON routine.pronamespace = routine_namespace.oid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(
+        routine.proacl,
+        pg_catalog.acldefault('f'::"char", routine.proowner)
+    )) AS acl (grantor_oid, grantee_oid, privilege, is_grantable)
+    WHERE
+        routine_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND routine_namespace.nspname !~ '^pg_toast'
+        AND routine_namespace.nspname !~ '^pg_temp'
+
+    UNION ALL
+
+    SELECT
+        'type'::TEXT,
+        'pg_type'::REGCLASS::OID,
+        type_data.oid,
+        0::INTEGER,
+        type_data.typowner,
+        acl.grantor_oid,
+        acl.grantee_oid,
+        acl.privilege,
+        acl.is_grantable
+    FROM pg_catalog.pg_type AS type_data
+    INNER JOIN pg_catalog.pg_namespace AS type_namespace
+        ON type_data.typnamespace = type_namespace.oid
+    LEFT JOIN pg_catalog.pg_class AS composite_relation
+        ON type_data.typrelid = composite_relation.oid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(
+        type_data.typacl,
+        pg_catalog.acldefault('T'::"char", type_data.typowner)
+    )) AS acl (grantor_oid, grantee_oid, privilege, is_grantable)
+    WHERE
+        type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND type_namespace.nspname !~ '^pg_toast'
+        AND type_namespace.nspname !~ '^pg_temp'
+        AND type_data.typtype IN ('b', 'c', 'd', 'e', 'r', 'm')
+        AND NOT (type_data.typcategory = 'A' AND type_data.typelem != 0)
+        AND (type_data.typtype != 'c' OR composite_relation.relkind = 'c')
+)
+SELECT
+    raw_acl.object_class::TEXT AS object_class,
+    raw_acl.class_id::BIGINT AS class_id,
+    raw_acl.object_id::BIGINT AS object_id,
+    raw_acl.sub_object_id,
+    object_data.object_type::TEXT AS object_type,
+    COALESCE(object_data.object_schema_name, '')::TEXT AS object_schema_name,
+    COALESCE(object_data.object_name, '')::TEXT AS object_name,
+    object_data.object_identity::TEXT AS object_identity,
+    raw_acl.owner_oid::BIGINT AS owner_oid,
+    COALESCE(owner_role.rolname, '')::TEXT AS owner_name,
+    raw_acl.grantor_oid::BIGINT AS grantor_oid,
+    COALESCE(grantor_role.rolname, '')::TEXT AS grantor_name,
+    raw_acl.grantee_oid::BIGINT AS grantee_oid,
+    CASE
+        WHEN raw_acl.grantee_oid = 0 THEN 'PUBLIC'
+        ELSE COALESCE(grantee_role.rolname, '')
+    END::TEXT AS grantee_name,
+    (raw_acl.grantee_oid = 0)::BOOLEAN AS grantee_is_public,
+    raw_acl.privilege::TEXT AS privilege,
+    raw_acl.is_grantable::BOOLEAN AS is_grantable
+FROM raw_acl
+CROSS JOIN LATERAL pg_catalog.pg_identify_object(
+    raw_acl.class_id,
+    raw_acl.object_id,
+    raw_acl.sub_object_id
+) AS object_data(
+    object_type, object_schema_name, object_name, object_identity
+)
+LEFT JOIN pg_catalog.pg_roles AS owner_role
+    ON raw_acl.owner_oid = owner_role.oid
+LEFT JOIN pg_catalog.pg_roles AS grantor_role
+    ON raw_acl.grantor_oid = grantor_role.oid
+LEFT JOIN pg_catalog.pg_roles AS grantee_role
+    ON raw_acl.grantee_oid = grantee_role.oid
+ORDER BY
+    raw_acl.object_class,
+    raw_acl.class_id,
+    raw_acl.object_id,
+    raw_acl.sub_object_id,
+    raw_acl.privilege,
+    raw_acl.grantor_oid,
+    raw_acl.grantee_oid;
+
+-- name: GetCatalogDefaultACLs :many
+SELECT
+    default_acl.oid::BIGINT AS default_acl_oid,
+    default_acl.defaclrole::BIGINT AS owner_oid,
+    COALESCE(owner_role.rolname, '')::TEXT AS owner_name,
+    default_acl.defaclnamespace::BIGINT AS schema_oid,
+    COALESCE(namespace.nspname, '')::TEXT AS schema_name,
+    (default_acl.defaclnamespace = 0)::BOOLEAN AS is_global,
+    CASE default_acl.defaclobjtype
+        WHEN 'r' THEN 'table'
+        WHEN 'S' THEN 'sequence'
+        WHEN 'f' THEN 'routine'
+        WHEN 'T' THEN 'type'
+        WHEN 'n' THEN 'schema'
+    END::TEXT AS object_type,
+    acl.grantor_oid::BIGINT AS grantor_oid,
+    COALESCE(grantor_role.rolname, '')::TEXT AS grantor_name,
+    acl.grantee_oid::BIGINT AS grantee_oid,
+    CASE
+        WHEN acl.grantee_oid = 0 THEN 'PUBLIC'
+        ELSE COALESCE(grantee_role.rolname, '')
+    END::TEXT AS grantee_name,
+    (acl.grantee_oid = 0)::BOOLEAN AS grantee_is_public,
+    acl.privilege::TEXT AS privilege,
+    acl.is_grantable::BOOLEAN AS is_grantable
+FROM pg_catalog.pg_default_acl AS default_acl
+LEFT JOIN pg_catalog.pg_namespace AS namespace
+    ON default_acl.defaclnamespace = namespace.oid
+CROSS JOIN LATERAL pg_catalog.aclexplode(default_acl.defaclacl)
+    AS acl (grantor_oid, grantee_oid, privilege, is_grantable)
+LEFT JOIN pg_catalog.pg_roles AS owner_role
+    ON default_acl.defaclrole = owner_role.oid
+LEFT JOIN pg_catalog.pg_roles AS grantor_role
+    ON acl.grantor_oid = grantor_role.oid
+LEFT JOIN pg_catalog.pg_roles AS grantee_role
+    ON acl.grantee_oid = grantee_role.oid
+WHERE
+    default_acl.defaclobjtype IN ('r', 'S', 'f', 'T', 'n')
+    AND (
+        default_acl.defaclnamespace = 0
+        OR (
+            namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+            AND namespace.nspname !~ '^pg_toast'
+            AND namespace.nspname !~ '^pg_temp'
+        )
+    )
+ORDER BY
+    default_acl.defaclrole,
+    default_acl.defaclnamespace,
+    default_acl.defaclobjtype,
+    privilege,
+    grantor_oid,
+    grantee_oid,
+    default_acl.oid;
+
+-- name: GetCatalogRoles :many
+SELECT
+    role.oid::BIGINT AS role_oid,
+    role.rolname::TEXT AS role_name,
+    COALESCE(role.rolsuper, false)::BOOLEAN AS is_superuser,
+    COALESCE(role.rolinherit, false)::BOOLEAN AS inherits_privileges,
+    COALESCE(role.rolcreaterole, false)::BOOLEAN AS can_create_roles,
+    COALESCE(role.rolcanlogin, false)::BOOLEAN AS can_login,
+    COALESCE(role.rolreplication, false)::BOOLEAN AS can_replicate,
+    COALESCE(role.rolbypassrls, false)::BOOLEAN AS bypasses_rls
+FROM pg_catalog.pg_roles AS role
+ORDER BY role.oid, role.rolname;
+
+-- name: GetCatalogRoleMemberships :many
+SELECT
+    membership.roleid::BIGINT AS role_oid,
+    COALESCE(granted_role.rolname, '')::TEXT AS role_name,
+    membership.member::BIGINT AS member_oid,
+    COALESCE(member_role.rolname, '')::TEXT AS member_name,
+    membership.grantor::BIGINT AS grantor_oid,
+    COALESCE(grantor_role.rolname, '')::TEXT AS grantor_name,
+    membership.admin_option AS admin_option,
+    COALESCE(
+        (pg_catalog.to_jsonb(membership)->>'inherit_option')::BOOLEAN,
+        true
+    )::BOOLEAN AS inherit_option,
+    COALESCE(
+        (pg_catalog.to_jsonb(membership)->>'set_option')::BOOLEAN,
+        true
+    )::BOOLEAN AS set_option
+FROM pg_catalog.pg_auth_members AS membership
+LEFT JOIN pg_catalog.pg_roles AS granted_role
+    ON membership.roleid = granted_role.oid
+LEFT JOIN pg_catalog.pg_roles AS member_role
+    ON membership.member = member_role.oid
+LEFT JOIN pg_catalog.pg_roles AS grantor_role
+    ON membership.grantor = grantor_role.oid
+ORDER BY
+    membership.roleid,
+    membership.member,
+    membership.grantor,
+    membership.admin_option;
+
 -- name: GetCatalogDependencies :many
 WITH raw_dependencies AS (
     SELECT

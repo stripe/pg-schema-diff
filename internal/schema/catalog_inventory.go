@@ -43,6 +43,10 @@ type CatalogInventory struct {
 	Publications         []CatalogPublication
 	PublicationRelations []CatalogPublicationRelation
 	PublicationSchemas   []CatalogPublicationSchema
+	ACLGrants            []CatalogACLGrant
+	DefaultACLs          []CatalogDefaultACL
+	Roles                []CatalogRole
+	RoleMemberships      []CatalogRoleMembership
 }
 
 type CatalogSchema struct {
@@ -695,7 +699,7 @@ func (i CatalogInventory) Normalize() CatalogInventory {
 			cmp.Compare(a.Label, b.Label),
 		)
 	})
-	return normalizeCatalogDependencyInventory(i)
+	return normalizeCatalogACLInventory(normalizeCatalogDependencyInventory(i))
 }
 
 func sortedStrings(values []string) []string {
@@ -996,6 +1000,9 @@ func fetchCatalogInventory(ctx context.Context, db dbsqlc.DBTX) (CatalogInventor
 	}
 
 	if err := fetchCatalogDependencyInventory(ctx, db, &inventory); err != nil {
+		return CatalogInventory{}, err
+	}
+	if err := fetchCatalogACLInventory(ctx, db, &inventory); err != nil {
 		return CatalogInventory{}, err
 	}
 

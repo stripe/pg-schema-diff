@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-5 complete
+Status: Proposed; delivery Stages 0-6 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first six delivery stages are complete. They do not yet retain tables or
+The first seven delivery stages are complete. They do not yet retain tables or
 generate cleanup statements; ordinary table deletion still has the behavior
 described above.
 
@@ -126,6 +126,10 @@ The implemented foundation includes:
   triggers, and all publication forms. Routine body facts are classified
   conservatively as catalog-trackable or untrackable without making a safety
   decision.
+- Expanded unfiltered schema, table/column, sequence, routine, type, and default
+  ACLs plus role identities and membership options. A dormant typed planner
+  validates explicit grant ancestry and orders dependent revokes without
+  rendering SQL or using `CASCADE`.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -738,7 +742,7 @@ stage's scope.
 | 3 | Namespace and partition inventory | Complete | 2 |
 | 4 | Table-local metadata inventory | Complete | 3 |
 | 5 | Dependency and platform inventory | Complete | 3 |
-| 6 | ACL inventory and revoke planner | Pending | 3 |
+| 6 | ACL inventory and revoke planner | Complete | 3 |
 | 7 | Archival name allocation | Pending | 1, 3 |
 | 8 | Marker and cleanup-operation codecs | Pending | 4, 5, 6, 7 |
 | 9 | Archived-state resolver | Pending | 8 |
@@ -928,7 +932,7 @@ Acceptance gate:
 
 ### Stage 6: ACL inventory and revoke planner
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stage 3.
 
