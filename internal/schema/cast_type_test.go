@@ -13,27 +13,27 @@ func TestQualifyTypeForCast(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "integer builtin",
+			name:     "integer maps to pg_catalog typname int4",
 			input:    "integer",
-			expected: "pg_catalog.integer",
+			expected: "pg_catalog.int4",
 		},
 		{
-			name:     "character varying with typmod",
+			name:     "character varying with typmod maps to varchar",
 			input:    "character varying(255)",
-			expected: `"pg_catalog"."character varying"(255)`,
+			expected: "pg_catalog.varchar(255)",
 		},
 		{
-			name:     "timestamp without time zone",
+			name:     "timestamp without time zone maps to timestamp",
 			input:    "timestamp without time zone",
-			expected: `"pg_catalog"."timestamp without time zone"`,
+			expected: "pg_catalog.timestamp",
 		},
 		{
-			name:     "double precision",
+			name:     "double precision maps to float8",
 			input:    "double precision",
-			expected: `"pg_catalog"."double precision"`,
+			expected: "pg_catalog.float8",
 		},
 		{
-			name:     "numeric with typmod",
+			name:     "numeric with typmod unchanged typname",
 			input:    "numeric(65,10)",
 			expected: "pg_catalog.numeric(65,10)",
 		},

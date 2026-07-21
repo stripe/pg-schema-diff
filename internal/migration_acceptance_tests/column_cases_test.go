@@ -423,7 +423,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedPlanDDL: []string{
-			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE character varying(255) COLLATE \"pg_catalog\".\"POSIX\" using CAST(\"foobar\" AS \"pg_catalog\".\"character varying\"(255))",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE character varying(255) COLLATE \"pg_catalog\".\"POSIX\" using CAST(\"foobar\" AS pg_catalog.varchar(255))",
 			"ANALYZE \"public\".\"foobar\" (\"foobar\")",
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
@@ -737,7 +737,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\" CHECK(\"foobar\" IS NOT NULL) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"pgschemadiff_tmpnn_EBESExQVRheYGRobHB0eHw\"",
 			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET NOT NULL",
-			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE integer using CAST(\"foobar\" AS pg_catalog.integer)",
+			"ALTER TABLE \"public\".\"foobar\" ALTER COLUMN \"foobar\" SET DATA TYPE integer using CAST(\"foobar\" AS pg_catalog.int4)",
 			"ANALYZE \"public\".\"foobar\" (\"foobar\")",
 			"ALTER TABLE \"public\".\"foobar\" ADD CONSTRAINT \"foobar_foobar_check\" CHECK((foobar > 0)) NOT VALID",
 			"ALTER TABLE \"public\".\"foobar\" VALIDATE CONSTRAINT \"foobar_foobar_check\"",
