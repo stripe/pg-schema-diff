@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
@@ -96,7 +97,7 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 		}
 		expectedGetSchemaOpts := append([]externalschema.GetSchemaOpt{}, getSchemaOpts...)
 		expectedGetSchemaOpts = append(expectedGetSchemaOpts,
-			externalschema.WithExcludeSchemaPatterns(defaultTableRemovalSchemaPrefix+".*"))
+			externalschema.WithExcludeSchemaPatterns(defaultSchemaPartialArchivalPrefix+".*"))
 
 		expectedErr := fmt.Errorf("some error")
 		fakeSchemaSource := fakeSchemaSource{
@@ -145,7 +146,7 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 	})
 }
 
-func TestValidateTableRemovalSchemaPrefix(t *testing.T) {
+func TestValidateSchemaPartialArchivalPrefix(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -153,7 +154,7 @@ func TestValidateTableRemovalSchemaPrefix(t *testing.T) {
 		prefix      string
 		expectError bool
 	}{
-		{name: "default", prefix: defaultTableRemovalSchemaPrefix},
+		{name: "default", prefix: defaultSchemaPartialArchivalPrefix},
 		{name: "custom", prefix: "deleted"},
 		{name: "empty", prefix: "", expectError: true},
 		{name: "not simple", prefix: "deleted-schema", expectError: true},
@@ -162,7 +163,7 @@ func TestValidateTableRemovalSchemaPrefix(t *testing.T) {
 		{name: "too long", prefix: "abcdefghijklmnopqrstuv", expectError: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateTableRemovalSchemaPrefix(tc.prefix)
+			err := validateSchemaPartialArchivalPrefix(tc.prefix)
 			if tc.expectError {
 				assert.Error(t, err)
 			} else {
@@ -182,14 +183,14 @@ func TestGenerateIgnoresCleanupSchemaPrefixes(t *testing.T) {
 		inTarget     bool
 		expectEmpty  bool
 	}{
-		{name: "default prefix", prefix: defaultTableRemovalSchemaPrefix, expectEmpty: true},
+		{name: "default prefix", prefix: defaultSchemaPartialArchivalPrefix, expectEmpty: true},
 		{name: "custom prefix", prefix: "deleted", expectEmpty: true},
 		{
 			name:         "custom prefix replaces default exclusion",
 			prefix:       "deleted",
-			schemaPrefix: defaultTableRemovalSchemaPrefix,
+			schemaPrefix: defaultSchemaPartialArchivalPrefix,
 		},
-		{name: "target schema", prefix: defaultTableRemovalSchemaPrefix, inTarget: true, expectEmpty: true},
+		{name: "target schema", prefix: defaultSchemaPartialArchivalPrefix, inTarget: true, expectEmpty: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -212,11 +213,12 @@ func TestGenerateIgnoresCleanupSchemaPrefixes(t *testing.T) {
 			}
 
 			opts := []PlanOpt{WithTempDbFactory(factory)}
-			if tc.prefix != defaultTableRemovalSchemaPrefix {
-				opts = append(opts, WithTableRemovalSchemaPrefix(tc.prefix))
+			if tc.prefix != defaultSchemaPartialArchivalPrefix {
+				opts = append(opts, WithSchemaPartialArchivalPrefix(tc.prefix))
 			}
 			plan, err := Generate(t.Context(), DBSchemaSource(db.ConnPool), DDLSchemaSource(targetDDL), opts...)
 			require.NoError(t, err)
+			assert.Empty(t, plan.CleanupStatements)
 			if tc.expectEmpty {
 				assert.Empty(t, plan.Statements)
 			} else {
@@ -224,4 +226,35 @@ func TestGenerateIgnoresCleanupSchemaPrefixes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenerateCapturesGenerationTimestamp(t *testing.T) {
+	t.Parallel()
+
+	clockTime := time.Date(2026, time.July, 21, 9, 10, 11, 123456789,
+		time.FixedZone("test", -7*60*60))
+	clockReads := 0
+	var capturedOptions *planOptions
+	clockOpt := func(opts *planOptions) {
+		capturedOptions = opts
+		opts.now = func() time.Time {
+			clockReads++
+			return clockTime
+		}
+	}
+	source := fakeSchemaSource{
+		t: t,
+		expectedDeps: schemaSourcePlanDeps{
+			logger:        slog.Default(),
+			getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+		},
+	}
+
+	plan, err := Generate(t.Context(), source, source, WithDoNotValidatePlan(), clockOpt)
+	require.NoError(t, err)
+	require.NotNil(t, capturedOptions)
+	assert.Equal(t, 1, clockReads)
+	assert.Equal(t, clockTime.UTC(), capturedOptions.generationTimestamp)
+	assert.Equal(t, time.UTC, capturedOptions.generationTimestamp.Location())
+	assert.Empty(t, plan.CleanupStatements)
 }

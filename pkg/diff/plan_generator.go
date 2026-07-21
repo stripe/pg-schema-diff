@@ -22,19 +22,21 @@ import (
 var errTempDbFactoryRequired = fmt.Errorf("tempDbFactory is required. include the option WithTempDbFactory")
 
 const (
-	defaultTableRemovalSchemaPrefix = externalschema.DefaultCleanupSchemaPrefix
-	maxTableRemovalSchemaPrefixSize = 21
+	defaultSchemaPartialArchivalPrefix = externalschema.DefaultCleanupSchemaPrefix
+	maxSchemaPartialArchivalPrefixSize = 21
 )
 
 type (
 	planOptions struct {
-		tempDbFactory            tempdb.Factory
-		logger                   *slog.Logger
-		validatePlan             bool
-		getSchemaOpts            []schema.GetSchemaOpt
-		randReader               io.Reader
-		noConcurrentIndexOps     bool
-		tableRemovalSchemaPrefix string
+		tempDbFactory               tempdb.Factory
+		logger                      *slog.Logger
+		validatePlan                bool
+		getSchemaOpts               []schema.GetSchemaOpt
+		randReader                  io.Reader
+		noConcurrentIndexOps        bool
+		schemaPartialArchivalPrefix string
+		now                         func() time.Time
+		generationTimestamp         time.Time
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -98,11 +100,11 @@ func WithNoConcurrentIndexOps() PlanOpt {
 	}
 }
 
-// WithTableRemovalSchemaPrefix configures the prefix used to identify cleanup schemas.
+// WithSchemaPartialArchivalPrefix configures the prefix used to identify archival schemas.
 // Schemas whose names start with this prefix are excluded from plan generation.
-func WithTableRemovalSchemaPrefix(prefix string) PlanOpt {
+func WithSchemaPartialArchivalPrefix(prefix string) PlanOpt {
 	return func(opts *planOptions) {
-		opts.tableRemovalSchemaPrefix = prefix
+		opts.schemaPartialArchivalPrefix = prefix
 	}
 }
 
@@ -120,22 +122,24 @@ func Generate(
 	opts ...PlanOpt,
 ) (Plan, error) {
 	planOptions := &planOptions{
-		validatePlan:             true,
-		logger:                   slog.Default(),
-		randReader:               rand.Reader,
-		tableRemovalSchemaPrefix: defaultTableRemovalSchemaPrefix,
+		validatePlan:                true,
+		logger:                      slog.Default(),
+		randReader:                  rand.Reader,
+		schemaPartialArchivalPrefix: defaultSchemaPartialArchivalPrefix,
+		now:                         time.Now,
 	}
 	for _, opt := range opts {
 		opt(planOptions)
 	}
+	planOptions.generationTimestamp = planOptions.now().UTC()
 	if planOptions.logger == nil {
 		planOptions.logger = slog.Default()
 	}
-	if err := validateTableRemovalSchemaPrefix(planOptions.tableRemovalSchemaPrefix); err != nil {
+	if err := validateSchemaPartialArchivalPrefix(planOptions.schemaPartialArchivalPrefix); err != nil {
 		return Plan{}, err
 	}
 	planOptions.getSchemaOpts = append(planOptions.getSchemaOpts,
-		schema.WithExcludeSchemaPatterns(regexp.QuoteMeta(planOptions.tableRemovalSchemaPrefix)+".*"))
+		schema.WithExcludeSchemaPatterns(regexp.QuoteMeta(planOptions.schemaPartialArchivalPrefix)+".*"))
 
 	currentSchema, err := fromSchema.GetSchema(ctx, schemaSourcePlanDeps{
 		tempDBFactory: planOptions.tempDbFactory,
@@ -182,15 +186,16 @@ func Generate(
 	return plan, nil
 }
 
-func validateTableRemovalSchemaPrefix(prefix string) error {
+func validateSchemaPartialArchivalPrefix(prefix string) error {
 	if !pgidentifier.IsSimpleIdentifier(prefix) {
-		return fmt.Errorf("table removal schema prefix %q must be a simple PostgreSQL identifier", prefix)
+		return fmt.Errorf("schema partial archival prefix %q must be a simple PostgreSQL identifier", prefix)
 	}
 	if prefix == "pg" || strings.HasPrefix(prefix, "pg_") {
-		return fmt.Errorf("table removal schema prefix %q uses PostgreSQL's reserved pg_ prefix", prefix)
+		return fmt.Errorf("schema partial archival prefix %q uses PostgreSQL's reserved pg_ prefix", prefix)
 	}
-	if len(prefix) > maxTableRemovalSchemaPrefixSize {
-		return fmt.Errorf("table removal schema prefix %q must be at most %d bytes", prefix, maxTableRemovalSchemaPrefixSize)
+	if len(prefix) > maxSchemaPartialArchivalPrefixSize {
+		return fmt.Errorf("schema partial archival prefix %q must be at most %d bytes",
+			prefix, maxSchemaPartialArchivalPrefixSize)
 	}
 	return nil
 }

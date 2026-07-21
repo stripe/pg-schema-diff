@@ -56,10 +56,12 @@ func (s Statement) ToSQL() string {
 	return s.DDL + ";"
 }
 
-// Plan represents a set of statements to be executed in order to migrate a database from schema A to schema B
+// Plan represents a set of statements to be executed in order to migrate a database from schema A to schema B.
 type Plan struct {
-	// Statements is the set of statements to be executed in order to migrate a database from schema A to schema B
+	// Statements is the ordinary migration from schema A to schema B.
 	Statements []Statement `json:"statements"`
+	// CleanupStatements are optional statements that may be executed separately at an unspecified later time.
+	CleanupStatements []Statement `json:"cleanup_statements,omitempty"`
 	// CurrentSchemaHash is the hash of the current schema, schema A. If you serialize this plans somewhere and
 	// plan on running them later, you should verify that the current schema hash matches the current schema hash.
 	// To get the current schema hash, you can use schema.GetPublicSchemaHash(ctx, conn)

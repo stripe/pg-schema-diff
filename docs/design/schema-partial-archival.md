@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; schema-filtering foundation implemented
+Status: Proposed; delivery Stages 0-1 complete
 
 ## Summary
 
@@ -87,9 +87,9 @@ Other generators depend on that physical deletion:
 
 ### Implemented filtering foundation
 
-The first implementation step is complete. It does not yet retain tables or add
-`Plan.CleanupStatements`; ordinary table deletion still has the behavior described
-above.
+The first two delivery stages are complete. They do not yet retain tables or
+generate cleanup statements; ordinary table deletion still has the behavior
+described above.
 
 The implemented foundation includes:
 
@@ -98,15 +98,19 @@ The implemented foundation includes:
   complete schema name. Multiple include patterns form a union, multiple exclude
   patterns form a union, and exclusion wins when the sets overlap.
 - `schema.DefaultCleanupSchemaPrefix`, currently `pgschemadiff_archive`.
-- `diff.WithTableRemovalSchemaPrefix`, including simple-identifier, `pg`/`pg_`,
-  and 21-byte length validation. This is the currently implemented name; Stage 1
-  renames it for the broader schema partial archival feature.
+- `diff.WithSchemaPartialArchivalPrefix`, including simple-identifier, `pg`/`pg_`,
+  and 21-byte length validation.
 - Automatic exclusion of schemas whose names start with the selected cleanup
   prefix from the current schema, target schema, plan validation, and
   `CurrentSchemaHash`. A custom prefix replaces the default; the two prefixes are
   not both excluded.
 - Default cleanup-schema exclusion in `schema.GetSchemaHash`, implemented through
   `WithExcludeSchemaPatterns` so caller-provided exclusions accumulate with it.
+- `Plan.CleanupStatements`, with empty cleanup lists omitted from JSON. Generated
+  plans currently leave the list empty, and `Plan.InsertStatement` modifies only
+  the ordinary `Statements` list.
+- One UTC generation timestamp captured in the internal generation context per
+  `Generate` call. The timestamp does not yet affect SQL or serialized plans.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -153,8 +157,7 @@ delete vertex:
 ## Public API
 
 The filtering foundation uses `pgschemadiff_archive` as the default
-cleanup-schema prefix. It currently exposes `WithTableRemovalSchemaPrefix`.
-Before activation, Stage 1 renames that option to the feature-level API:
+cleanup-schema prefix and exposes the feature-level API:
 
 ```go
 // WithSchemaPartialArchivalPrefix configures the prefix used to identify archival
@@ -206,10 +209,11 @@ The future archival implementation will use the same prefix for generated schema
 names. Once archival is implemented, an invalid prefix must never restore
 ordinary `DROP TABLE` generation.
 
-Once retention is implemented, existing callers that apply only
-`plan.Statements` will retain removed tables and not delete data. Consumers will
-be able to inspect, serialize, or separately persist `plan.CleanupStatements`
-using the same `Statement` JSON and `ToSQL` behavior as regular statements.
+`CleanupStatements` is currently always empty in generated plans. Once retention
+is implemented, existing callers that apply only `plan.Statements` will retain
+removed tables and not delete data. Consumers will be able to inspect, serialize,
+or separately persist `plan.CleanupStatements` using the same `Statement` JSON and
+`ToSQL` behavior as regular statements.
 
 `Plan.InsertStatement` will continue to modify only the ordinary statement list.
 Do not add cleanup-list mutation in the first version: marker cleanup digests are
@@ -670,11 +674,11 @@ schema name.
 `schema.GetSchemaHash` omits schemas matching the default cleanup prefix and any
 additional patterns supplied through `WithExcludeSchemaPatterns`.
 
-Adding `CleanupStatements` is additive for JSON and Go callers that use keyed
-struct literals or accessors. It is a source-breaking change for unkeyed
-`diff.Plan{...}` literals because `Plan` currently has two public fields; call
-this out in release notes. Once implemented, existing application loops over
-`Plan.Statements` will apply only the ordinary, non-destructive migration.
+The addition of `CleanupStatements` is additive for JSON and Go callers that use
+keyed struct literals or accessors. It is a source-breaking change for unkeyed
+`diff.Plan{...}` literals because `Plan` now has three public fields; this must be
+called out in release notes. Existing application loops over `Plan.Statements`
+continue to apply the ordinary migration only.
 
 Consumers that serialize complete plans gain a new `cleanup_statements` field.
 Document that concatenating the two lists changes semantics and is unsupported.
@@ -714,7 +718,7 @@ stage's scope.
 | Stage | Deliverable | Status | Depends on |
 | --- | --- | --- | --- |
 | 0 | Schema-filtering foundation | Complete | None |
-| 1 | Plan envelope and generation context | Pending | 0 |
+| 1 | Plan envelope and generation context | Complete | 0 |
 | 2 | Consistent catalog snapshots | Pending | 0 |
 | 3 | Namespace and partition inventory | Pending | 2 |
 | 4 | Table-local metadata inventory | Pending | 3 |
@@ -759,7 +763,7 @@ Acceptance gate:
 
 ### Stage 1: Plan envelope and generation context
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stage 0.
 

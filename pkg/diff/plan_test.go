@@ -1,6 +1,7 @@
 package diff_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -138,4 +139,68 @@ func TestPlan_InsertStatement(t *testing.T) {
 			assert.Equal(t, tc.expectedPlan, resultingPlan)
 		})
 	}
+}
+
+func TestPlan_InsertStatementPreservesCleanupStatements(t *testing.T) {
+	cleanupStatements := []diff.Statement{
+		{
+			DDL: "cleanup DDL",
+			Hazards: []diff.MigrationHazard{
+				{Type: diff.MigrationHazardTypeDeletesData, Message: "deletes data"},
+			},
+		},
+	}
+	plan := diff.Plan{
+		Statements:        []diff.Statement{{DDL: "ordinary DDL"}},
+		CleanupStatements: cleanupStatements,
+		CurrentSchemaHash: "some-hash",
+	}
+
+	resultingPlan, err := plan.InsertStatement(0, diff.Statement{DDL: "inserted DDL"})
+	require.NoError(t, err)
+	assert.Equal(t, []diff.Statement{
+		{DDL: "inserted DDL"},
+		{DDL: "ordinary DDL"},
+	}, resultingPlan.Statements)
+	assert.Equal(t, cleanupStatements, resultingPlan.CleanupStatements)
+}
+
+func TestPlanJSONRoundTripWithCleanupStatements(t *testing.T) {
+	plan := diff.Plan{
+		Statements: []diff.Statement{
+			{DDL: "ALTER TABLE accounts ADD COLUMN active boolean"},
+		},
+		CleanupStatements: []diff.Statement{
+			{
+				DDL: "DROP TABLE archived_accounts",
+				Hazards: []diff.MigrationHazard{
+					{Type: diff.MigrationHazardTypeDeletesData, Message: "deletes archived data"},
+				},
+			},
+		},
+		CurrentSchemaHash: "some-hash",
+	}
+
+	encoded, err := json.Marshal(plan)
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"cleanup_statements"`)
+
+	var decoded diff.Plan
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	assert.Equal(t, plan, decoded)
+}
+
+func TestPlanJSONOmitsEmptyCleanupStatements(t *testing.T) {
+	plan := diff.Plan{
+		Statements:        []diff.Statement{},
+		CleanupStatements: []diff.Statement{},
+		CurrentSchemaHash: "some-hash",
+	}
+
+	encoded, err := json.Marshal(plan)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"statements": [],
+		"current_schema_hash": "some-hash"
+	}`, string(encoded))
 }
