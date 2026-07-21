@@ -38,7 +38,7 @@ var (
 		{
 			name: "Simple schema (validate all schema objects and schema name filters)",
 			opts: []GetSchemaOpt{
-				WithIncludeSchemas("public", "schema_1", "schema_2"),
+				WithIncludeSchemaPatterns("public", "schema_1", "schema_2"),
 			},
 			ddl: []string{`
 			CREATE SCHEMA schema_1;
@@ -1121,7 +1121,7 @@ var (
 		},
 		{
 			name: "Filtering - filtering out the base table",
-			opts: []GetSchemaOpt{WithIncludeSchemas("public")},
+			opts: []GetSchemaOpt{WithIncludeSchemaPatterns("public")},
 			ddl: []string{`
 				CREATE SCHEMA schema_filtered_1;
 				CREATE TABLE schema_filtered_1.foobar(
@@ -1149,7 +1149,7 @@ var (
 		},
 		{
 			name: "Filtering - filtering out partition",
-			opts: []GetSchemaOpt{WithIncludeSchemas("public")},
+			opts: []GetSchemaOpt{WithIncludeSchemaPatterns("public")},
 			ddl: []string{`
 				CREATE SCHEMA schema_filtered_1;
 				CREATE TABLE foobar(
@@ -1260,7 +1260,7 @@ var (
 		{
 			name: "Filters - exclude schemas",
 			opts: []GetSchemaOpt{
-				WithExcludeSchemas("schema_1"),
+				WithExcludeSchemaPatterns("schema_1"),
 			},
 			ddl: []string{`
 				CREATE TABLE foobar();
@@ -1287,11 +1287,50 @@ var (
 			},
 		},
 		{
+			name: "Filters - exclude schema patterns",
+			opts: []GetSchemaOpt{
+				WithCleanupSchemaPattern("ignored_.*"),
+				WithCleanupSchemaPattern("cleanup_.*"),
+			},
+			ddl: []string{`
+			CREATE TABLE foobar();
+			CREATE SCHEMA cleanup_one;
+			CREATE TABLE cleanup_one.foobar();
+			CREATE SCHEMA cleanup_two;
+			CREATE SEQUENCE cleanup_two.foobar_seq;
+			CREATE SCHEMA ignored_one;
+			CREATE TABLE ignored_one.foobar();
+			CREATE SCHEMA application;
+			CREATE TABLE application.foobar();
+		`},
+			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{
+					{Name: "application"},
+					{Name: "ignored_one"},
+					{Name: "public"},
+				},
+				Tables: []Table{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "application", EscapedName: `"foobar"`},
+						ReplicaIdentity:     ReplicaIdentityDefault,
+					},
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "ignored_one", EscapedName: `"foobar"`},
+						ReplicaIdentity:     ReplicaIdentityDefault,
+					},
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: `"foobar"`},
+						ReplicaIdentity:     ReplicaIdentityDefault,
+					},
+				},
+			},
+		},
+		{
 			name: "Filters - include and exclude schemas",
 			opts: []GetSchemaOpt{
-				WithIncludeSchemas("schema_1"),
+				WithIncludeSchemaPatterns("schema_1"),
 				// schema_3 is inherently excluded since it is not included
-				WithExcludeSchemas("schema_2"),
+				WithExcludeSchemaPatterns("schema_2"),
 			},
 			ddl: []string{`
 				CREATE TABLE foobar();
@@ -1313,19 +1352,31 @@ var (
 			},
 		},
 		{
-			name: "Filter - include and exclude the same schema",
+			name: "Filters - include and exclude patterns overlap",
 			opts: []GetSchemaOpt{
-				WithIncludeSchemas("schema_1"),
-
-				WithIncludeSchemas("schema_2"),
-				WithExcludeSchemas("schema_2"),
-
-				WithExcludeSchemas("schema_3"),
-
-				WithExcludeSchemas("schema_4"),
-				WithExcludeSchemas("schema_4"),
+				WithIncludeSchemaPatterns("schema_[12]"),
+				WithExcludeSchemaPatterns("schema_2"),
 			},
-			expectedErrContains: "are both included and excluded",
+			ddl: []string{`
+				CREATE SCHEMA schema_1;
+				CREATE TABLE schema_1.foobar();
+				CREATE SCHEMA schema_2;
+				CREATE TABLE schema_2.foobar();
+				CREATE SCHEMA schema_3;
+				CREATE TABLE schema_3.foobar();
+			`},
+			expectedSchema: Schema{
+				NamedSchemas: []NamedSchema{{Name: "schema_1"}},
+				Tables: []Table{{
+					SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: `"foobar"`},
+					ReplicaIdentity:     ReplicaIdentityDefault,
+				}},
+			},
+		},
+		{
+			name:                "Filters - invalid schema pattern",
+			opts:                []GetSchemaOpt{WithIncludeSchemaPatterns("[")},
+			expectedErrContains: "compiling include schema pattern",
 		},
 	}
 )

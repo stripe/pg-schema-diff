@@ -72,14 +72,48 @@ func TestSchemaTestSuite(t *testing.T) {
 		_, err := db.ConnPool.Exec(t.Context(), ddl)
 		require.NoError(t, err)
 
-		hash, err := schema.GetSchemaHash(t.Context(), db.ConnPool, schema.WithIncludeSchemas("public"))
+		hash, err := schema.GetSchemaHash(t.Context(), db.ConnPool,
+			schema.WithIncludeSchemaPatterns("public"))
 		require.NoError(t, err)
 
 		schema, err := internalschema.GetSchema(t.Context(), db.ConnPool,
-			internalschema.WithIncludeSchemas("public"))
+			internalschema.WithIncludeSchemaPatterns("public"))
 		require.NoError(t, err)
 		expectedHash, err := schema.Hash()
 		require.NoError(t, err)
 		assert.Equal(t, expectedHash, hash)
+	})
+
+	t.Run("TestGetSchemaHashIgnoresDefaultCleanupSchemas", func(t *testing.T) {
+		t.Parallel()
+
+		factory := testdb.MustNewFactory(t)
+		db := factory.CreateDatabase(t)
+		_, err := db.ConnPool.Exec(t.Context(), `
+			CREATE SCHEMA pgschemadiff_archive_public_foo;
+			CREATE TABLE pgschemadiff_archive_public_foo.foo (id bigint PRIMARY KEY);
+		`)
+		require.NoError(t, err)
+
+		hash, err := schema.GetSchemaHash(t.Context(), db.ConnPool)
+		require.NoError(t, err)
+
+		filteredSchema, err := internalschema.GetSchema(t.Context(), db.ConnPool,
+			internalschema.WithCleanupSchemaPattern(schema.DefaultCleanupSchemaPrefix+".*"))
+		require.NoError(t, err)
+		expectedHash, err := filteredSchema.Hash()
+		require.NoError(t, err)
+		assert.Equal(t, expectedHash, hash)
+
+		customHash, err := schema.GetSchemaHash(t.Context(), db.ConnPool,
+			schema.WithCleanupSchemaPattern("deleted.*"))
+		require.NoError(t, err)
+		customFilteredSchema, err := internalschema.GetSchema(t.Context(), db.ConnPool,
+			internalschema.WithCleanupSchemaPattern("deleted.*"))
+		require.NoError(t, err)
+		expectedCustomHash, err := customFilteredSchema.Hash()
+		require.NoError(t, err)
+		assert.Equal(t, expectedCustomHash, customHash)
+		assert.NotEqual(t, hash, customHash)
 	})
 }

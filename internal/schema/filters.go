@@ -1,18 +1,20 @@
 package schema
 
+import "regexp"
+
 // nameFilter is one of the most generic of filters. We can use it to filter objects by their schema name or name.
 // In the future, it might be expanded to include a "type" field, e.g., to filter down to specific tables.
 type nameFilter func(name SchemaQualifiedName) bool
 
-func schemaNameFilter(schema string) nameFilter {
+func schemaNamePatternFilter(pattern *regexp.Regexp) nameFilter {
 	return func(obj SchemaQualifiedName) bool {
-		return obj.SchemaName == schema
+		return pattern.MatchString(obj.SchemaName)
 	}
 }
 
-func notSchemaNameFilter(schema string) nameFilter {
+func notSchemaNamePatternFilter(pattern *regexp.Regexp) nameFilter {
 	return func(obj SchemaQualifiedName) bool {
-		return obj.SchemaName != schema
+		return !pattern.MatchString(obj.SchemaName)
 	}
 }
 

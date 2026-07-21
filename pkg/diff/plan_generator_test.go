@@ -91,9 +91,12 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 		logger := slog.Default()
 
 		getSchemaOpts := []externalschema.GetSchemaOpt{
-			externalschema.WithIncludeSchemas("schema_1"),
-			externalschema.WithIncludeSchemas("schema_2"),
+			externalschema.WithIncludeSchemaPatterns("schema_1"),
+			externalschema.WithIncludeSchemaPatterns("schema_2"),
 		}
+		expectedGetSchemaOpts := append([]externalschema.GetSchemaOpt{}, getSchemaOpts...)
+		expectedGetSchemaOpts = append(expectedGetSchemaOpts,
+			externalschema.WithCleanupSchemaPattern(defaultTableRemovalSchemaPrefix+".*"))
 
 		expectedErr := fmt.Errorf("some error")
 		fakeSchemaSource := fakeSchemaSource{
@@ -101,7 +104,7 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 			expectedDeps: schemaSourcePlanDeps{
 				tempDBFactory: factory,
 				logger:        logger,
-				getSchemaOpts: getSchemaOpts,
+				getSchemaOpts: expectedGetSchemaOpts,
 			},
 			err: expectedErr,
 		}
@@ -122,7 +125,7 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 
 		_, err := Generate(
 			t.Context(), DBSchemaSource(db.ConnPool), DDLSchemaSource([]string{``}),
-			WithIncludeSchemas("public"),
+			WithIncludeSchemaPatterns("public"),
 			WithDoNotValidatePlan(),
 		)
 		assert.ErrorContains(t, err, "tempDbFactory is required")
@@ -135,9 +138,90 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 
 		_, err := Generate(
 			t.Context(), DBSchemaSource(db.ConnPool), DDLSchemaSource([]string{``}),
-			WithIncludeSchemas("public"),
+			WithIncludeSchemaPatterns("public"),
 			WithDoNotValidatePlan(),
 		)
 		assert.ErrorContains(t, err, "tempDbFactory is required")
 	})
+}
+
+func TestValidateTableRemovalSchemaPrefix(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name        string
+		prefix      string
+		expectError bool
+	}{
+		{name: "default", prefix: defaultTableRemovalSchemaPrefix},
+		{name: "custom", prefix: "deleted"},
+		{name: "empty", prefix: "", expectError: true},
+		{name: "not simple", prefix: "deleted-schema", expectError: true},
+		{name: "reserved pg", prefix: "pg", expectError: true},
+		{name: "reserved pg prefix", prefix: "pg_deleted", expectError: true},
+		{name: "too long", prefix: "abcdefghijklmnopqrstuv", expectError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateTableRemovalSchemaPrefix(tc.prefix)
+			if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestGenerateIgnoresCleanupSchemaPrefixes(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name         string
+		prefix       string
+		schemaPrefix string
+		inTarget     bool
+		expectEmpty  bool
+	}{
+		{name: "default prefix", prefix: defaultTableRemovalSchemaPrefix, expectEmpty: true},
+		{name: "custom prefix", prefix: "deleted", expectEmpty: true},
+		{
+			name:         "custom prefix replaces default exclusion",
+			prefix:       "deleted",
+			schemaPrefix: defaultTableRemovalSchemaPrefix,
+		},
+		{name: "target schema", prefix: defaultTableRemovalSchemaPrefix, inTarget: true, expectEmpty: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			factory := testdb.MustNewFactory(t)
+			db := factory.CreateDatabase(t)
+			schemaPrefix := tc.schemaPrefix
+			if schemaPrefix == "" {
+				schemaPrefix = tc.prefix
+			}
+			ddl := fmt.Sprintf(`
+				CREATE SCHEMA %s_snapshot;
+				CREATE TABLE %s_snapshot.foobar (id bigint PRIMARY KEY);
+			`, schemaPrefix, schemaPrefix)
+			var targetDDL []string
+			if tc.inTarget {
+				targetDDL = []string{ddl}
+			} else {
+				mustApplyDDLToTestDB(t, db.ConnPool, []string{ddl})
+			}
+
+			opts := []PlanOpt{WithTempDbFactory(factory)}
+			if tc.prefix != defaultTableRemovalSchemaPrefix {
+				opts = append(opts, WithTableRemovalSchemaPrefix(tc.prefix))
+			}
+			plan, err := Generate(t.Context(), DBSchemaSource(db.ConnPool), DDLSchemaSource(targetDDL), opts...)
+			require.NoError(t, err)
+			if tc.expectEmpty {
+				assert.Empty(t, plan.Statements)
+			} else {
+				assert.NotEmpty(t, plan.Statements)
+			}
+		})
+	}
 }

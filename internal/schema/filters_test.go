@@ -156,3 +156,52 @@ func TestAndNameFilters(t *testing.T) {
 		})
 	}
 }
+
+func TestSchemaNamePatternFilters(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		pattern     string
+		schemaName  string
+		exclude     bool
+		expectedOut bool
+	}{
+		{
+			name:        "matching expression",
+			pattern:     "pgschemadiff_archive.*",
+			schemaName:  "pgschemadiff_archive_public_foo",
+			expectedOut: true,
+		},
+		{
+			name:        "full name anchoring",
+			pattern:     "public",
+			schemaName:  "not_public",
+			expectedOut: false,
+		},
+		{
+			name:        "exclude matching expression",
+			pattern:     "pgschemadiff_archive.*",
+			schemaName:  "pgschemadiff_archive_public_foo",
+			exclude:     true,
+			expectedOut: false,
+		},
+		{
+			name:        "exclude non-matching expression",
+			pattern:     "pgschemadiff_archive.*",
+			schemaName:  "application",
+			exclude:     true,
+			expectedOut: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pattern, err := compileSchemaNamePattern(tc.pattern)
+			assert.NoError(t, err)
+			filter := schemaNamePatternFilter(pattern)
+			if tc.exclude {
+				filter = notSchemaNamePatternFilter(pattern)
+			}
+			assert.Equal(t, tc.expectedOut, filter(SchemaQualifiedName{
+				SchemaName: tc.schemaName,
+			}))
+		})
+	}
+}

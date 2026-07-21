@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kr/pretty"
+	"github.com/stripe/pg-schema-diff/internal/pgidentifier"
 	"github.com/stripe/pg-schema-diff/internal/schema"
 	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 
@@ -19,14 +21,20 @@ import (
 
 var errTempDbFactoryRequired = fmt.Errorf("tempDbFactory is required. include the option WithTempDbFactory")
 
+const (
+	defaultTableRemovalSchemaPrefix = externalschema.DefaultCleanupSchemaPrefix
+	maxTableRemovalSchemaPrefixSize = 21
+)
+
 type (
 	planOptions struct {
-		tempDbFactory        tempdb.Factory
-		logger               *slog.Logger
-		validatePlan         bool
-		getSchemaOpts        []schema.GetSchemaOpt
-		randReader           io.Reader
-		noConcurrentIndexOps bool
+		tempDbFactory            tempdb.Factory
+		logger                   *slog.Logger
+		validatePlan             bool
+		getSchemaOpts            []schema.GetSchemaOpt
+		randReader               io.Reader
+		noConcurrentIndexOps     bool
+		tableRemovalSchemaPrefix string
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -53,15 +61,17 @@ func WithLogger(logger *slog.Logger) PlanOpt {
 	}
 }
 
-func WithIncludeSchemas(schemas ...string) PlanOpt {
+func WithIncludeSchemaPatterns(patterns ...string) PlanOpt {
 	return func(opts *planOptions) {
-		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithIncludeSchemas(schemas...))
+		opts.getSchemaOpts = append(opts.getSchemaOpts,
+			schema.WithIncludeSchemaPatterns(patterns...))
 	}
 }
 
-func WithExcludeSchemas(schemas ...string) PlanOpt {
+func WithExcludeSchemaPatterns(patterns ...string) PlanOpt {
 	return func(opts *planOptions) {
-		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithExcludeSchemas(schemas...))
+		opts.getSchemaOpts = append(opts.getSchemaOpts,
+			schema.WithExcludeSchemaPatterns(patterns...))
 	}
 }
 
@@ -88,6 +98,14 @@ func WithNoConcurrentIndexOps() PlanOpt {
 	}
 }
 
+// WithTableRemovalSchemaPrefix configures the prefix used to identify cleanup schemas.
+// Schemas whose names start with this prefix are excluded from plan generation.
+func WithTableRemovalSchemaPrefix(prefix string) PlanOpt {
+	return func(opts *planOptions) {
+		opts.tableRemovalSchemaPrefix = prefix
+	}
+}
+
 // Generate generates a migration plan to migrate the database to the target schema
 //
 // Parameters:
@@ -102,9 +120,10 @@ func Generate(
 	opts ...PlanOpt,
 ) (Plan, error) {
 	planOptions := &planOptions{
-		validatePlan: true,
-		logger:       slog.Default(),
-		randReader:   rand.Reader,
+		validatePlan:             true,
+		logger:                   slog.Default(),
+		randReader:               rand.Reader,
+		tableRemovalSchemaPrefix: defaultTableRemovalSchemaPrefix,
 	}
 	for _, opt := range opts {
 		opt(planOptions)
@@ -112,6 +131,12 @@ func Generate(
 	if planOptions.logger == nil {
 		planOptions.logger = slog.Default()
 	}
+	if err := validateTableRemovalSchemaPrefix(planOptions.tableRemovalSchemaPrefix); err != nil {
+		return Plan{}, err
+	}
+	cleanupSchemaPattern := regexp.QuoteMeta(planOptions.tableRemovalSchemaPrefix) + ".*"
+	planOptions.getSchemaOpts = append(planOptions.getSchemaOpts,
+		schema.WithCleanupSchemaPattern(cleanupSchemaPattern))
 
 	currentSchema, err := fromSchema.GetSchema(ctx, schemaSourcePlanDeps{
 		tempDBFactory: planOptions.tempDbFactory,
@@ -156,6 +181,19 @@ func Generate(
 	}
 
 	return plan, nil
+}
+
+func validateTableRemovalSchemaPrefix(prefix string) error {
+	if !pgidentifier.IsSimpleIdentifier(prefix) {
+		return fmt.Errorf("table removal schema prefix %q must be a simple PostgreSQL identifier", prefix)
+	}
+	if prefix == "pg" || strings.HasPrefix(prefix, "pg_") {
+		return fmt.Errorf("table removal schema prefix %q uses PostgreSQL's reserved pg_ prefix", prefix)
+	}
+	if len(prefix) > maxTableRemovalSchemaPrefixSize {
+		return fmt.Errorf("table removal schema prefix %q must be at most %d bytes", prefix, maxTableRemovalSchemaPrefixSize)
+	}
+	return nil
 }
 
 func generateMigrationStatements(oldSchema, newSchema schema.Schema, planOptions *planOptions) ([]Statement, error) {

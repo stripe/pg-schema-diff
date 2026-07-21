@@ -540,29 +540,41 @@ type (
 	GetSchemaOpt func(*getSchemaOptions)
 )
 
-// WithIncludeSchemas filters the schema to only include the given schemas. This unions with any schemas that are already included
-// via WithIncludeSchemas. If empty, then all schemas are included.
-func WithIncludeSchemas(schemas ...string) GetSchemaOpt {
+// WithIncludeSchemaPatterns filters the schema to only include schema names that fully match one of the provided Go
+// regular expressions. This unions with patterns already included via WithIncludeSchemaPatterns. If empty, all schemas
+// are included.
+func WithIncludeSchemaPatterns(patterns ...string) GetSchemaOpt {
 	return func(o *getSchemaOptions) {
-		o.includeSchemas = append(o.includeSchemas, schemas...)
+		o.includeSchemaPatterns = append(o.includeSchemaPatterns, patterns...)
 	}
 }
 
-// WithExcludeSchemas filters the schema to exclude the given schemas. This unions with any schemas that are already excluded
-// via WithExcludeSchemas. If empty, then no schemas are excluded.
-func WithExcludeSchemas(schemas ...string) GetSchemaOpt {
+// WithExcludeSchemaPatterns filters the schema to exclude schema names that fully match any of the provided Go regular
+// expressions. This unions with patterns already excluded via WithExcludeSchemaPatterns. If empty, no schemas are
+// excluded.
+func WithExcludeSchemaPatterns(patterns ...string) GetSchemaOpt {
 	return func(o *getSchemaOptions) {
-		o.excludeSchemas = append(o.excludeSchemas, schemas...)
+		o.excludeSchemaPatterns = append(o.excludeSchemaPatterns, patterns...)
+	}
+}
+
+// WithCleanupSchemaPattern configures the pattern used to exclude cleanup schemas. The last provided option wins.
+// An empty pattern disables cleanup schema exclusion.
+func WithCleanupSchemaPattern(pattern string) GetSchemaOpt {
+	return func(o *getSchemaOptions) {
+		o.cleanupSchemaPattern = &pattern
 	}
 }
 
 type getSchemaOptions struct {
-	// includeSchemas is a list of schemas to include in the schema. If empty, then all schemas are included.
+	// includeSchemaPatterns is a list of schema name patterns to include. If empty, then all schemas are included.
 	// We could have built a more complex set of options using the nameFilter system (nested unions and intersections);
 	// however, I felt it could expose some weird behaviors that we don't want to have to worry about just yet,
-	includeSchemas []string
-	// excludeSchemas is the exclude analog of includeSchemas.
-	excludeSchemas []string
+	includeSchemaPatterns []string
+	// excludeSchemaPatterns is the exclude analog of includeSchemaPatterns.
+	excludeSchemaPatterns []string
+	// cleanupSchemaPattern is a separately configurable cleanup-schema exclusion pattern.
+	cleanupSchemaPattern *string
 }
 
 // GetSchema fetches the database schema. It is a non-atomic operation.
@@ -581,55 +593,59 @@ func GetSchema(ctx context.Context, db *pgxpool.Pool, opts ...GetSchemaOpt) (*Sc
 }
 
 func buildNameFilter(options getSchemaOptions) (nameFilter, error) {
-	if intersection := intersect(options.includeSchemas, options.excludeSchemas); len(intersection) > 0 {
-		return nil, fmt.Errorf("schemas %v are both included and excluded", intersection)
+	includeSchemasFilter, err := buildIncludeSchemasFilter(options.includeSchemaPatterns)
+	if err != nil {
+		return nil, err
 	}
-
-	includeSchemasFilter := buildIncludeSchemasFilter(options.includeSchemas)
-	excludeSchemasFilter := buildExcludeSchemasFilter(options.excludeSchemas)
+	excludeSchemaPatterns := append([]string{}, options.excludeSchemaPatterns...)
+	if options.cleanupSchemaPattern != nil && *options.cleanupSchemaPattern != "" {
+		excludeSchemaPatterns = append(excludeSchemaPatterns, *options.cleanupSchemaPattern)
+	}
+	excludeSchemasFilter, err := buildExcludeSchemasFilter(excludeSchemaPatterns)
+	if err != nil {
+		return nil, err
+	}
 	return andNameFilter(includeSchemasFilter, excludeSchemasFilter), nil
 }
 
-func intersect(a, b []string) []string {
-	inAByA := make(map[string]bool)
-	for _, s := range a {
-		inAByA[s] = true
-	}
-	intersection := make([]string, 0, len(b))
-	for _, s := range b {
-		if inAByA[s] {
-			intersection = append(intersection, s)
-		}
-	}
-	return intersection
-}
-
-func buildIncludeSchemasFilter(schemas []string) nameFilter {
-	if len(schemas) == 0 {
+func buildIncludeSchemasFilter(patterns []string) (nameFilter, error) {
+	if len(patterns) == 0 {
 		return func(name SchemaQualifiedName) bool {
 			return true
-		}
+		}, nil
 	}
 
 	var filters []nameFilter
-	for _, schema := range schemas {
-		filters = append(filters, schemaNameFilter(schema))
+	for _, pattern := range patterns {
+		compiledPattern, err := compileSchemaNamePattern(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("compiling include schema pattern %q: %w", pattern, err)
+		}
+		filters = append(filters, schemaNamePatternFilter(compiledPattern))
 	}
-	return orNameFilter(filters...)
+	return orNameFilter(filters...), nil
 }
 
-func buildExcludeSchemasFilter(schemas []string) nameFilter {
-	if len(schemas) == 0 {
+func buildExcludeSchemasFilter(patterns []string) (nameFilter, error) {
+	if len(patterns) == 0 {
 		return func(name SchemaQualifiedName) bool {
 			return true
-		}
+		}, nil
 	}
 
 	var filters []nameFilter
-	for _, schema := range schemas {
-		filters = append(filters, notSchemaNameFilter(schema))
+	for _, pattern := range patterns {
+		compiledPattern, err := compileSchemaNamePattern(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("compiling exclude schema pattern %q: %w", pattern, err)
+		}
+		filters = append(filters, notSchemaNamePatternFilter(compiledPattern))
 	}
-	return andNameFilter(filters...)
+	return andNameFilter(filters...), nil
+}
+
+func compileSchemaNamePattern(pattern string) (*regexp.Regexp, error) {
+	return regexp.Compile("^(?:" + pattern + ")$")
 }
 
 type (
