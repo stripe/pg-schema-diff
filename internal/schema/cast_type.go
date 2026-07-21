@@ -23,7 +23,7 @@ var formatTypeBaseToPgCatalogTypname = map[string]string{
 
 // QualifyTypeForCast returns a type name suitable for CAST(... AS type) in generated
 // migration SQL. Unqualified built-in types from pg_catalog.format_type are qualified
-// with pg_catalog to prevent search_path shadowing (CVE-2018-1058).
+// with pg_catalog to prevent search_path shadowing of cast targets.
 func QualifyTypeForCast(typeName string) string {
 	typeName = strings.TrimSpace(typeName)
 	if isSchemaQualifiedTypeName(typeName) {

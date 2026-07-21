@@ -8,16 +8,13 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
-// Contract tests derived from SAT-28189 / CVE-2018-1058: emitted ALTER COLUMN ... USING
-// clauses must not rely on search_path for built-in function or cast target resolution.
-
 var (
-	cveUnqualifiedToTimestamp = regexp.MustCompile(`(?i)\busing\s+to_timestamp\s*\(`)
-	cveQualifiedToTimestamp   = regexp.MustCompile(`(?i)\busing\s+pg_catalog\.to_timestamp\s*\(`)
-	cveUnqualifiedCast        = regexp.MustCompile(`(?i)\busing\s+[^;]*::`)
+	unqualifiedToTimestampInUsing = regexp.MustCompile(`(?i)\busing\s+to_timestamp\s*\(`)
+	qualifiedToTimestampInUsing   = regexp.MustCompile(`(?i)\busing\s+pg_catalog\.to_timestamp\s*\(`)
+	unqualifiedCastInUsing        = regexp.MustCompile(`(?i)\busing\s+[^;]*::`)
 )
 
-func TestCVE20181058_BigintToTimestampStatementQualifiesBuiltin(t *testing.T) {
+func TestTypeTransformationQualifiesToTimestampBuiltin(t *testing.T) {
 	csg := &columnSQLVertexGenerator{
 		tableName: schema.SchemaQualifiedName{
 			SchemaName:  "app",
@@ -32,12 +29,12 @@ func TestCVE20181058_BigintToTimestampStatementQualifiesBuiltin(t *testing.T) {
 		schema.SchemaQualifiedName{},
 	)
 
-	assert.NotRegexp(t, cveUnqualifiedToTimestamp, stmt.DDL)
-	assert.Regexp(t, cveQualifiedToTimestamp, stmt.DDL)
+	assert.NotRegexp(t, unqualifiedToTimestampInUsing, stmt.DDL)
+	assert.Regexp(t, qualifiedToTimestampInUsing, stmt.DDL)
 	assert.Contains(t, stmt.DDL, `::pg_catalog.float8)`)
 }
 
-func TestCVE20181058_GenericCastStatementQualifiesTargetType(t *testing.T) {
+func TestTypeTransformationQualifiesCastTargetType(t *testing.T) {
 	csg := &columnSQLVertexGenerator{
 		tableName: schema.SchemaQualifiedName{
 			SchemaName:  "app2",
@@ -72,13 +69,13 @@ func TestCVE20181058_GenericCastStatementQualifiesTargetType(t *testing.T) {
 				schema.SchemaQualifiedName{},
 			)
 
-			assert.NotRegexp(t, cveUnqualifiedCast, stmt.DDL)
+			assert.NotRegexp(t, unqualifiedCastInUsing, stmt.DDL)
 			assert.Contains(t, stmt.DDL, tc.wantCast)
 		})
 	}
 }
 
-func TestCVE20181058_UserDefinedCastTargetRemainsSchemaQualified(t *testing.T) {
+func TestTypeTransformationPreservesUserDefinedCastTarget(t *testing.T) {
 	csg := &columnSQLVertexGenerator{
 		tableName: schema.SchemaQualifiedName{
 			SchemaName:  "public",

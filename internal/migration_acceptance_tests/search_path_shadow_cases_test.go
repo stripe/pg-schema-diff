@@ -19,8 +19,8 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
-// CVE-2018-1058 / SAT-28189: pg-schema-diff must not emit search_path-sensitive
-// function calls or cast type names in ALTER COLUMN ... USING clauses.
+// Generated ALTER COLUMN ... USING clauses must not rely on search_path for
+// built-in function or cast target resolution.
 
 var (
 	unqualifiedToTimestampInUsing = regexp.MustCompile(`(?i)\busing\s+to_timestamp\s*\(`)
@@ -29,15 +29,14 @@ var (
 	pgCatalogCastInUsing          = regexp.MustCompile(`(?i)\busing\s+cast\s*\([^)]+\bas\s+pg_catalog\.`)
 )
 
-// SAT repro: a low-privileged user plants public.to_timestamp(bigint). Unqualified
-// calls resolve to the shadow; pg-schema-diff apply must emit pg_catalog.to_timestamp
-// so migration converts epoch millis correctly instead of invoking the shadow.
-func TestCVE20181058_BigintToTimestampApplyDoesNotInvokeShadowedBuiltin(t *testing.T) {
+// When public.to_timestamp(bigint) shadows the built-in, apply must emit
+// pg_catalog.to_timestamp so epoch millis convert correctly.
+func TestBigintToTimestampMigrationIgnoresShadowedBuiltin(t *testing.T) {
 	t.Parallel()
 
 	const epochMillis int64 = 1700000000000
 
-	db, conn := newCVETestDatabase(t)
+	db, conn := newShadowTestDatabase(t)
 	plantShadowToTimestamp(t, conn)
 	requireShadowToTimestampActive(t, conn)
 
@@ -49,7 +48,7 @@ func TestCVE20181058_BigintToTimestampApplyDoesNotInvokeShadowedBuiltin(t *testi
 	_, err = conn.Exec(`INSERT INTO app.events VALUES (1, $1), (2, $1 + 1000)`, epochMillis)
 	require.NoError(t, err)
 
-	plan := generateCVEPlan(t, db, []string{`
+	plan := generateTypeTransformationPlan(t, db, []string{`
 		CREATE SCHEMA app;
 		CREATE TABLE app.events (
 			id integer PRIMARY KEY,
@@ -58,7 +57,7 @@ func TestCVE20181058_BigintToTimestampApplyDoesNotInvokeShadowedBuiltin(t *testi
 	`})
 	alterStmt := requireAlterColumnUsingStmt(t, plan, `"ts"`)
 	assert.NotRegexp(t, unqualifiedToTimestampInUsing, alterStmt,
-		"emitted DDL must not call unqualified to_timestamp in USING (CVE-2018-1058)")
+		"emitted DDL must not call unqualified to_timestamp in USING")
 	assert.Regexp(t, qualifiedToTimestampInUsing, alterStmt,
 		"emitted DDL must schema-qualify to_timestamp in USING")
 
@@ -71,12 +70,12 @@ func TestCVE20181058_BigintToTimestampApplyDoesNotInvokeShadowedBuiltin(t *testi
 	assert.Equal(t, 2023, ts.Year())
 }
 
-// SAT sibling sink: generic type transforms used col::type, resolving the cast target
-// via search_path. Emitted DDL must use CAST(... AS "pg_catalog".<type>) instead.
-func TestCVE20181058_GenericCastApplyDoesNotUseSearchPathSensitiveCastSyntax(t *testing.T) {
+// Generic type transforms must use CAST(... AS pg_catalog.<type>) instead of
+// col::type, which resolves the cast target via search_path.
+func TestGenericCastMigrationUsesQualifiedTargetType(t *testing.T) {
 	t.Parallel()
 
-	db, conn := newCVETestDatabase(t)
+	db, conn := newShadowTestDatabase(t)
 	plantShadowIntegerDomain(t, conn)
 
 	_, err := conn.Exec(`
@@ -86,7 +85,7 @@ func TestCVE20181058_GenericCastApplyDoesNotUseSearchPathSensitiveCastSyntax(t *
 	`)
 	require.NoError(t, err)
 
-	plan := generateCVEPlan(t, db, []string{`
+	plan := generateTypeTransformationPlan(t, db, []string{`
 		CREATE SCHEMA app2;
 		CREATE TABLE app2.metrics (
 			id integer PRIMARY KEY,
@@ -95,7 +94,7 @@ func TestCVE20181058_GenericCastApplyDoesNotUseSearchPathSensitiveCastSyntax(t *
 	`})
 	alterStmt := requireAlterColumnUsingStmt(t, plan, `"val"`)
 	assert.NotRegexp(t, unqualifiedCastInUsing, alterStmt,
-		"emitted DDL must not use ::type cast syntax in USING (CVE-2018-1058)")
+		"emitted DDL must not use ::type cast syntax in USING")
 	assert.Regexp(t, pgCatalogCastInUsing, alterStmt,
 		"emitted DDL must CAST to a pg_catalog-qualified type in USING")
 
@@ -120,7 +119,7 @@ func TestCVE20181058_GenericCastApplyDoesNotUseSearchPathSensitiveCastSyntax(t *
 	assert.Equal(t, []row{{1, 42}, {2, 99}}, got)
 }
 
-func newCVETestDatabase(t *testing.T) (*pgengine.DB, *sql.DB) {
+func newShadowTestDatabase(t *testing.T) (*pgengine.DB, *sql.DB) {
 	t.Helper()
 
 	db, err := pgEngine.CreateDatabaseWithName(fmt.Sprintf("pgtemp_%s", uuid.NewString()))
@@ -164,7 +163,7 @@ func requireShadowToTimestampActive(t *testing.T, conn *sql.DB) {
 		`SELECT 'to_timestamp(bigint)'::regprocedure::text`,
 	).Scan(&regproc))
 	assert.Equal(t, "to_timestamp(bigint)", regproc,
-		"precondition: bigint overload must bind to attacker shadow, not pg_catalog")
+		"precondition: bigint overload must bind to shadow in public, not pg_catalog")
 }
 
 func plantShadowIntegerDomain(t *testing.T, conn *sql.DB) {
@@ -177,7 +176,7 @@ func plantShadowIntegerDomain(t *testing.T, conn *sql.DB) {
 	require.NoError(t, err)
 }
 
-func generateCVEPlan(t *testing.T, db *pgengine.DB, newSchemaDDL []string) diff.Plan {
+func generateTypeTransformationPlan(t *testing.T, db *pgengine.DB, newSchemaDDL []string) diff.Plan {
 	t.Helper()
 
 	oldDBConnPool, err := sql.Open("pgx", db.GetDSN())
