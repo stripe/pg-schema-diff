@@ -49,6 +49,7 @@ const (
 // inventory. Its fields are the complete v1 identity contract.
 type archivalMarkerObjectIdentity struct {
 	Kind              archivalMarkerObjectKind `json:"kind"`
+	OID               uint32                   `json:"oid"`
 	SchemaName        string                   `json:"schema_name"`
 	Name              string                   `json:"name"`
 	IdentityArguments []string                 `json:"identity_arguments"`
@@ -335,6 +336,10 @@ func validateArchivalMarkerMember(member archivalMarkerMemberV1) error {
 		return fmt.Errorf("source table %q and cleanup table %q must have the same name",
 			member.SourceTable.Name, member.CleanupTable.Name)
 	}
+	if member.SourceTable.OID != member.CleanupTable.OID {
+		return fmt.Errorf("source table OID %d and cleanup table OID %d must be the same",
+			member.SourceTable.OID, member.CleanupTable.OID)
+	}
 	if len(member.AutomaticallyMovedObjects) == 0 {
 		return fmt.Errorf("automatically moved objects are required")
 	}
@@ -354,32 +359,47 @@ func validateArchivalMarkerMember(member archivalMarkerMemberV1) error {
 	}
 
 	allLocal := make(map[string]string)
-	for category, objects := range map[string]struct {
+	localOIDs := make(map[uint32]string)
+	for _, category := range []struct {
+		name    string
 		values  []archivalMarkerObjectIdentity
 		allowed map[archivalMarkerObjectKind]struct{}
 	}{
-		"automatically moved": {member.AutomaticallyMovedObjects, allowedAutomatic},
-		"attached":            {member.AttachedObjects, allowedAttached},
-		"explicitly moved":    {member.ExplicitlyMovedObjects, allowedExplicit},
-		"internal TOAST":      {member.InternalToastObjects, allowedToast},
+		{name: "automatically moved", values: member.AutomaticallyMovedObjects, allowed: allowedAutomatic},
+		{name: "attached", values: member.AttachedObjects, allowed: allowedAttached},
+		{name: "explicitly moved", values: member.ExplicitlyMovedObjects, allowed: allowedExplicit},
+		{name: "internal TOAST", values: member.InternalToastObjects, allowed: allowedToast},
 	} {
-		if err := validateUniqueMarkerObjects(category, objects.values, objects.allowed); err != nil {
+		if err := validateUniqueMarkerObjects(category.name, category.values, category.allowed); err != nil {
 			return err
 		}
-		for _, object := range objects.values {
+		for _, object := range category.values {
 			key := markerObjectIdentityKey(object)
 			if previous, duplicate := allLocal[key]; duplicate {
 				return fmt.Errorf("duplicate local object identity in %s and %s objects: %s.%s",
-					previous, category, object.SchemaName, object.Name)
+					previous, category.name, object.SchemaName, object.Name)
 			}
-			allLocal[key] = category
-			if category != "internal TOAST" && object.SchemaName != member.CleanupTable.SchemaName {
+			allLocal[key] = category.name
+			if previous, duplicate := localOIDs[object.OID]; duplicate {
+				return fmt.Errorf("duplicate local object OID %d in %s and %s objects",
+					object.OID, previous, category.name)
+			}
+			localOIDs[object.OID] = category.name
+			if category.name != "internal TOAST" &&
+				object.SchemaName != member.CleanupTable.SchemaName {
 				return fmt.Errorf("%s object %s.%s is not in member cleanup schema %q",
-					category, object.SchemaName, object.Name, member.CleanupTable.SchemaName)
+					category.name, object.SchemaName, object.Name, member.CleanupTable.SchemaName)
 			}
 		}
 	}
-	if _, found := allLocal[markerObjectIdentityKey(member.CleanupTable)]; !found {
+	foundCleanupTable := false
+	for _, object := range member.AutomaticallyMovedObjects {
+		if compareMarkerObjects(object, member.CleanupTable) == 0 {
+			foundCleanupTable = true
+			break
+		}
+	}
+	if !foundCleanupTable {
 		return fmt.Errorf("automatically moved objects do not contain cleanup table %s.%s",
 			member.CleanupTable.SchemaName, member.CleanupTable.Name)
 	}
@@ -674,10 +694,16 @@ func validateMarkerObjectIdentity(identity archivalMarkerObjectIdentity) error {
 		return fmt.Errorf("unsupported object kind %q", identity.Kind)
 	}
 	if identity.Kind == archivalMarkerObjectKindSchema {
+		if identity.OID != 0 {
+			return fmt.Errorf("schema object identity must not contain a catalog OID")
+		}
 		if identity.SchemaName != "" {
 			return fmt.Errorf("schema object identity must not have a containing schema")
 		}
 	} else {
+		if identity.OID == 0 {
+			return fmt.Errorf("object catalog OID is required")
+		}
 		if err := validateArchivalCodecString("object schema name", identity.SchemaName); err != nil {
 			return err
 		}
@@ -803,6 +829,7 @@ func cloneMarkerObject(object archivalMarkerObjectIdentity) archivalMarkerObject
 func compareMarkerObjects(a, b archivalMarkerObjectIdentity) int {
 	return cmp.Or(
 		cmp.Compare(a.Kind, b.Kind),
+		cmp.Compare(a.OID, b.OID),
 		cmp.Compare(a.SchemaName, b.SchemaName),
 		cmp.Compare(a.Name, b.Name),
 		slices.Compare(a.IdentityArguments, b.IdentityArguments),

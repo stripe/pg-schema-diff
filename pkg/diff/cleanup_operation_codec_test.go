@@ -30,7 +30,7 @@ func TestCleanupOperationsCanonicalTopologicalOrder(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(
 		t,
-		`[{"version":1,"id":"drop-table-a","kind":"drop_table","object":{"kind":"table","schema_name":"archive_a","name":"accounts","identity_arguments":[]},"depends_on":[],"restrict":true},{"version":1,"id":"drop-schema-a","kind":"drop_schema","object":{"kind":"schema","schema_name":"","name":"archive_a","identity_arguments":[]},"depends_on":["drop-table-a"],"restrict":true},{"version":1,"id":"drop-table-b","kind":"drop_table","object":{"kind":"table","schema_name":"archive_b","name":"orders","identity_arguments":[]},"depends_on":[],"restrict":true},{"version":1,"id":"drop-schema-b","kind":"drop_schema","object":{"kind":"schema","schema_name":"","name":"archive_b","identity_arguments":[]},"depends_on":["drop-table-b"],"restrict":true},{"version":1,"id":"drop-type-status","kind":"drop_type","object":{"kind":"type","schema_name":"archive_dependencies","name":"status","identity_arguments":[]},"depends_on":["drop-table-a","drop-table-b"],"restrict":true},{"version":1,"id":"drop-schema-dependencies","kind":"drop_schema","object":{"kind":"schema","schema_name":"","name":"archive_dependencies","identity_arguments":[]},"depends_on":["drop-type-status"],"restrict":true}]`,
+		`[{"version":1,"id":"drop-table-a","kind":"drop_table","object":{"kind":"table","oid":100,"schema_name":"archive_a","name":"accounts","identity_arguments":[]},"depends_on":[],"restrict":true},{"version":1,"id":"drop-schema-a","kind":"drop_schema","object":{"kind":"schema","oid":0,"schema_name":"","name":"archive_a","identity_arguments":[]},"depends_on":["drop-table-a"],"restrict":true},{"version":1,"id":"drop-table-b","kind":"drop_table","object":{"kind":"table","oid":200,"schema_name":"archive_b","name":"orders","identity_arguments":[]},"depends_on":[],"restrict":true},{"version":1,"id":"drop-schema-b","kind":"drop_schema","object":{"kind":"schema","oid":0,"schema_name":"","name":"archive_b","identity_arguments":[]},"depends_on":["drop-table-b"],"restrict":true},{"version":1,"id":"drop-type-status","kind":"drop_type","object":{"kind":"type","oid":300,"schema_name":"archive_dependencies","name":"status","identity_arguments":[]},"depends_on":["drop-table-a","drop-table-b"],"restrict":true},{"version":1,"id":"drop-schema-dependencies","kind":"drop_schema","object":{"kind":"schema","oid":0,"schema_name":"","name":"archive_dependencies","identity_arguments":[]},"depends_on":["drop-type-status"],"restrict":true}]`,
 		string(canonicalJSON),
 	)
 }
@@ -139,8 +139,9 @@ func TestCleanupOperationAllowedKinds(t *testing.T) {
 		{kind: cleanupOperationKindDropSchema, objectKind: archivalMarkerObjectKindSchema},
 	} {
 		t.Run(string(testCase.kind), func(t *testing.T) {
-			object := markerObject(testCase.objectKind, "archive", "object")
+			object := markerObject(1, testCase.objectKind, "archive", "object")
 			if testCase.objectKind == archivalMarkerObjectKindSchema {
+				object.OID = 0
 				object.SchemaName = ""
 			}
 			_, err := canonicalizeCleanupOperations([]cleanupOperationV1{
@@ -159,7 +160,7 @@ func TestCleanupOperationDigestStableVector(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(
 		t,
-		cleanupOperationDigest("sha256:8ef73cea6bcc207e9fad7aa46e111abd6a6bea61b05f59972fabf310ccfac053"),
+		cleanupOperationDigest("sha256:53138289ea3bc2a69926d7f5bffc2e4ddfc7dba2feaa080353cd273b50d254bf"),
 		digest,
 	)
 
@@ -238,6 +239,12 @@ func TestCleanupOperationDigestChangesWithSemantics(t *testing.T) {
 			},
 		},
 		{
+			name: "object catalog OID",
+			mutate: func(operations *[]cleanupOperationV1) {
+				(*operations)[0].Object.OID++
+			},
+		},
+		{
 			name: "dependency edge",
 			mutate: func(operations *[]cleanupOperationV1) {
 				(*operations)[2].DependsOn = []string{"drop-table-a"}
@@ -280,7 +287,7 @@ func cleanupOperationFixture() []cleanupOperationV1 {
 		{
 			Version: cleanupOperationCodecVersion,
 			ID:      "drop-table-a", Kind: cleanupOperationKindDropTable,
-			Object:   markerObject(archivalMarkerObjectKindTable, "archive_a", "accounts"),
+			Object:   markerObject(100, archivalMarkerObjectKindTable, "archive_a", "accounts"),
 			Restrict: true,
 		},
 		{
@@ -292,13 +299,13 @@ func cleanupOperationFixture() []cleanupOperationV1 {
 		{
 			Version: cleanupOperationCodecVersion,
 			ID:      "drop-table-b", Kind: cleanupOperationKindDropTable,
-			Object:   markerObject(archivalMarkerObjectKindTable, "archive_b", "orders"),
+			Object:   markerObject(200, archivalMarkerObjectKindTable, "archive_b", "orders"),
 			Restrict: true,
 		},
 		{
 			Version: cleanupOperationCodecVersion,
 			ID:      "drop-type-status", Kind: cleanupOperationKindDropType,
-			Object:    markerObject(archivalMarkerObjectKindType, "archive_dependencies", "status"),
+			Object:    markerObject(300, archivalMarkerObjectKindType, "archive_dependencies", "status"),
 			DependsOn: []string{"drop-table-b", "drop-table-a"}, Restrict: true,
 		},
 		{

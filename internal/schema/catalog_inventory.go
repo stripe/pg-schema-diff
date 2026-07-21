@@ -402,7 +402,8 @@ func (i CatalogInventory) ExpectedTableMove(relationOID uint32) (CatalogExpected
 		RelationOID: relationOID,
 	})
 	for _, catalogType := range i.Types {
-		if catalogType.RelationOID != relationOID {
+		if catalogType.RelationOID != relationOID &&
+			catalogType.OID != relation.RowTypeOID && catalogType.OID != relation.ArrayTypeOID {
 			continue
 		}
 		kind := CatalogObjectKindRowType

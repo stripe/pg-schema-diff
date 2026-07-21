@@ -432,13 +432,7 @@ func validateArchivalNameAllocations(
 		}
 		groupIDs[allocation.GroupID] = struct{}{}
 	}
-	for _, targetSchema := range targetInventory.Schemas {
-		if isReservedArchivalSchemaName(targetSchema.Name, prefix) {
-			return fmt.Errorf("target schema %q uses the reserved archival naming grammar for prefix %q",
-				targetSchema.Name, prefix)
-		}
-	}
-	return nil
+	return validateNoReservedArchivalTargetSchemas(prefix, targetInventory)
 }
 
 type archivalObjectNamespace string

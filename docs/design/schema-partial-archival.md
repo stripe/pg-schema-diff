@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-8 complete
+Status: Proposed; delivery Stages 0-9 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first eight delivery stages are complete. They do not yet retain tables or
+The first nine delivery stages are complete. They do not yet retain tables or
 generate cleanup statements; ordinary table deletion still has the behavior
 described above.
 
@@ -132,6 +132,11 @@ The implemented foundation includes:
   rendering SQL or using `CASCADE`.
 - Dormant strict v1 marker and typed cleanup-operation codecs with canonical
   ordering, validation, and domain-separated cleanup digests.
+- A dormant archived-state resolver that discovers generated-name candidates
+  from the unfiltered inventory, fails closed on marker or catalog disagreement,
+  validates exact OID-based local identities and partition topology, and returns
+  provisional candidate views plus deterministic resume descriptors without
+  emitting SQL or changing public filtering.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -322,6 +327,16 @@ semantic changes require a new digest version.
 The v1 envelope encodes canonical JSON with unpadded base64url. Cleanup digests
 use lowercase `sha256:<64 hex>` and hash the UTF-8 domain, one `0x00` separator
 byte, and canonical cleanup-operation JSON in that order.
+
+Every non-schema v1 object identity includes the concrete nonzero PostgreSQL
+catalog OID captured from the source snapshot. The source-table and cleanup-table
+identities for one member carry the same original relation OID, as does the table
+entry in its automatically moved object set. These database-local OIDs are the
+minimum persisted identity needed to distinguish an original relation moved to a
+cleanup schema from a later replacement that reuses its source qualified name;
+they are not a portable identity across dump/restore. Generated schema identities
+use no catalog OID because their cleanup operations and markers are planned before
+those schemas exist.
 
 Markers have two generation purposes:
 
@@ -751,7 +766,7 @@ stage's scope.
 | 6 | ACL inventory and revoke planner | Complete | 3 |
 | 7 | Archival name allocation | Complete | 1, 3 |
 | 8 | Marker and cleanup-operation codecs | Complete | 4, 5, 6, 7 |
-| 9 | Archived-state resolver | Pending | 8 |
+| 9 | Archived-state resolver | Complete | 8 |
 | 10 | Source safety preflight | Pending | 5, 9 |
 | 11 | Archived dependency closure | Pending | 5, 9, 10 |
 | 12 | Dormant plain-table move engine | Pending | 7, 9, 10, 11 |
@@ -1025,7 +1040,7 @@ Acceptance gate:
 
 ### Stage 9: Archived-state resolver
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stage 8.
 

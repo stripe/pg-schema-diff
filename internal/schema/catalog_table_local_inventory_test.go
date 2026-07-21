@@ -320,6 +320,8 @@ func TestCatalogTableLocalInventoryDatabaseFixtures(t *testing.T) {
 		assert.Contains(t, catalogObjectKinds(move.ExplicitMoveObjects), CatalogObjectKindExtendedStatistic)
 		assert.Len(t, move.InternalObjects, 1)
 		assert.Equal(t, "pg_toast", move.InternalObjects[0].SchemaName)
+		assert.Equal(t, 1, countCatalogObjectKind(move.CleanupSchemaObjects, CatalogObjectKindRowType))
+		assert.Equal(t, 1, countCatalogObjectKind(move.CleanupSchemaObjects, CatalogObjectKindArrayType))
 		assert.Equal(t, 2, countCatalogObjectKind(move.CleanupSchemaObjects, CatalogObjectKindOwnedSequence))
 	})
 
