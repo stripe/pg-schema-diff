@@ -339,7 +339,7 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, stat
 			continue
 		}
 		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
-			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt.DDL, err)
+			return fmt.Errorf("executing migration statement: %s: %w", stmt.DDL, err)
 		}
 	}
 	return nil
