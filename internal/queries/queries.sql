@@ -15,6 +15,147 @@ WHERE
             AND depend.deptype = 'e'
     );
 
+-- name: GetCatalogSchemas :many
+SELECT
+    namespace.oid::BIGINT AS schema_oid,
+    namespace.nspname::TEXT AS schema_name,
+    namespace.nspowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    COALESCE(pg_catalog.obj_description(
+        namespace.oid, 'pg_namespace'
+    ), '')::TEXT AS schema_comment
+FROM pg_catalog.pg_namespace AS namespace
+INNER JOIN pg_catalog.pg_roles AS owner ON namespace.nspowner = owner.oid
+WHERE
+    namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND namespace.nspname !~ '^pg_toast'
+    AND namespace.nspname !~ '^pg_temp'
+ORDER BY namespace.nspname, namespace.oid;
+
+-- name: GetCatalogRelations :many
+SELECT
+    relation.oid::BIGINT AS relation_oid,
+    relation.relnamespace::BIGINT AS schema_oid,
+    relation_namespace.nspname::TEXT AS schema_name,
+    relation.relname::TEXT AS relation_name,
+    relation.relowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    relation.relkind::TEXT AS relation_kind,
+    relation.relpersistence::TEXT AS persistence,
+    relation.relispartition AS is_partition,
+    relation.reltype::BIGINT AS row_type_oid,
+    COALESCE(row_type.typnamespace, 0)::BIGINT AS row_type_schema_oid,
+    COALESCE(row_type_namespace.nspname, '')::TEXT AS row_type_schema_name,
+    COALESCE(row_type.typname, '')::TEXT AS row_type_name,
+    COALESCE(row_type.typarray, 0)::BIGINT AS array_type_oid,
+    COALESCE(array_type.typnamespace, 0)::BIGINT AS array_type_schema_oid,
+    COALESCE(array_type_namespace.nspname, '')::TEXT AS array_type_schema_name,
+    COALESCE(array_type.typname, '')::TEXT AS array_type_name,
+    COALESCE(toast_relation.oid, 0)::BIGINT AS toast_relation_oid,
+    COALESCE(toast_namespace.oid, 0)::BIGINT AS toast_schema_oid,
+    COALESCE(toast_namespace.nspname, '')::TEXT AS toast_schema_name,
+    COALESCE(toast_relation.relname, '')::TEXT AS toast_relation_name,
+    COALESCE(index_data.indrelid, 0)::BIGINT AS indexed_relation_oid,
+    COALESCE(extension.oid, 0)::BIGINT AS extension_oid,
+    COALESCE(extension.extname, '')::TEXT AS extension_name
+FROM pg_catalog.pg_class AS relation
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner ON relation.relowner = owner.oid
+LEFT JOIN pg_catalog.pg_type AS row_type ON relation.reltype = row_type.oid
+LEFT JOIN pg_catalog.pg_namespace AS row_type_namespace
+    ON row_type.typnamespace = row_type_namespace.oid
+LEFT JOIN pg_catalog.pg_type AS array_type ON row_type.typarray = array_type.oid
+LEFT JOIN pg_catalog.pg_namespace AS array_type_namespace
+    ON array_type.typnamespace = array_type_namespace.oid
+LEFT JOIN pg_catalog.pg_class AS toast_relation
+    ON relation.reltoastrelid = toast_relation.oid
+LEFT JOIN pg_catalog.pg_namespace AS toast_namespace
+    ON toast_relation.relnamespace = toast_namespace.oid
+LEFT JOIN pg_catalog.pg_index AS index_data
+    ON relation.oid = index_data.indexrelid
+LEFT JOIN pg_catalog.pg_depend AS extension_dependency
+    ON
+        extension_dependency.classid = 'pg_class'::REGCLASS
+        AND extension_dependency.objid = relation.oid
+        AND extension_dependency.objsubid = 0
+        AND extension_dependency.deptype = 'e'
+LEFT JOIN pg_catalog.pg_extension AS extension
+    ON extension_dependency.refclassid = 'pg_extension'::REGCLASS
+    AND extension_dependency.refobjid = extension.oid
+WHERE
+    relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+    AND relation.relkind IN ('r', 'p', 'f', 'v', 'm', 'S', 'i', 'I', 'c')
+ORDER BY
+    relation_namespace.nspname,
+    relation.relname,
+    relation.relkind,
+    relation.oid;
+
+-- name: GetCatalogConstraints :many
+SELECT
+    constraint_data.oid::BIGINT AS constraint_oid,
+    constraint_data.conname::TEXT AS constraint_name,
+    constraint_data.contype::TEXT AS constraint_type,
+    constraint_data.conrelid::BIGINT AS relation_oid,
+    relation.relnamespace::BIGINT AS schema_oid,
+    relation_namespace.nspname::TEXT AS schema_name,
+    constraint_data.conindid::BIGINT AS index_oid,
+    constraint_data.conparentid::BIGINT AS parent_constraint_oid,
+    COALESCE(extension.oid, 0)::BIGINT AS extension_oid,
+    COALESCE(extension.extname, '')::TEXT AS extension_name
+FROM pg_catalog.pg_constraint AS constraint_data
+INNER JOIN pg_catalog.pg_class AS relation
+    ON constraint_data.conrelid = relation.oid
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+LEFT JOIN pg_catalog.pg_depend AS extension_dependency
+    ON
+        extension_dependency.classid = 'pg_constraint'::REGCLASS
+        AND extension_dependency.objid = constraint_data.oid
+        AND extension_dependency.objsubid = 0
+        AND extension_dependency.deptype = 'e'
+LEFT JOIN pg_catalog.pg_extension AS extension
+    ON extension_dependency.refclassid = 'pg_extension'::REGCLASS
+    AND extension_dependency.refobjid = extension.oid
+WHERE
+    relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+    AND relation.relkind IN ('r', 'p', 'f', 'v', 'm', 'S', 'i', 'I', 'c')
+ORDER BY
+    relation_namespace.nspname,
+    constraint_data.conname,
+    constraint_data.conrelid,
+    constraint_data.oid;
+
+-- name: GetCatalogInheritanceEdges :many
+SELECT
+    inheritance.inhrelid::BIGINT AS child_relation_oid,
+    inheritance.inhparent::BIGINT AS parent_relation_oid,
+    inheritance.inhseqno AS sequence_number
+FROM pg_catalog.pg_inherits AS inheritance
+INNER JOIN pg_catalog.pg_class AS child_relation
+    ON inheritance.inhrelid = child_relation.oid
+INNER JOIN pg_catalog.pg_namespace AS child_namespace
+    ON child_relation.relnamespace = child_namespace.oid
+INNER JOIN pg_catalog.pg_class AS parent_relation
+    ON inheritance.inhparent = parent_relation.oid
+INNER JOIN pg_catalog.pg_namespace AS parent_namespace
+    ON parent_relation.relnamespace = parent_namespace.oid
+WHERE
+    child_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND child_namespace.nspname !~ '^pg_toast'
+    AND child_namespace.nspname !~ '^pg_temp'
+    AND parent_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND parent_namespace.nspname !~ '^pg_toast'
+    AND parent_namespace.nspname !~ '^pg_temp'
+    AND child_relation.relkind IN ('r', 'p', 'f', 'v', 'm', 'S', 'i', 'I', 'c')
+    AND parent_relation.relkind IN ('r', 'p', 'f', 'v', 'm', 'S', 'i', 'I', 'c')
+ORDER BY inheritance.inhrelid, inheritance.inhseqno, inheritance.inhparent;
+
 -- name: GetTables :many
 SELECT
     c.oid,

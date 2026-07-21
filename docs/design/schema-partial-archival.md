@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-2 complete
+Status: Proposed; delivery Stages 0-3 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first three delivery stages are complete. They do not yet retain tables or
+The first four delivery stages are complete. They do not yet retain tables or
 generate cleanup statements; ordinary table deletion still has the behavior
 described above.
 
@@ -115,6 +115,9 @@ The implemented foundation includes:
   fetch pins one connection, runs sequential catalog queries in a read-only
   repeatable-read transaction, and normalizes and hashes the modeled schema
   before committing.
+- A normalized catalog inventory alongside each snapshot with unfiltered user
+  schema, relation/type namespace, index, constraint, sequence, TOAST, extension,
+  and inheritance identities. The inventory does not yet affect hashes or diffs.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -724,7 +727,7 @@ stage's scope.
 | 0 | Schema-filtering foundation | Complete | None |
 | 1 | Plan envelope and generation context | Complete | 0 |
 | 2 | Consistent catalog snapshots | Complete | 0 |
-| 3 | Namespace and partition inventory | Pending | 2 |
+| 3 | Namespace and partition inventory | Complete | 2 |
 | 4 | Table-local metadata inventory | Pending | 3 |
 | 5 | Dependency and platform inventory | Pending | 3 |
 | 6 | ACL inventory and revoke planner | Pending | 3 |
@@ -832,7 +835,7 @@ Acceptance gate:
 
 ### Stage 3: Namespace and partition inventory
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stage 2.
 

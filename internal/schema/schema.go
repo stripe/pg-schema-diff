@@ -68,8 +68,9 @@ type Schema struct {
 // SchemaSnapshot is the normalized modeled schema and its existing schema hash
 // from one catalog snapshot. Callers treat snapshots as immutable.
 type SchemaSnapshot struct {
-	Schema Schema
-	Hash   string
+	Schema    Schema
+	Hash      string
+	Inventory CatalogInventory
 }
 
 // Normalize sorts schema objects while preserving the physical order of table columns.
@@ -374,8 +375,15 @@ const (
 	PkIndexConstraintType IndexConstraintType = "p"
 
 	RelKindOrdinaryTable    RelKind = "r"
+	RelKindIndex            RelKind = "i"
+	RelKindSequence         RelKind = "S"
+	RelKindToastTable       RelKind = "t"
+	RelKindView             RelKind = "v"
 	RelKindPartitionedTable RelKind = "p"
 	RelKindMaterializedView RelKind = "m"
+	RelKindCompositeType    RelKind = "c"
+	RelKindForeignTable     RelKind = "f"
+	RelKindPartitionedIndex RelKind = "I"
 )
 
 func (i Index) GetName() string {
@@ -620,6 +628,10 @@ func getSchemaSnapshot(ctx context.Context, db dbsqlc.DBTX, nameFilter nameFilte
 	if err != nil {
 		return SchemaSnapshot{}, err
 	}
+	inventory, err := fetchCatalogInventory(ctx, db)
+	if err != nil {
+		return SchemaSnapshot{}, fmt.Errorf("fetching catalog inventory: %w", err)
+	}
 
 	normalizedSchema := fetchedSchema.Normalize()
 	hash, err := normalizedSchema.Hash()
@@ -627,7 +639,7 @@ func getSchemaSnapshot(ctx context.Context, db dbsqlc.DBTX, nameFilter nameFilte
 		return SchemaSnapshot{}, fmt.Errorf("hashing schema: %w", err)
 	}
 
-	return SchemaSnapshot{Schema: normalizedSchema, Hash: hash}, nil
+	return SchemaSnapshot{Schema: normalizedSchema, Hash: hash, Inventory: inventory}, nil
 }
 
 func getSchemaNameFilter(opts ...GetSchemaOpt) (nameFilter, error) {
