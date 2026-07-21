@@ -96,7 +96,7 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 		}
 		expectedGetSchemaOpts := append([]externalschema.GetSchemaOpt{}, getSchemaOpts...)
 		expectedGetSchemaOpts = append(expectedGetSchemaOpts,
-			externalschema.WithCleanupSchemaPattern(defaultTableRemovalSchemaPrefix+".*"))
+			externalschema.WithExcludeSchemaPatterns(defaultTableRemovalSchemaPrefix+".*"))
 
 		expectedErr := fmt.Errorf("some error")
 		fakeSchemaSource := fakeSchemaSource{

@@ -92,6 +92,8 @@ func TestSchemaTestSuite(t *testing.T) {
 		_, err := db.ConnPool.Exec(t.Context(), `
 			CREATE SCHEMA pgschemadiff_archive_public_foo;
 			CREATE TABLE pgschemadiff_archive_public_foo.foo (id bigint PRIMARY KEY);
+			CREATE SCHEMA deleted_public_foo;
+			CREATE TABLE deleted_public_foo.foo (id bigint PRIMARY KEY);
 		`)
 		require.NoError(t, err)
 
@@ -99,17 +101,17 @@ func TestSchemaTestSuite(t *testing.T) {
 		require.NoError(t, err)
 
 		filteredSchema, err := internalschema.GetSchema(t.Context(), db.ConnPool,
-			internalschema.WithCleanupSchemaPattern(schema.DefaultCleanupSchemaPrefix+".*"))
+			internalschema.WithExcludeSchemaPatterns(schema.DefaultCleanupSchemaPrefix+".*"))
 		require.NoError(t, err)
 		expectedHash, err := filteredSchema.Hash()
 		require.NoError(t, err)
 		assert.Equal(t, expectedHash, hash)
 
 		customHash, err := schema.GetSchemaHash(t.Context(), db.ConnPool,
-			schema.WithCleanupSchemaPattern("deleted.*"))
+			schema.WithExcludeSchemaPatterns("deleted.*"))
 		require.NoError(t, err)
 		customFilteredSchema, err := internalschema.GetSchema(t.Context(), db.ConnPool,
-			internalschema.WithCleanupSchemaPattern("deleted.*"))
+			internalschema.WithExcludeSchemaPatterns(schema.DefaultCleanupSchemaPrefix+".*", "deleted.*"))
 		require.NoError(t, err)
 		expectedCustomHash, err := customFilteredSchema.Hash()
 		require.NoError(t, err)

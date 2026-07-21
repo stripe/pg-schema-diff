@@ -558,14 +558,6 @@ func WithExcludeSchemaPatterns(patterns ...string) GetSchemaOpt {
 	}
 }
 
-// WithCleanupSchemaPattern configures the pattern used to exclude cleanup schemas. The last provided option wins.
-// An empty pattern disables cleanup schema exclusion.
-func WithCleanupSchemaPattern(pattern string) GetSchemaOpt {
-	return func(o *getSchemaOptions) {
-		o.cleanupSchemaPattern = &pattern
-	}
-}
-
 type getSchemaOptions struct {
 	// includeSchemaPatterns is a list of schema name patterns to include. If empty, then all schemas are included.
 	// We could have built a more complex set of options using the nameFilter system (nested unions and intersections);
@@ -573,8 +565,6 @@ type getSchemaOptions struct {
 	includeSchemaPatterns []string
 	// excludeSchemaPatterns is the exclude analog of includeSchemaPatterns.
 	excludeSchemaPatterns []string
-	// cleanupSchemaPattern is a separately configurable cleanup-schema exclusion pattern.
-	cleanupSchemaPattern *string
 }
 
 // GetSchema fetches the database schema. It is a non-atomic operation.
@@ -597,11 +587,7 @@ func buildNameFilter(options getSchemaOptions) (nameFilter, error) {
 	if err != nil {
 		return nil, err
 	}
-	excludeSchemaPatterns := append([]string{}, options.excludeSchemaPatterns...)
-	if options.cleanupSchemaPattern != nil && *options.cleanupSchemaPattern != "" {
-		excludeSchemaPatterns = append(excludeSchemaPatterns, *options.cleanupSchemaPattern)
-	}
-	excludeSchemasFilter, err := buildExcludeSchemasFilter(excludeSchemaPatterns)
+	excludeSchemasFilter, err := buildExcludeSchemasFilter(options.excludeSchemaPatterns)
 	if err != nil {
 		return nil, err
 	}

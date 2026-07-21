@@ -15,7 +15,6 @@ const DefaultCleanupSchemaPrefix = "pgschemadiff_archive"
 var (
 	WithIncludeSchemaPatterns = internalschema.WithIncludeSchemaPatterns
 	WithExcludeSchemaPatterns = internalschema.WithExcludeSchemaPatterns
-	WithCleanupSchemaPattern  = internalschema.WithCleanupSchemaPattern
 )
 
 // GetSchemaHash hash gets the hash of the target schema. It can be used to compare against the hash in the migration
@@ -23,7 +22,7 @@ var (
 //
 // We do not expose the Schema struct yet because it is subject to change, and we do not want folks depending on its API.
 func GetSchemaHash(ctx context.Context, connPool *pgxpool.Pool, opts ...GetSchemaOpt) (string, error) {
-	opts = append([]GetSchemaOpt{WithCleanupSchemaPattern(DefaultCleanupSchemaPrefix + ".*")}, opts...)
+	opts = append([]GetSchemaOpt{WithExcludeSchemaPatterns(DefaultCleanupSchemaPrefix + ".*")}, opts...)
 	schema, err := internalschema.GetSchema(ctx, connPool, opts...)
 	if err != nil {
 		return "", fmt.Errorf("getting public schema: %w", err)

@@ -1289,8 +1289,8 @@ var (
 		{
 			name: "Filters - exclude schema patterns",
 			opts: []GetSchemaOpt{
-				WithCleanupSchemaPattern("ignored_.*"),
-				WithCleanupSchemaPattern("cleanup_.*"),
+				WithExcludeSchemaPatterns("ignored_.*"),
+				WithExcludeSchemaPatterns("cleanup_.*"),
 			},
 			ddl: []string{`
 			CREATE TABLE foobar();
@@ -1306,16 +1306,11 @@ var (
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "application"},
-					{Name: "ignored_one"},
 					{Name: "public"},
 				},
 				Tables: []Table{
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "application", EscapedName: `"foobar"`},
-						ReplicaIdentity:     ReplicaIdentityDefault,
-					},
-					{
-						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "ignored_one", EscapedName: `"foobar"`},
 						ReplicaIdentity:     ReplicaIdentityDefault,
 					},
 					{

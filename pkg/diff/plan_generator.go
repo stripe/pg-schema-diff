@@ -134,9 +134,8 @@ func Generate(
 	if err := validateTableRemovalSchemaPrefix(planOptions.tableRemovalSchemaPrefix); err != nil {
 		return Plan{}, err
 	}
-	cleanupSchemaPattern := regexp.QuoteMeta(planOptions.tableRemovalSchemaPrefix) + ".*"
 	planOptions.getSchemaOpts = append(planOptions.getSchemaOpts,
-		schema.WithCleanupSchemaPattern(cleanupSchemaPattern))
+		schema.WithExcludeSchemaPatterns(regexp.QuoteMeta(planOptions.tableRemovalSchemaPrefix)+".*"))
 
 	currentSchema, err := fromSchema.GetSchema(ctx, schemaSourcePlanDeps{
 		tempDBFactory: planOptions.tempDbFactory,
