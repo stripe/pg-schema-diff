@@ -53,6 +53,16 @@ func TestQualifyTypeForCast(t *testing.T) {
 			expected: "pg_catalog.jsonb",
 		},
 		{
+			name:     "integer array maps to pg_catalog typname with suffix",
+			input:    "integer[]",
+			expected: "pg_catalog.int4[]",
+		},
+		{
+			name:     "character varying array with typmod",
+			input:    "character varying(255)[]",
+			expected: "pg_catalog.varchar(255)[]",
+		},
+		{
 			name:     "user type already schema qualified",
 			input:    `"public"."myenum"`,
 			expected: `"public"."myenum"`,

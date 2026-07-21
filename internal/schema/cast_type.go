@@ -50,13 +50,22 @@ func QualifyTypeForCast(typeName string) string {
 	}
 
 	base, typmod := splitTypeNameAndTypmod(typeName)
+	base, arraySuffix := splitArraySuffix(base)
 	if typname, ok := formatTypeBaseToPgCatalogTypname[strings.ToLower(base)]; ok {
-		return "pg_catalog." + typname + typmod
+		return "pg_catalog." + typname + typmod + arraySuffix
 	}
 
 	// User-defined types from introspection are schema-qualified (see isSchemaQualifiedTypeName).
 	// This fallback covers remaining pg_catalog builtins whose format_type name is not yet mapped.
-	return `"pg_catalog".` + EscapeIdentifier(base) + typmod
+	return `"pg_catalog".` + EscapeIdentifier(base) + typmod + arraySuffix
+}
+
+func splitArraySuffix(typeName string) (base, arraySuffix string) {
+	for strings.HasSuffix(typeName, "[]") {
+		arraySuffix = "[]" + arraySuffix
+		typeName = strings.TrimSuffix(typeName, "[]")
+	}
+	return typeName, arraySuffix
 }
 
 func isSchemaQualifiedTypeName(typeName string) bool {
