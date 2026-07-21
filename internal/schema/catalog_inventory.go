@@ -26,6 +26,23 @@ type CatalogInventory struct {
 	InheritanceEdges     []CatalogInheritanceEdge
 	PartitionAttachments []CatalogPartitionAttachment
 	SecurityLabels       []CatalogSecurityLabel
+	Dependencies         []CatalogDependency
+	ForeignKeys          []CatalogForeignKey
+	Views                []CatalogView
+	Routines             []CatalogRoutine
+	EnumLabels           []CatalogEnumLabel
+	CompositeAttributes  []CatalogCompositeAttribute
+	DomainConstraints    []CatalogDomainConstraint
+	Ranges               []CatalogRange
+	TypeSupportFunctions []CatalogTypeSupportFunction
+	Collations           []CatalogCollation
+	Operators            []CatalogOperator
+	Extensions           []CatalogExtensionIdentity
+	ExtensionMembers     []CatalogExtensionMember
+	EventTriggers        []CatalogEventTrigger
+	Publications         []CatalogPublication
+	PublicationRelations []CatalogPublicationRelation
+	PublicationSchemas   []CatalogPublicationSchema
 }
 
 type CatalogSchema struct {
@@ -61,19 +78,46 @@ type CatalogRelationIdentity struct {
 }
 
 type CatalogType struct {
-	OID         uint32
-	SchemaOID   uint32
-	SchemaName  string
-	Name        string
-	RelationOID uint32
-	Kind        CatalogTypeKind
+	OID             uint32
+	SchemaOID       uint32
+	SchemaName      string
+	Name            string
+	OwnerOID        uint32
+	OwnerName       string
+	Kind            CatalogTypeKind
+	RawKind         string
+	Category        string
+	IsPreferred     bool
+	IsDefined       bool
+	InternalLength  int16
+	IsPassedByValue bool
+	Delimiter       string
+	Alignment       string
+	Storage         string
+	RelationOID     uint32
+	ElementTypeOID  uint32
+	ArrayTypeOID    uint32
+	BaseTypeOID     uint32
+	TypeModifier    int32
+	Dimensions      int32
+	CollationOID    uint32
+	IsNotNull       bool
+	DefaultValue    string
+	Extension       *CatalogExtension
 }
 
 type CatalogTypeKind string
 
 const (
-	CatalogTypeKindRow   CatalogTypeKind = "row"
-	CatalogTypeKindArray CatalogTypeKind = "array"
+	CatalogTypeKindArray      CatalogTypeKind = "array"
+	CatalogTypeKindBase       CatalogTypeKind = "base"
+	CatalogTypeKindComposite  CatalogTypeKind = "composite"
+	CatalogTypeKindDomain     CatalogTypeKind = "domain"
+	CatalogTypeKindEnum       CatalogTypeKind = "enum"
+	CatalogTypeKindMultirange CatalogTypeKind = "multirange"
+	CatalogTypeKindPseudo     CatalogTypeKind = "pseudo"
+	CatalogTypeKindRange      CatalogTypeKind = "range"
+	CatalogTypeKindRow        CatalogTypeKind = "row"
 )
 
 type CatalogIndex struct {
@@ -118,11 +162,21 @@ type CatalogConstraint struct {
 }
 
 type CatalogSequence struct {
-	OID        uint32
-	SchemaOID  uint32
-	SchemaName string
-	Name       string
-	Extension  *CatalogExtension
+	OID            uint32
+	SchemaOID      uint32
+	SchemaName     string
+	Name           string
+	OwnerOID       uint32
+	OwnerName      string
+	Persistence    RelationPersistence
+	DataTypeOID    uint32
+	StartValue     int64
+	IncrementValue int64
+	MaxValue       int64
+	MinValue       int64
+	CacheSize      int64
+	IsCycle        bool
+	Extension      *CatalogExtension
 }
 
 type CatalogTable struct {
@@ -641,7 +695,7 @@ func (i CatalogInventory) Normalize() CatalogInventory {
 			cmp.Compare(a.Label, b.Label),
 		)
 	})
-	return i
+	return normalizeCatalogDependencyInventory(i)
 }
 
 func sortedStrings(values []string) []string {
@@ -703,26 +757,6 @@ func fetchCatalogInventory(ctx context.Context, db dbsqlc.DBTX) (CatalogInventor
 		}
 		inventory.Relations = append(inventory.Relations, relation)
 
-		if rawRelation.RowTypeOid != 0 {
-			inventory.Types = append(inventory.Types, CatalogType{
-				OID:         catalogOID(rawRelation.RowTypeOid),
-				SchemaOID:   catalogOID(rawRelation.RowTypeSchemaOid),
-				SchemaName:  rawRelation.RowTypeSchemaName,
-				Name:        rawRelation.RowTypeName,
-				RelationOID: relation.OID,
-				Kind:        CatalogTypeKindRow,
-			})
-		}
-		if rawRelation.ArrayTypeOid != 0 {
-			inventory.Types = append(inventory.Types, CatalogType{
-				OID:         catalogOID(rawRelation.ArrayTypeOid),
-				SchemaOID:   catalogOID(rawRelation.ArrayTypeSchemaOid),
-				SchemaName:  rawRelation.ArrayTypeSchemaName,
-				Name:        rawRelation.ArrayTypeName,
-				RelationOID: relation.OID,
-				Kind:        CatalogTypeKindArray,
-			})
-		}
 		switch relation.Kind {
 		case RelKindIndex, RelKindPartitionedIndex:
 			inventory.Indexes = append(inventory.Indexes, CatalogIndex{
@@ -742,14 +776,6 @@ func fetchCatalogInventory(ctx context.Context, db dbsqlc.DBTX) (CatalogInventor
 				IsReady:           rawRelation.IndexIsReady,
 				IsLive:            rawRelation.IndexIsLive,
 				Extension:         extension,
-			})
-		case RelKindSequence:
-			inventory.Sequences = append(inventory.Sequences, CatalogSequence{
-				OID:        relation.OID,
-				SchemaOID:  relation.SchemaOID,
-				SchemaName: relation.SchemaName,
-				Name:       relation.Name,
-				Extension:  extension,
 			})
 		}
 	}
@@ -967,6 +993,10 @@ func fetchCatalogInventory(ctx context.Context, db dbsqlc.DBTX) (CatalogInventor
 			Provider:     rawLabel.Provider,
 			Label:        rawLabel.Label,
 		})
+	}
+
+	if err := fetchCatalogDependencyInventory(ctx, db, &inventory); err != nil {
+		return CatalogInventory{}, err
 	}
 
 	return inventory.Normalize(), nil

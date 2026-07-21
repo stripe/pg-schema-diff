@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-4 complete
+Status: Proposed; delivery Stages 0-5 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first five delivery stages are complete. They do not yet retain tables or
+The first six delivery stages are complete. They do not yet retain tables or
 generate cleanup statements; ordinary table deletion still has the behavior
 described above.
 
@@ -121,6 +121,11 @@ The implemented foundation includes:
   identities distinguish cleanup-schema followers, attached subobjects,
   explicit extended-statistics moves, and PostgreSQL-owned TOAST state. The
   inventory does not yet affect hashes or diffs.
+- Unfiltered raw dependency edges, complete foreign keys, dependent
+  relation/routine and type-platform identities, extension membership, event
+  triggers, and all publication forms. Routine body facts are classified
+  conservatively as catalog-trackable or untrackable without making a safety
+  decision.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -732,7 +737,7 @@ stage's scope.
 | 2 | Consistent catalog snapshots | Complete | 0 |
 | 3 | Namespace and partition inventory | Complete | 2 |
 | 4 | Table-local metadata inventory | Complete | 3 |
-| 5 | Dependency and platform inventory | Pending | 3 |
+| 5 | Dependency and platform inventory | Complete | 3 |
 | 6 | ACL inventory and revoke planner | Pending | 3 |
 | 7 | Archival name allocation | Pending | 1, 3 |
 | 8 | Marker and cleanup-operation codecs | Pending | 4, 5, 6, 7 |
@@ -895,7 +900,7 @@ Acceptance gate:
 
 ### Stage 5: Dependency and platform inventory
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stage 3.
 

@@ -11,6 +11,90 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getCatalogCollations = `-- name: GetCatalogCollations :many
+SELECT
+    collation_data.oid::BIGINT AS collation_oid,
+    collation_data.collnamespace::BIGINT AS schema_oid,
+    collation_namespace.nspname::TEXT AS schema_name,
+    collation_data.collname::TEXT AS collation_name,
+    collation_data.collowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    collation_data.collprovider::TEXT AS provider,
+    collation_data.collisdeterministic AS is_deterministic,
+    collation_data.collencoding AS encoding,
+    COALESCE(collation_data.collcollate, '')::TEXT AS collate,
+    COALESCE(collation_data.collctype, '')::TEXT AS ctype,
+    COALESCE(collation_data.colllocale, '')::TEXT AS locale,
+    COALESCE(collation_data.collicurules, '')::TEXT AS icu_rules,
+    COALESCE(collation_data.collversion, '')::TEXT AS version
+FROM pg_catalog.pg_collation AS collation_data
+INNER JOIN pg_catalog.pg_namespace AS collation_namespace
+    ON collation_data.collnamespace = collation_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner ON collation_data.collowner = owner.oid
+WHERE
+    collation_namespace.nspname NOT IN (
+        'pg_catalog', 'information_schema'
+    )
+    AND collation_namespace.nspname !~ '^pg_toast'
+    AND collation_namespace.nspname !~ '^pg_temp'
+ORDER BY
+    collation_namespace.nspname,
+    collation_data.collname,
+    collation_data.oid
+`
+
+type GetCatalogCollationsRow struct {
+	CollationOid    int64
+	SchemaOid       int64
+	SchemaName      string
+	CollationName   string
+	OwnerOid        int64
+	OwnerName       string
+	Provider        string
+	IsDeterministic bool
+	Encoding        int32
+	Collate         string
+	Ctype           string
+	Locale          string
+	IcuRules        string
+	Version         string
+}
+
+func (q *Queries) GetCatalogCollations(ctx context.Context, db DBTX) ([]GetCatalogCollationsRow, error) {
+	rows, err := db.Query(ctx, getCatalogCollations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogCollationsRow
+	for rows.Next() {
+		var i GetCatalogCollationsRow
+		if err := rows.Scan(
+			&i.CollationOid,
+			&i.SchemaOid,
+			&i.SchemaName,
+			&i.CollationName,
+			&i.OwnerOid,
+			&i.OwnerName,
+			&i.Provider,
+			&i.IsDeterministic,
+			&i.Encoding,
+			&i.Collate,
+			&i.Ctype,
+			&i.Locale,
+			&i.IcuRules,
+			&i.Version,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCatalogColumns = `-- name: GetCatalogColumns :many
 SELECT
     attribute.attrelid::BIGINT AS relation_oid,
@@ -173,6 +257,70 @@ func (q *Queries) GetCatalogColumns(ctx context.Context, db DBTX) ([]GetCatalogC
 	return items, nil
 }
 
+const getCatalogCompositeAttributes = `-- name: GetCatalogCompositeAttributes :many
+SELECT
+    type_data.oid::BIGINT AS type_oid,
+    type_data.typrelid::BIGINT AS relation_oid,
+    attribute.attnum AS attribute_number,
+    attribute.attname::TEXT AS attribute_name,
+    attribute.atttypid::BIGINT AS attribute_type_oid,
+    attribute.atttypmod AS type_modifier,
+    attribute.attcollation::BIGINT AS collation_oid
+FROM pg_catalog.pg_type AS type_data
+INNER JOIN pg_catalog.pg_namespace AS type_namespace
+    ON type_data.typnamespace = type_namespace.oid
+INNER JOIN pg_catalog.pg_class AS relation
+    ON type_data.typrelid = relation.oid
+    AND relation.relkind = 'c'
+INNER JOIN pg_catalog.pg_attribute AS attribute
+    ON relation.oid = attribute.attrelid
+WHERE
+    type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
+    AND attribute.attnum > 0
+    AND NOT attribute.attisdropped
+ORDER BY type_data.oid, attribute.attnum
+`
+
+type GetCatalogCompositeAttributesRow struct {
+	TypeOid          int64
+	RelationOid      int64
+	AttributeNumber  int16
+	AttributeName    string
+	AttributeTypeOid int64
+	TypeModifier     int32
+	CollationOid     int64
+}
+
+func (q *Queries) GetCatalogCompositeAttributes(ctx context.Context, db DBTX) ([]GetCatalogCompositeAttributesRow, error) {
+	rows, err := db.Query(ctx, getCatalogCompositeAttributes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogCompositeAttributesRow
+	for rows.Next() {
+		var i GetCatalogCompositeAttributesRow
+		if err := rows.Scan(
+			&i.TypeOid,
+			&i.RelationOid,
+			&i.AttributeNumber,
+			&i.AttributeName,
+			&i.AttributeTypeOid,
+			&i.TypeModifier,
+			&i.CollationOid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCatalogConstraints = `-- name: GetCatalogConstraints :many
 SELECT
     constraint_data.oid::BIGINT AS constraint_oid,
@@ -297,6 +445,377 @@ func (q *Queries) GetCatalogConstraints(ctx context.Context, db DBTX) ([]GetCata
 	return items, nil
 }
 
+const getCatalogDependencies = `-- name: GetCatalogDependencies :many
+WITH raw_dependencies AS (
+    SELECT
+        false AS is_shared,
+        dependency.classid AS class_id,
+        dependency.objid AS object_id,
+        dependency.objsubid AS sub_object_id,
+        dependency.refclassid AS referenced_class_id,
+        dependency.refobjid AS referenced_object_id,
+        dependency.refobjsubid AS referenced_sub_object_id,
+        dependency.deptype AS dependency_type
+    FROM pg_catalog.pg_depend AS dependency
+
+    UNION ALL
+
+    SELECT
+        true AS is_shared,
+        dependency.classid AS class_id,
+        dependency.objid AS object_id,
+        0 AS sub_object_id,
+        dependency.refclassid AS referenced_class_id,
+        dependency.refobjid AS referenced_object_id,
+        0 AS referenced_sub_object_id,
+        dependency.deptype AS dependency_type
+    FROM pg_catalog.pg_shdepend AS dependency
+    WHERE dependency.dbid = (
+        SELECT database.oid
+        FROM pg_catalog.pg_database AS database
+        WHERE database.datname = pg_catalog.current_database()
+    )
+), identified_dependencies AS (
+    SELECT
+        dependency.is_shared, dependency.class_id, dependency.object_id, dependency.sub_object_id, dependency.referenced_class_id, dependency.referenced_object_id, dependency.referenced_sub_object_id, dependency.dependency_type,
+        object_data.object_type,
+        COALESCE(object_data.object_schema_name, '') AS object_schema_name,
+        COALESCE(object_data.object_name, '') AS object_name,
+        object_data.object_identity,
+        referenced_object_data.object_type AS referenced_object_type,
+        COALESCE(referenced_object_data.object_schema_name, '')
+            AS referenced_object_schema_name,
+        COALESCE(referenced_object_data.object_name, '')
+            AS referenced_object_name,
+        referenced_object_data.object_identity AS referenced_object_identity
+    FROM raw_dependencies AS dependency
+    CROSS JOIN LATERAL pg_catalog.pg_identify_object(
+        dependency.class_id,
+        dependency.object_id,
+        dependency.sub_object_id
+    ) AS object_data(
+        object_type, object_schema_name, object_name, object_identity
+    )
+    CROSS JOIN LATERAL pg_catalog.pg_identify_object(
+        dependency.referenced_class_id,
+        dependency.referenced_object_id,
+        dependency.referenced_sub_object_id
+    ) AS referenced_object_data(
+        object_type, object_schema_name, object_name, object_identity
+    )
+)
+SELECT
+    dependency.is_shared,
+    dependency.class_id::BIGINT AS class_id,
+    dependency.object_id::BIGINT AS object_id,
+    dependency.sub_object_id,
+    dependency.object_type::TEXT AS object_type,
+    dependency.object_schema_name::TEXT AS object_schema_name,
+    dependency.object_name::TEXT AS object_name,
+    dependency.object_identity::TEXT AS object_identity,
+    dependency.referenced_class_id::BIGINT AS referenced_class_id,
+    dependency.referenced_object_id::BIGINT AS referenced_object_id,
+    dependency.referenced_sub_object_id,
+    dependency.referenced_object_type::TEXT AS referenced_object_type,
+    dependency.referenced_object_schema_name::TEXT
+        AS referenced_object_schema_name,
+    dependency.referenced_object_name::TEXT AS referenced_object_name,
+    dependency.referenced_object_identity::TEXT AS referenced_object_identity,
+    dependency.dependency_type::TEXT AS dependency_type
+FROM identified_dependencies AS dependency
+WHERE
+    (
+        dependency.object_schema_name != ''
+        AND dependency.object_schema_name NOT IN (
+            'pg_catalog', 'information_schema'
+        )
+        AND dependency.object_schema_name !~ '^pg_toast'
+        AND dependency.object_schema_name !~ '^pg_temp'
+    )
+    OR (
+        dependency.referenced_object_schema_name != ''
+        AND dependency.referenced_object_schema_name NOT IN (
+            'pg_catalog', 'information_schema'
+        )
+        AND dependency.referenced_object_schema_name !~ '^pg_toast'
+        AND dependency.referenced_object_schema_name !~ '^pg_temp'
+    )
+    OR (
+        dependency.class_id = 'pg_namespace'::REGCLASS
+        AND EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_namespace AS namespace
+            WHERE
+                namespace.oid = dependency.object_id
+                AND namespace.nspname NOT IN (
+                    'pg_catalog', 'information_schema'
+                )
+                AND namespace.nspname !~ '^pg_toast'
+                AND namespace.nspname !~ '^pg_temp'
+        )
+    )
+    OR (
+        dependency.referenced_class_id = 'pg_namespace'::REGCLASS
+        AND EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_namespace AS namespace
+            WHERE
+                namespace.oid = dependency.referenced_object_id
+                AND namespace.nspname NOT IN (
+                    'pg_catalog', 'information_schema'
+                )
+                AND namespace.nspname !~ '^pg_toast'
+                AND namespace.nspname !~ '^pg_temp'
+        )
+    )
+    OR dependency.class_id IN (
+        'pg_extension'::REGCLASS,
+        'pg_event_trigger'::REGCLASS,
+        'pg_publication'::REGCLASS,
+        'pg_publication_rel'::REGCLASS,
+        'pg_publication_namespace'::REGCLASS
+    )
+    OR dependency.referenced_class_id IN (
+        'pg_extension'::REGCLASS,
+        'pg_event_trigger'::REGCLASS,
+        'pg_publication'::REGCLASS,
+        'pg_publication_rel'::REGCLASS,
+        'pg_publication_namespace'::REGCLASS
+    )
+ORDER BY
+    dependency.is_shared,
+    dependency.class_id,
+    dependency.object_id,
+    dependency.sub_object_id,
+    dependency.referenced_class_id,
+    dependency.referenced_object_id,
+    dependency.referenced_sub_object_id,
+    dependency.dependency_type
+`
+
+type GetCatalogDependenciesRow struct {
+	IsShared                   bool
+	ClassID                    int64
+	ObjectID                   int64
+	SubObjectID                int32
+	ObjectType                 string
+	ObjectSchemaName           string
+	ObjectName                 string
+	ObjectIdentity             string
+	ReferencedClassID          int64
+	ReferencedObjectID         int64
+	ReferencedSubObjectID      int32
+	ReferencedObjectType       string
+	ReferencedObjectSchemaName string
+	ReferencedObjectName       string
+	ReferencedObjectIdentity   string
+	DependencyType             string
+}
+
+func (q *Queries) GetCatalogDependencies(ctx context.Context, db DBTX) ([]GetCatalogDependenciesRow, error) {
+	rows, err := db.Query(ctx, getCatalogDependencies)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogDependenciesRow
+	for rows.Next() {
+		var i GetCatalogDependenciesRow
+		if err := rows.Scan(
+			&i.IsShared,
+			&i.ClassID,
+			&i.ObjectID,
+			&i.SubObjectID,
+			&i.ObjectType,
+			&i.ObjectSchemaName,
+			&i.ObjectName,
+			&i.ObjectIdentity,
+			&i.ReferencedClassID,
+			&i.ReferencedObjectID,
+			&i.ReferencedSubObjectID,
+			&i.ReferencedObjectType,
+			&i.ReferencedObjectSchemaName,
+			&i.ReferencedObjectName,
+			&i.ReferencedObjectIdentity,
+			&i.DependencyType,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogDomainConstraints = `-- name: GetCatalogDomainConstraints :many
+SELECT
+    constraint_data.oid::BIGINT AS constraint_oid,
+    constraint_data.contypid::BIGINT AS type_oid,
+    constraint_data.conname::TEXT AS constraint_name,
+    constraint_data.condeferrable AS is_deferrable,
+    constraint_data.condeferred AS is_deferred,
+    constraint_data.convalidated AS is_validated,
+    pg_catalog.pg_get_constraintdef(
+        constraint_data.oid, false
+    )::TEXT AS constraint_definition
+FROM pg_catalog.pg_constraint AS constraint_data
+INNER JOIN pg_catalog.pg_type AS type_data
+    ON constraint_data.contypid = type_data.oid
+INNER JOIN pg_catalog.pg_namespace AS type_namespace
+    ON type_data.typnamespace = type_namespace.oid
+WHERE
+    constraint_data.contype = 'c'
+    AND type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
+ORDER BY constraint_data.contypid, constraint_data.conname, constraint_data.oid
+`
+
+type GetCatalogDomainConstraintsRow struct {
+	ConstraintOid        int64
+	TypeOid              int64
+	ConstraintName       string
+	IsDeferrable         bool
+	IsDeferred           bool
+	IsValidated          bool
+	ConstraintDefinition string
+}
+
+func (q *Queries) GetCatalogDomainConstraints(ctx context.Context, db DBTX) ([]GetCatalogDomainConstraintsRow, error) {
+	rows, err := db.Query(ctx, getCatalogDomainConstraints)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogDomainConstraintsRow
+	for rows.Next() {
+		var i GetCatalogDomainConstraintsRow
+		if err := rows.Scan(
+			&i.ConstraintOid,
+			&i.TypeOid,
+			&i.ConstraintName,
+			&i.IsDeferrable,
+			&i.IsDeferred,
+			&i.IsValidated,
+			&i.ConstraintDefinition,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogEnumLabels = `-- name: GetCatalogEnumLabels :many
+SELECT
+    enum_label.enumtypid::BIGINT AS type_oid,
+    enum_label.oid::BIGINT AS label_oid,
+    enum_label.enumsortorder::DOUBLE PRECISION AS sort_order,
+    enum_label.enumlabel::TEXT AS label
+FROM pg_catalog.pg_enum AS enum_label
+INNER JOIN pg_catalog.pg_type AS type_data
+    ON enum_label.enumtypid = type_data.oid
+INNER JOIN pg_catalog.pg_namespace AS type_namespace
+    ON type_data.typnamespace = type_namespace.oid
+WHERE
+    type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
+ORDER BY enum_label.enumtypid, enum_label.enumsortorder, enum_label.oid
+`
+
+type GetCatalogEnumLabelsRow struct {
+	TypeOid   int64
+	LabelOid  int64
+	SortOrder float64
+	Label     string
+}
+
+func (q *Queries) GetCatalogEnumLabels(ctx context.Context, db DBTX) ([]GetCatalogEnumLabelsRow, error) {
+	rows, err := db.Query(ctx, getCatalogEnumLabels)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogEnumLabelsRow
+	for rows.Next() {
+		var i GetCatalogEnumLabelsRow
+		if err := rows.Scan(
+			&i.TypeOid,
+			&i.LabelOid,
+			&i.SortOrder,
+			&i.Label,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogEventTriggers = `-- name: GetCatalogEventTriggers :many
+SELECT
+    event_trigger.oid::BIGINT AS event_trigger_oid,
+    event_trigger.evtname::TEXT AS event_trigger_name,
+    event_trigger.evtowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    event_trigger.evtevent::TEXT AS event,
+    event_trigger.evtfoid::BIGINT AS function_oid,
+    event_trigger.evtenabled::TEXT AS enabled_mode,
+    COALESCE(event_trigger.evttags, ARRAY[]::TEXT[])::TEXT[] AS tags
+FROM pg_catalog.pg_event_trigger AS event_trigger
+INNER JOIN pg_catalog.pg_roles AS owner ON event_trigger.evtowner = owner.oid
+ORDER BY event_trigger.evtname, event_trigger.oid
+`
+
+type GetCatalogEventTriggersRow struct {
+	EventTriggerOid  int64
+	EventTriggerName string
+	OwnerOid         int64
+	OwnerName        string
+	Event            string
+	FunctionOid      int64
+	EnabledMode      string
+	Tags             []string
+}
+
+func (q *Queries) GetCatalogEventTriggers(ctx context.Context, db DBTX) ([]GetCatalogEventTriggersRow, error) {
+	rows, err := db.Query(ctx, getCatalogEventTriggers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogEventTriggersRow
+	for rows.Next() {
+		var i GetCatalogEventTriggersRow
+		if err := rows.Scan(
+			&i.EventTriggerOid,
+			&i.EventTriggerName,
+			&i.OwnerOid,
+			&i.OwnerName,
+			&i.Event,
+			&i.FunctionOid,
+			&i.EnabledMode,
+			&i.Tags,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCatalogExtendedStatistics = `-- name: GetCatalogExtendedStatistics :many
 SELECT
     statistic.oid::BIGINT AS statistic_oid,
@@ -384,6 +903,278 @@ func (q *Queries) GetCatalogExtendedStatistics(ctx context.Context, db DBTX) ([]
 	return items, nil
 }
 
+const getCatalogExtensionMembers = `-- name: GetCatalogExtensionMembers :many
+SELECT
+    extension.oid::BIGINT AS extension_oid,
+    extension.extname::TEXT AS extension_name,
+    dependency.classid::BIGINT AS class_id,
+    dependency.objid::BIGINT AS object_id,
+    dependency.objsubid AS sub_object_id,
+    object_data.object_type::TEXT AS object_type,
+    COALESCE(object_data.object_schema_name, '')::TEXT AS object_schema_name,
+    COALESCE(object_data.object_name, '')::TEXT AS object_name,
+    object_data.object_identity::TEXT AS object_identity
+FROM pg_catalog.pg_depend AS dependency
+INNER JOIN pg_catalog.pg_extension AS extension
+    ON dependency.refclassid = 'pg_extension'::REGCLASS
+    AND dependency.refobjid = extension.oid
+CROSS JOIN LATERAL pg_catalog.pg_identify_object(
+    dependency.classid, dependency.objid, dependency.objsubid
+) AS object_data(
+    object_type, object_schema_name, object_name, object_identity
+)
+WHERE dependency.deptype = 'e'
+ORDER BY
+    extension.extname,
+    dependency.classid,
+    dependency.objid,
+    dependency.objsubid
+`
+
+type GetCatalogExtensionMembersRow struct {
+	ExtensionOid     int64
+	ExtensionName    string
+	ClassID          int64
+	ObjectID         int64
+	SubObjectID      int32
+	ObjectType       string
+	ObjectSchemaName string
+	ObjectName       string
+	ObjectIdentity   string
+}
+
+func (q *Queries) GetCatalogExtensionMembers(ctx context.Context, db DBTX) ([]GetCatalogExtensionMembersRow, error) {
+	rows, err := db.Query(ctx, getCatalogExtensionMembers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogExtensionMembersRow
+	for rows.Next() {
+		var i GetCatalogExtensionMembersRow
+		if err := rows.Scan(
+			&i.ExtensionOid,
+			&i.ExtensionName,
+			&i.ClassID,
+			&i.ObjectID,
+			&i.SubObjectID,
+			&i.ObjectType,
+			&i.ObjectSchemaName,
+			&i.ObjectName,
+			&i.ObjectIdentity,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogExtensions = `-- name: GetCatalogExtensions :many
+SELECT
+    extension.oid::BIGINT AS extension_oid,
+    extension.extname::TEXT AS extension_name,
+    extension.extowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    extension.extnamespace::BIGINT AS schema_oid,
+    extension_namespace.nspname::TEXT AS schema_name,
+    extension.extrelocatable AS is_relocatable,
+    extension.extversion::TEXT AS version,
+    ARRAY(
+        SELECT config_relation_oid::BIGINT
+        FROM UNNEST(COALESCE(extension.extconfig, ARRAY[]::OID[]))
+            WITH ORDINALITY AS config (config_relation_oid, position)
+        ORDER BY config.position
+    )::BIGINT[] AS configuration_relation_oids,
+    COALESCE(extension.extcondition, ARRAY[]::TEXT[])::TEXT[]
+        AS configuration_conditions
+FROM pg_catalog.pg_extension AS extension
+INNER JOIN pg_catalog.pg_roles AS owner ON extension.extowner = owner.oid
+INNER JOIN pg_catalog.pg_namespace AS extension_namespace
+    ON extension.extnamespace = extension_namespace.oid
+ORDER BY extension.extname, extension.oid
+`
+
+type GetCatalogExtensionsRow struct {
+	ExtensionOid              int64
+	ExtensionName             string
+	OwnerOid                  int64
+	OwnerName                 string
+	SchemaOid                 int64
+	SchemaName                string
+	IsRelocatable             bool
+	Version                   string
+	ConfigurationRelationOids []int64
+	ConfigurationConditions   []string
+}
+
+func (q *Queries) GetCatalogExtensions(ctx context.Context, db DBTX) ([]GetCatalogExtensionsRow, error) {
+	rows, err := db.Query(ctx, getCatalogExtensions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogExtensionsRow
+	for rows.Next() {
+		var i GetCatalogExtensionsRow
+		if err := rows.Scan(
+			&i.ExtensionOid,
+			&i.ExtensionName,
+			&i.OwnerOid,
+			&i.OwnerName,
+			&i.SchemaOid,
+			&i.SchemaName,
+			&i.IsRelocatable,
+			&i.Version,
+			&i.ConfigurationRelationOids,
+			&i.ConfigurationConditions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogForeignKeys = `-- name: GetCatalogForeignKeys :many
+SELECT
+    constraint_data.oid::BIGINT AS constraint_oid,
+    constraint_data.connamespace::BIGINT AS schema_oid,
+    constraint_namespace.nspname::TEXT AS schema_name,
+    constraint_data.conname::TEXT AS constraint_name,
+    constraint_data.conrelid::BIGINT AS owning_relation_oid,
+    owning_namespace.nspname::TEXT AS owning_schema_name,
+    owning_relation.relname::TEXT AS owning_relation_name,
+    constraint_data.confrelid::BIGINT AS referenced_relation_oid,
+    referenced_namespace.nspname::TEXT AS referenced_schema_name,
+    referenced_relation.relname::TEXT AS referenced_relation_name,
+    constraint_data.conkey::SMALLINT[] AS owning_column_numbers,
+    ARRAY(
+        SELECT attribute.attname::TEXT
+        FROM UNNEST(constraint_data.conkey) WITH ORDINALITY
+            AS key_column (column_number, position)
+        INNER JOIN pg_catalog.pg_attribute AS attribute
+            ON attribute.attrelid = constraint_data.conrelid
+            AND attribute.attnum = key_column.column_number
+        ORDER BY key_column.position
+    )::TEXT[] AS owning_column_names,
+    constraint_data.confkey::SMALLINT[] AS referenced_column_numbers,
+    ARRAY(
+        SELECT attribute.attname::TEXT
+        FROM UNNEST(constraint_data.confkey) WITH ORDINALITY
+            AS key_column (column_number, position)
+        INNER JOIN pg_catalog.pg_attribute AS attribute
+            ON attribute.attrelid = constraint_data.confrelid
+            AND attribute.attnum = key_column.column_number
+        ORDER BY key_column.position
+    )::TEXT[] AS referenced_column_names,
+    constraint_data.confmatchtype::TEXT AS match_type,
+    constraint_data.confupdtype::TEXT AS update_action,
+    constraint_data.confdeltype::TEXT AS delete_action,
+    constraint_data.condeferrable AS is_deferrable,
+    constraint_data.condeferred AS is_deferred,
+    constraint_data.convalidated AS is_validated,
+    constraint_data.conparentid::BIGINT AS parent_constraint_oid,
+    pg_catalog.pg_get_constraintdef(
+        constraint_data.oid, false
+    )::TEXT AS constraint_definition
+FROM pg_catalog.pg_constraint AS constraint_data
+INNER JOIN pg_catalog.pg_namespace AS constraint_namespace
+    ON constraint_data.connamespace = constraint_namespace.oid
+INNER JOIN pg_catalog.pg_class AS owning_relation
+    ON constraint_data.conrelid = owning_relation.oid
+INNER JOIN pg_catalog.pg_namespace AS owning_namespace
+    ON owning_relation.relnamespace = owning_namespace.oid
+INNER JOIN pg_catalog.pg_class AS referenced_relation
+    ON constraint_data.confrelid = referenced_relation.oid
+INNER JOIN pg_catalog.pg_namespace AS referenced_namespace
+    ON referenced_relation.relnamespace = referenced_namespace.oid
+WHERE
+    constraint_data.contype = 'f'
+    AND owning_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND owning_namespace.nspname !~ '^pg_toast'
+    AND owning_namespace.nspname !~ '^pg_temp'
+ORDER BY
+    constraint_namespace.nspname,
+    constraint_data.conname,
+    constraint_data.conrelid,
+    constraint_data.oid
+`
+
+type GetCatalogForeignKeysRow struct {
+	ConstraintOid           int64
+	SchemaOid               int64
+	SchemaName              string
+	ConstraintName          string
+	OwningRelationOid       int64
+	OwningSchemaName        string
+	OwningRelationName      string
+	ReferencedRelationOid   int64
+	ReferencedSchemaName    string
+	ReferencedRelationName  string
+	OwningColumnNumbers     []int16
+	OwningColumnNames       []string
+	ReferencedColumnNumbers []int16
+	ReferencedColumnNames   []string
+	MatchType               string
+	UpdateAction            string
+	DeleteAction            string
+	IsDeferrable            bool
+	IsDeferred              bool
+	IsValidated             bool
+	ParentConstraintOid     int64
+	ConstraintDefinition    string
+}
+
+func (q *Queries) GetCatalogForeignKeys(ctx context.Context, db DBTX) ([]GetCatalogForeignKeysRow, error) {
+	rows, err := db.Query(ctx, getCatalogForeignKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogForeignKeysRow
+	for rows.Next() {
+		var i GetCatalogForeignKeysRow
+		if err := rows.Scan(
+			&i.ConstraintOid,
+			&i.SchemaOid,
+			&i.SchemaName,
+			&i.ConstraintName,
+			&i.OwningRelationOid,
+			&i.OwningSchemaName,
+			&i.OwningRelationName,
+			&i.ReferencedRelationOid,
+			&i.ReferencedSchemaName,
+			&i.ReferencedRelationName,
+			&i.OwningColumnNumbers,
+			&i.OwningColumnNames,
+			&i.ReferencedColumnNumbers,
+			&i.ReferencedColumnNames,
+			&i.MatchType,
+			&i.UpdateAction,
+			&i.DeleteAction,
+			&i.IsDeferrable,
+			&i.IsDeferred,
+			&i.IsValidated,
+			&i.ParentConstraintOid,
+			&i.ConstraintDefinition,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCatalogInheritanceEdges = `-- name: GetCatalogInheritanceEdges :many
 SELECT
     inheritance.inhrelid::BIGINT AS child_relation_oid,
@@ -426,6 +1217,108 @@ func (q *Queries) GetCatalogInheritanceEdges(ctx context.Context, db DBTX) ([]Ge
 	for rows.Next() {
 		var i GetCatalogInheritanceEdgesRow
 		if err := rows.Scan(&i.ChildRelationOid, &i.ParentRelationOid, &i.SequenceNumber); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogOperators = `-- name: GetCatalogOperators :many
+SELECT
+    operator.oid::BIGINT AS operator_oid,
+    operator.oprnamespace::BIGINT AS schema_oid,
+    operator_namespace.nspname::TEXT AS schema_name,
+    operator.oprname::TEXT AS operator_name,
+    operator.oprowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    operator.oprkind::TEXT AS operator_kind,
+    operator.oprcanmerge AS can_merge,
+    operator.oprcanhash AS can_hash,
+    operator.oprleft::BIGINT AS left_type_oid,
+    operator.oprright::BIGINT AS right_type_oid,
+    operator.oprresult::BIGINT AS result_type_oid,
+    operator.oprcode::BIGINT AS function_oid,
+    operator.oprrest::BIGINT AS restriction_function_oid,
+    operator.oprjoin::BIGINT AS join_function_oid,
+    operator.oprcom::BIGINT AS commutator_operator_oid,
+    operator.oprnegate::BIGINT AS negator_operator_oid,
+    pg_catalog.format_type(operator.oprleft, NULL)::TEXT AS left_type,
+    pg_catalog.format_type(operator.oprright, NULL)::TEXT AS right_type,
+    pg_catalog.format_type(operator.oprresult, NULL)::TEXT AS result_type
+FROM pg_catalog.pg_operator AS operator
+INNER JOIN pg_catalog.pg_namespace AS operator_namespace
+    ON operator.oprnamespace = operator_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner ON operator.oprowner = owner.oid
+WHERE
+    operator_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND operator_namespace.nspname !~ '^pg_toast'
+    AND operator_namespace.nspname !~ '^pg_temp'
+ORDER BY
+    operator_namespace.nspname,
+    operator.oprname,
+    operator.oprleft,
+    operator.oprright,
+    operator.oid
+`
+
+type GetCatalogOperatorsRow struct {
+	OperatorOid            int64
+	SchemaOid              int64
+	SchemaName             string
+	OperatorName           string
+	OwnerOid               int64
+	OwnerName              string
+	OperatorKind           string
+	CanMerge               bool
+	CanHash                bool
+	LeftTypeOid            int64
+	RightTypeOid           int64
+	ResultTypeOid          int64
+	FunctionOid            int64
+	RestrictionFunctionOid int64
+	JoinFunctionOid        int64
+	CommutatorOperatorOid  int64
+	NegatorOperatorOid     int64
+	LeftType               string
+	RightType              string
+	ResultType             string
+}
+
+func (q *Queries) GetCatalogOperators(ctx context.Context, db DBTX) ([]GetCatalogOperatorsRow, error) {
+	rows, err := db.Query(ctx, getCatalogOperators)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogOperatorsRow
+	for rows.Next() {
+		var i GetCatalogOperatorsRow
+		if err := rows.Scan(
+			&i.OperatorOid,
+			&i.SchemaOid,
+			&i.SchemaName,
+			&i.OperatorName,
+			&i.OwnerOid,
+			&i.OwnerName,
+			&i.OperatorKind,
+			&i.CanMerge,
+			&i.CanHash,
+			&i.LeftTypeOid,
+			&i.RightTypeOid,
+			&i.ResultTypeOid,
+			&i.FunctionOid,
+			&i.RestrictionFunctionOid,
+			&i.JoinFunctionOid,
+			&i.CommutatorOperatorOid,
+			&i.NegatorOperatorOid,
+			&i.LeftType,
+			&i.RightType,
+			&i.ResultType,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -646,6 +1539,257 @@ func (q *Queries) GetCatalogPolicies(ctx context.Context, db DBTX) ([]GetCatalog
 	return items, nil
 }
 
+const getCatalogPublicationRelations = `-- name: GetCatalogPublicationRelations :many
+SELECT
+    publication_relation.oid::BIGINT AS membership_oid,
+    publication_relation.prpubid::BIGINT AS publication_oid,
+    publication.pubname::TEXT AS publication_name,
+    publication_relation.prrelid::BIGINT AS relation_oid,
+    relation_namespace.nspname::TEXT AS relation_schema_name,
+    relation.relname::TEXT AS relation_name,
+    COALESCE(publication_relation.prattrs, ARRAY[]::SMALLINT[])::SMALLINT[]
+        AS column_numbers,
+    ARRAY(
+        SELECT attribute.attname::TEXT
+        FROM UNNEST(COALESCE(
+            publication_relation.prattrs, ARRAY[]::SMALLINT[]
+        )) WITH ORDINALITY AS published_column (column_number, position)
+        INNER JOIN pg_catalog.pg_attribute AS attribute
+            ON attribute.attrelid = publication_relation.prrelid
+            AND attribute.attnum = published_column.column_number
+        ORDER BY published_column.position
+    )::TEXT[] AS column_names,
+    COALESCE(pg_catalog.pg_get_expr(
+        publication_relation.prqual, publication_relation.prrelid
+    ), '')::TEXT AS row_filter
+FROM pg_catalog.pg_publication_rel AS publication_relation
+INNER JOIN pg_catalog.pg_publication AS publication
+    ON publication_relation.prpubid = publication.oid
+INNER JOIN pg_catalog.pg_class AS relation
+    ON publication_relation.prrelid = relation.oid
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+ORDER BY
+    publication.pubname,
+    relation_namespace.nspname,
+    relation.relname,
+    publication_relation.oid
+`
+
+type GetCatalogPublicationRelationsRow struct {
+	MembershipOid      int64
+	PublicationOid     int64
+	PublicationName    string
+	RelationOid        int64
+	RelationSchemaName string
+	RelationName       string
+	ColumnNumbers      []int16
+	ColumnNames        []string
+	RowFilter          string
+}
+
+func (q *Queries) GetCatalogPublicationRelations(ctx context.Context, db DBTX) ([]GetCatalogPublicationRelationsRow, error) {
+	rows, err := db.Query(ctx, getCatalogPublicationRelations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogPublicationRelationsRow
+	for rows.Next() {
+		var i GetCatalogPublicationRelationsRow
+		if err := rows.Scan(
+			&i.MembershipOid,
+			&i.PublicationOid,
+			&i.PublicationName,
+			&i.RelationOid,
+			&i.RelationSchemaName,
+			&i.RelationName,
+			&i.ColumnNumbers,
+			&i.ColumnNames,
+			&i.RowFilter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogPublicationSchemas = `-- name: GetCatalogPublicationSchemas :many
+SELECT
+    publication_namespace.oid::BIGINT AS membership_oid,
+    publication_namespace.pnpubid::BIGINT AS publication_oid,
+    publication.pubname::TEXT AS publication_name,
+    publication_namespace.pnnspid::BIGINT AS schema_oid,
+    published_namespace.nspname::TEXT AS schema_name
+FROM pg_catalog.pg_publication_namespace AS publication_namespace
+INNER JOIN pg_catalog.pg_publication AS publication
+    ON publication_namespace.pnpubid = publication.oid
+INNER JOIN pg_catalog.pg_namespace AS published_namespace
+    ON publication_namespace.pnnspid = published_namespace.oid
+ORDER BY
+    publication.pubname,
+    published_namespace.nspname,
+    publication_namespace.oid
+`
+
+type GetCatalogPublicationSchemasRow struct {
+	MembershipOid   int64
+	PublicationOid  int64
+	PublicationName string
+	SchemaOid       int64
+	SchemaName      string
+}
+
+func (q *Queries) GetCatalogPublicationSchemas(ctx context.Context, db DBTX) ([]GetCatalogPublicationSchemasRow, error) {
+	rows, err := db.Query(ctx, getCatalogPublicationSchemas)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogPublicationSchemasRow
+	for rows.Next() {
+		var i GetCatalogPublicationSchemasRow
+		if err := rows.Scan(
+			&i.MembershipOid,
+			&i.PublicationOid,
+			&i.PublicationName,
+			&i.SchemaOid,
+			&i.SchemaName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogPublications = `-- name: GetCatalogPublications :many
+SELECT
+    publication.oid::BIGINT AS publication_oid,
+    publication.pubname::TEXT AS publication_name,
+    publication.pubowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    publication.puballtables AS publishes_all_tables,
+    publication.pubinsert AS publishes_inserts,
+    publication.pubupdate AS publishes_updates,
+    publication.pubdelete AS publishes_deletes,
+    publication.pubtruncate AS publishes_truncates,
+    publication.pubviaroot AS publishes_via_partition_root
+FROM pg_catalog.pg_publication AS publication
+INNER JOIN pg_catalog.pg_roles AS owner ON publication.pubowner = owner.oid
+ORDER BY publication.pubname, publication.oid
+`
+
+type GetCatalogPublicationsRow struct {
+	PublicationOid            int64
+	PublicationName           string
+	OwnerOid                  int64
+	OwnerName                 string
+	PublishesAllTables        bool
+	PublishesInserts          bool
+	PublishesUpdates          bool
+	PublishesDeletes          bool
+	PublishesTruncates        bool
+	PublishesViaPartitionRoot bool
+}
+
+func (q *Queries) GetCatalogPublications(ctx context.Context, db DBTX) ([]GetCatalogPublicationsRow, error) {
+	rows, err := db.Query(ctx, getCatalogPublications)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogPublicationsRow
+	for rows.Next() {
+		var i GetCatalogPublicationsRow
+		if err := rows.Scan(
+			&i.PublicationOid,
+			&i.PublicationName,
+			&i.OwnerOid,
+			&i.OwnerName,
+			&i.PublishesAllTables,
+			&i.PublishesInserts,
+			&i.PublishesUpdates,
+			&i.PublishesDeletes,
+			&i.PublishesTruncates,
+			&i.PublishesViaPartitionRoot,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogRanges = `-- name: GetCatalogRanges :many
+SELECT
+    range_data.rngtypid::BIGINT AS range_type_oid,
+    range_data.rngsubtype::BIGINT AS subtype_oid,
+    range_data.rngmultitypid::BIGINT AS multirange_type_oid,
+    range_data.rngcollation::BIGINT AS collation_oid,
+    range_data.rngsubopc::BIGINT AS operator_class_oid,
+    range_data.rngcanonical::BIGINT AS canonical_function_oid,
+    range_data.rngsubdiff::BIGINT AS subtype_diff_function_oid
+FROM pg_catalog.pg_range AS range_data
+INNER JOIN pg_catalog.pg_type AS range_type
+    ON range_data.rngtypid = range_type.oid
+INNER JOIN pg_catalog.pg_namespace AS type_namespace
+    ON range_type.typnamespace = type_namespace.oid
+WHERE
+    type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
+ORDER BY range_data.rngtypid
+`
+
+type GetCatalogRangesRow struct {
+	RangeTypeOid           int64
+	SubtypeOid             int64
+	MultirangeTypeOid      int64
+	CollationOid           int64
+	OperatorClassOid       int64
+	CanonicalFunctionOid   int64
+	SubtypeDiffFunctionOid int64
+}
+
+func (q *Queries) GetCatalogRanges(ctx context.Context, db DBTX) ([]GetCatalogRangesRow, error) {
+	rows, err := db.Query(ctx, getCatalogRanges)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogRangesRow
+	for rows.Next() {
+		var i GetCatalogRangesRow
+		if err := rows.Scan(
+			&i.RangeTypeOid,
+			&i.SubtypeOid,
+			&i.MultirangeTypeOid,
+			&i.CollationOid,
+			&i.OperatorClassOid,
+			&i.CanonicalFunctionOid,
+			&i.SubtypeDiffFunctionOid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCatalogRelations = `-- name: GetCatalogRelations :many
 SELECT
     relation.oid::BIGINT AS relation_oid,
@@ -815,6 +1959,134 @@ func (q *Queries) GetCatalogRelations(ctx context.Context, db DBTX) ([]GetCatalo
 	return items, nil
 }
 
+const getCatalogRoutines = `-- name: GetCatalogRoutines :many
+SELECT
+    routine.oid::BIGINT AS routine_oid,
+    routine.pronamespace::BIGINT AS schema_oid,
+    routine_namespace.nspname::TEXT AS schema_name,
+    routine.proname::TEXT AS routine_name,
+    routine.proowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    routine.prokind::TEXT AS routine_kind,
+    routine.prolang::BIGINT AS language_oid,
+    language.lanname::TEXT AS language_name,
+    pg_catalog.pg_get_function_identity_arguments(
+        routine.oid
+    )::TEXT AS identity_arguments,
+    pg_catalog.pg_get_function_arguments(routine.oid)::TEXT AS arguments,
+    COALESCE(pg_catalog.pg_get_function_result(routine.oid), '')::TEXT AS result,
+    ARRAY(
+        SELECT argument_type::BIGINT
+        FROM UNNEST(routine.proargtypes) WITH ORDINALITY
+            AS argument (argument_type, position)
+        ORDER BY argument.position
+    )::BIGINT[] AS input_argument_type_oids,
+    ARRAY(
+        SELECT argument_type::BIGINT
+        FROM UNNEST(COALESCE(routine.proallargtypes, ARRAY[]::OID[]))
+            WITH ORDINALITY AS argument (argument_type, position)
+        ORDER BY argument.position
+    )::BIGINT[] AS all_argument_type_oids,
+    COALESCE(routine.proargmodes, ARRAY[]::"char"[])::TEXT[]
+        AS argument_modes,
+    COALESCE(routine.proargnames, ARRAY[]::TEXT[])::TEXT[]
+        AS argument_names,
+    routine.prorettype::BIGINT AS result_type_oid,
+    routine.proretset AS returns_set,
+    routine.prosrc::TEXT AS source,
+    COALESCE(routine.probin, '')::TEXT AS binary,
+    (routine.prosqlbody IS NOT NULL)::BOOLEAN AS has_sql_body,
+    COALESCE(routine.prosqlbody::TEXT, '')::TEXT AS sql_body,
+    COALESCE(routine.proconfig, ARRAY[]::TEXT[])::TEXT[] AS configuration,
+    pg_catalog.pg_get_functiondef(routine.oid)::TEXT AS definition
+FROM pg_catalog.pg_proc AS routine
+INNER JOIN pg_catalog.pg_namespace AS routine_namespace
+    ON routine.pronamespace = routine_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner ON routine.proowner = owner.oid
+INNER JOIN pg_catalog.pg_language AS language ON routine.prolang = language.oid
+WHERE
+    routine_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND routine_namespace.nspname !~ '^pg_toast'
+    AND routine_namespace.nspname !~ '^pg_temp'
+ORDER BY
+    routine_namespace.nspname,
+    routine.proname,
+    pg_catalog.pg_get_function_identity_arguments(routine.oid),
+    routine.oid
+`
+
+type GetCatalogRoutinesRow struct {
+	RoutineOid            int64
+	SchemaOid             int64
+	SchemaName            string
+	RoutineName           string
+	OwnerOid              int64
+	OwnerName             string
+	RoutineKind           string
+	LanguageOid           int64
+	LanguageName          string
+	IdentityArguments     string
+	Arguments             string
+	Result                string
+	InputArgumentTypeOids []int64
+	AllArgumentTypeOids   []int64
+	ArgumentModes         []string
+	ArgumentNames         []string
+	ResultTypeOid         int64
+	ReturnsSet            bool
+	Source                string
+	Binary                string
+	HasSqlBody            bool
+	SqlBody               string
+	Configuration         []string
+	Definition            string
+}
+
+func (q *Queries) GetCatalogRoutines(ctx context.Context, db DBTX) ([]GetCatalogRoutinesRow, error) {
+	rows, err := db.Query(ctx, getCatalogRoutines)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogRoutinesRow
+	for rows.Next() {
+		var i GetCatalogRoutinesRow
+		if err := rows.Scan(
+			&i.RoutineOid,
+			&i.SchemaOid,
+			&i.SchemaName,
+			&i.RoutineName,
+			&i.OwnerOid,
+			&i.OwnerName,
+			&i.RoutineKind,
+			&i.LanguageOid,
+			&i.LanguageName,
+			&i.IdentityArguments,
+			&i.Arguments,
+			&i.Result,
+			&i.InputArgumentTypeOids,
+			&i.AllArgumentTypeOids,
+			&i.ArgumentModes,
+			&i.ArgumentNames,
+			&i.ResultTypeOid,
+			&i.ReturnsSet,
+			&i.Source,
+			&i.Binary,
+			&i.HasSqlBody,
+			&i.SqlBody,
+			&i.Configuration,
+			&i.Definition,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCatalogRules = `-- name: GetCatalogRules :many
 SELECT
     rule.oid::BIGINT AS rule_oid,
@@ -835,7 +2107,7 @@ WHERE
     relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND relation_namespace.nspname !~ '^pg_toast'
     AND relation_namespace.nspname !~ '^pg_temp'
-    AND relation.relkind IN ('r', 'p', 'f')
+    AND relation.relkind IN ('r', 'p', 'f', 'v', 'm')
 ORDER BY rule.ev_class, rule.rulename, rule.oid
 `
 
@@ -976,6 +2248,105 @@ func (q *Queries) GetCatalogSecurityLabels(ctx context.Context, db DBTX) ([]GetC
 			&i.ColumnNumber,
 			&i.Provider,
 			&i.Label,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogSequences = `-- name: GetCatalogSequences :many
+SELECT
+    sequence_relation.oid::BIGINT AS sequence_oid,
+    sequence_relation.relnamespace::BIGINT AS schema_oid,
+    sequence_namespace.nspname::TEXT AS schema_name,
+    sequence_relation.relname::TEXT AS sequence_name,
+    sequence_relation.relowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    sequence_relation.relpersistence::TEXT AS persistence,
+    sequence_data.seqtypid::BIGINT AS data_type_oid,
+    sequence_data.seqstart AS start_value,
+    sequence_data.seqincrement AS increment_value,
+    sequence_data.seqmax AS max_value,
+    sequence_data.seqmin AS min_value,
+    sequence_data.seqcache AS cache_size,
+    sequence_data.seqcycle AS is_cycle,
+    COALESCE(extension.oid, 0)::BIGINT AS extension_oid,
+    COALESCE(extension.extname, '')::TEXT AS extension_name
+FROM pg_catalog.pg_sequence AS sequence_data
+INNER JOIN pg_catalog.pg_class AS sequence_relation
+    ON sequence_data.seqrelid = sequence_relation.oid
+INNER JOIN pg_catalog.pg_namespace AS sequence_namespace
+    ON sequence_relation.relnamespace = sequence_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner
+    ON sequence_relation.relowner = owner.oid
+LEFT JOIN pg_catalog.pg_depend AS extension_dependency
+    ON extension_dependency.classid = 'pg_class'::REGCLASS
+    AND extension_dependency.objid = sequence_relation.oid
+    AND extension_dependency.objsubid = 0
+    AND extension_dependency.deptype = 'e'
+LEFT JOIN pg_catalog.pg_extension AS extension
+    ON extension_dependency.refclassid = 'pg_extension'::REGCLASS
+    AND extension_dependency.refobjid = extension.oid
+WHERE
+    sequence_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND sequence_namespace.nspname !~ '^pg_toast'
+    AND sequence_namespace.nspname !~ '^pg_temp'
+ORDER BY
+    sequence_namespace.nspname,
+    sequence_relation.relname,
+    sequence_relation.oid
+`
+
+type GetCatalogSequencesRow struct {
+	SequenceOid    int64
+	SchemaOid      int64
+	SchemaName     string
+	SequenceName   string
+	OwnerOid       int64
+	OwnerName      string
+	Persistence    string
+	DataTypeOid    int64
+	StartValue     int64
+	IncrementValue int64
+	MaxValue       int64
+	MinValue       int64
+	CacheSize      int64
+	IsCycle        bool
+	ExtensionOid   int64
+	ExtensionName  string
+}
+
+func (q *Queries) GetCatalogSequences(ctx context.Context, db DBTX) ([]GetCatalogSequencesRow, error) {
+	rows, err := db.Query(ctx, getCatalogSequences)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogSequencesRow
+	for rows.Next() {
+		var i GetCatalogSequencesRow
+		if err := rows.Scan(
+			&i.SequenceOid,
+			&i.SchemaOid,
+			&i.SchemaName,
+			&i.SequenceName,
+			&i.OwnerOid,
+			&i.OwnerName,
+			&i.Persistence,
+			&i.DataTypeOid,
+			&i.StartValue,
+			&i.IncrementValue,
+			&i.MaxValue,
+			&i.MinValue,
+			&i.CacheSize,
+			&i.IsCycle,
+			&i.ExtensionOid,
+			&i.ExtensionName,
 		); err != nil {
 			return nil, err
 		}
@@ -1131,6 +2502,325 @@ func (q *Queries) GetCatalogTriggers(ctx context.Context, db DBTX) ([]GetCatalog
 			&i.ConstraintOid,
 			&i.TriggerDefinition,
 			&i.TriggerComment,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogTypeSupportFunctions = `-- name: GetCatalogTypeSupportFunctions :many
+WITH user_type AS (
+    SELECT type_data.tableoid, type_data.cmax, type_data.xmax, type_data.cmin, type_data.xmin, type_data.ctid, type_data.oid, type_data.typname, type_data.typnamespace, type_data.typowner, type_data.typlen, type_data.typbyval, type_data.typtype, type_data.typcategory, type_data.typispreferred, type_data.typisdefined, type_data.typdelim, type_data.typrelid, type_data.typsubscript, type_data.typelem, type_data.typarray, type_data.typinput, type_data.typoutput, type_data.typreceive, type_data.typsend, type_data.typmodin, type_data.typmodout, type_data.typanalyze, type_data.typalign, type_data.typstorage, type_data.typnotnull, type_data.typbasetype, type_data.typtypmod, type_data.typndims, type_data.typcollation, type_data.typdefaultbin, type_data.typdefault, type_data.typacl
+    FROM pg_catalog.pg_type AS type_data
+    INNER JOIN pg_catalog.pg_namespace AS type_namespace
+        ON type_data.typnamespace = type_namespace.oid
+    WHERE
+        type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND type_namespace.nspname !~ '^pg_toast'
+        AND type_namespace.nspname !~ '^pg_temp'
+), support_function AS (
+    SELECT oid AS type_oid, 'input'::TEXT AS support_role,
+        typinput AS function_oid
+    FROM user_type WHERE typinput != 0
+
+    UNION ALL
+    SELECT oid, 'output'::TEXT, typoutput FROM user_type WHERE typoutput != 0
+
+    UNION ALL
+    SELECT oid, 'receive'::TEXT, typreceive
+    FROM user_type WHERE typreceive != 0
+
+    UNION ALL
+    SELECT oid, 'send'::TEXT, typsend FROM user_type WHERE typsend != 0
+
+    UNION ALL
+    SELECT oid, 'typmod_input'::TEXT, typmodin
+    FROM user_type WHERE typmodin != 0
+
+    UNION ALL
+    SELECT oid, 'typmod_output'::TEXT, typmodout
+    FROM user_type WHERE typmodout != 0
+
+    UNION ALL
+    SELECT oid, 'analyze'::TEXT, typanalyze
+    FROM user_type WHERE typanalyze != 0
+
+    UNION ALL
+    SELECT oid, 'subscript'::TEXT, typsubscript
+    FROM user_type WHERE typsubscript != 0
+
+    UNION ALL
+
+    SELECT
+        range_data.rngtypid AS type_oid,
+        'range_canonical'::TEXT,
+        range_data.rngcanonical
+    FROM pg_catalog.pg_range AS range_data
+    INNER JOIN user_type ON range_data.rngtypid = user_type.oid
+    WHERE range_data.rngcanonical != 0
+
+    UNION ALL
+
+    SELECT
+        range_data.rngtypid,
+        'range_subtype_diff'::TEXT,
+        range_data.rngsubdiff
+    FROM pg_catalog.pg_range AS range_data
+    INNER JOIN user_type ON range_data.rngtypid = user_type.oid
+    WHERE range_data.rngsubdiff != 0
+)
+SELECT
+    support_function.type_oid::BIGINT AS type_oid,
+    support_function.support_role::TEXT AS support_role,
+    support_function.function_oid::BIGINT AS function_oid,
+    function_namespace.nspname::TEXT AS function_schema_name,
+    function_data.proname::TEXT AS function_name,
+    pg_catalog.pg_get_function_identity_arguments(
+        function_data.oid
+    )::TEXT AS function_identity_arguments
+FROM support_function
+INNER JOIN pg_catalog.pg_proc AS function_data
+    ON support_function.function_oid = function_data.oid
+INNER JOIN pg_catalog.pg_namespace AS function_namespace
+    ON function_data.pronamespace = function_namespace.oid
+ORDER BY support_function.type_oid, support_function.support_role
+`
+
+type GetCatalogTypeSupportFunctionsRow struct {
+	TypeOid                   int64
+	SupportRole               string
+	FunctionOid               int64
+	FunctionSchemaName        string
+	FunctionName              string
+	FunctionIdentityArguments string
+}
+
+func (q *Queries) GetCatalogTypeSupportFunctions(ctx context.Context, db DBTX) ([]GetCatalogTypeSupportFunctionsRow, error) {
+	rows, err := db.Query(ctx, getCatalogTypeSupportFunctions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogTypeSupportFunctionsRow
+	for rows.Next() {
+		var i GetCatalogTypeSupportFunctionsRow
+		if err := rows.Scan(
+			&i.TypeOid,
+			&i.SupportRole,
+			&i.FunctionOid,
+			&i.FunctionSchemaName,
+			&i.FunctionName,
+			&i.FunctionIdentityArguments,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogTypes = `-- name: GetCatalogTypes :many
+SELECT
+    type_data.oid::BIGINT AS type_oid,
+    type_data.typnamespace::BIGINT AS schema_oid,
+    type_namespace.nspname::TEXT AS schema_name,
+    type_data.typname::TEXT AS type_name,
+    type_data.typowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    CASE
+        WHEN type_data.typcategory = 'A' AND type_data.typelem != 0 THEN 'array'
+        WHEN type_data.typtype = 'd' THEN 'domain'
+        WHEN type_data.typtype = 'e' THEN 'enum'
+        WHEN type_data.typtype = 'r' THEN 'range'
+        WHEN type_data.typtype = 'm' THEN 'multirange'
+        WHEN type_data.typtype = 'c' AND relation.relkind = 'c'
+            THEN 'composite'
+        WHEN type_data.typtype = 'c' THEN 'row'
+        WHEN type_data.typtype = 'p' THEN 'pseudo'
+        ELSE 'base'
+    END::TEXT AS type_kind,
+    type_data.typtype::TEXT AS raw_type_kind,
+    type_data.typcategory::TEXT AS category,
+    type_data.typispreferred AS is_preferred,
+    type_data.typisdefined AS is_defined,
+    type_data.typlen AS internal_length,
+    type_data.typbyval AS is_passed_by_value,
+    type_data.typdelim::TEXT AS delimiter,
+    type_data.typalign::TEXT AS alignment,
+    type_data.typstorage::TEXT AS storage,
+    type_data.typrelid::BIGINT AS relation_oid,
+    type_data.typelem::BIGINT AS element_type_oid,
+    type_data.typarray::BIGINT AS array_type_oid,
+    type_data.typbasetype::BIGINT AS base_type_oid,
+    type_data.typtypmod AS type_modifier,
+    type_data.typndims AS dimensions,
+    type_data.typcollation::BIGINT AS collation_oid,
+    type_data.typnotnull AS is_not_null,
+    COALESCE(type_data.typdefault, '')::TEXT AS default_value,
+    COALESCE(extension.oid, 0)::BIGINT AS extension_oid,
+    COALESCE(extension.extname, '')::TEXT AS extension_name
+FROM pg_catalog.pg_type AS type_data
+INNER JOIN pg_catalog.pg_namespace AS type_namespace
+    ON type_data.typnamespace = type_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner ON type_data.typowner = owner.oid
+LEFT JOIN pg_catalog.pg_class AS relation ON type_data.typrelid = relation.oid
+LEFT JOIN pg_catalog.pg_depend AS extension_dependency
+    ON extension_dependency.classid = 'pg_type'::REGCLASS
+    AND extension_dependency.objid = type_data.oid
+    AND extension_dependency.objsubid = 0
+    AND extension_dependency.deptype = 'e'
+LEFT JOIN pg_catalog.pg_extension AS extension
+    ON extension_dependency.refclassid = 'pg_extension'::REGCLASS
+    AND extension_dependency.refobjid = extension.oid
+WHERE
+    type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
+ORDER BY type_namespace.nspname, type_data.typname, type_data.oid
+`
+
+type GetCatalogTypesRow struct {
+	TypeOid         int64
+	SchemaOid       int64
+	SchemaName      string
+	TypeName        string
+	OwnerOid        int64
+	OwnerName       string
+	TypeKind        string
+	RawTypeKind     string
+	Category        string
+	IsPreferred     bool
+	IsDefined       bool
+	InternalLength  int16
+	IsPassedByValue bool
+	Delimiter       string
+	Alignment       string
+	Storage         string
+	RelationOid     int64
+	ElementTypeOid  int64
+	ArrayTypeOid    int64
+	BaseTypeOid     int64
+	TypeModifier    int32
+	Dimensions      int32
+	CollationOid    int64
+	IsNotNull       bool
+	DefaultValue    string
+	ExtensionOid    int64
+	ExtensionName   string
+}
+
+func (q *Queries) GetCatalogTypes(ctx context.Context, db DBTX) ([]GetCatalogTypesRow, error) {
+	rows, err := db.Query(ctx, getCatalogTypes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogTypesRow
+	for rows.Next() {
+		var i GetCatalogTypesRow
+		if err := rows.Scan(
+			&i.TypeOid,
+			&i.SchemaOid,
+			&i.SchemaName,
+			&i.TypeName,
+			&i.OwnerOid,
+			&i.OwnerName,
+			&i.TypeKind,
+			&i.RawTypeKind,
+			&i.Category,
+			&i.IsPreferred,
+			&i.IsDefined,
+			&i.InternalLength,
+			&i.IsPassedByValue,
+			&i.Delimiter,
+			&i.Alignment,
+			&i.Storage,
+			&i.RelationOid,
+			&i.ElementTypeOid,
+			&i.ArrayTypeOid,
+			&i.BaseTypeOid,
+			&i.TypeModifier,
+			&i.Dimensions,
+			&i.CollationOid,
+			&i.IsNotNull,
+			&i.DefaultValue,
+			&i.ExtensionOid,
+			&i.ExtensionName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCatalogViews = `-- name: GetCatalogViews :many
+SELECT
+    relation.oid::BIGINT AS relation_oid,
+    relation_namespace.oid::BIGINT AS schema_oid,
+    relation_namespace.nspname::TEXT AS schema_name,
+    relation.relname::TEXT AS view_name,
+    relation.relkind::TEXT AS relation_kind,
+    relation.relispopulated AS is_populated,
+    COALESCE(relation.reloptions, ARRAY[]::TEXT[])::TEXT[] AS options,
+    pg_catalog.pg_get_viewdef(relation.oid, true)::TEXT AS view_definition
+FROM pg_catalog.pg_class AS relation
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+WHERE
+    relation.relkind IN ('v', 'm')
+    AND relation_namespace.nspname NOT IN (
+        'pg_catalog', 'information_schema'
+    )
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+ORDER BY
+    relation_namespace.nspname,
+    relation.relname,
+    relation.relkind,
+    relation.oid
+`
+
+type GetCatalogViewsRow struct {
+	RelationOid    int64
+	SchemaOid      int64
+	SchemaName     string
+	ViewName       string
+	RelationKind   string
+	IsPopulated    bool
+	Options        []string
+	ViewDefinition string
+}
+
+func (q *Queries) GetCatalogViews(ctx context.Context, db DBTX) ([]GetCatalogViewsRow, error) {
+	rows, err := db.Query(ctx, getCatalogViews)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCatalogViewsRow
+	for rows.Next() {
+		var i GetCatalogViewsRow
+		if err := rows.Scan(
+			&i.RelationOid,
+			&i.SchemaOid,
+			&i.SchemaName,
+			&i.ViewName,
+			&i.RelationKind,
+			&i.IsPopulated,
+			&i.Options,
+			&i.ViewDefinition,
 		); err != nil {
 			return nil, err
 		}
