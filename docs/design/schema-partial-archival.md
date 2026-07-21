@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-6 complete
+Status: Proposed; delivery Stages 0-7 complete
 
 ## Summary
 
@@ -743,7 +743,7 @@ stage's scope.
 | 4 | Table-local metadata inventory | Complete | 3 |
 | 5 | Dependency and platform inventory | Complete | 3 |
 | 6 | ACL inventory and revoke planner | Complete | 3 |
-| 7 | Archival name allocation | Pending | 1, 3 |
+| 7 | Archival name allocation | Complete | 1, 3 |
 | 8 | Marker and cleanup-operation codecs | Pending | 4, 5, 6, 7 |
 | 9 | Archived-state resolver | Pending | 8 |
 | 10 | Source safety preflight | Pending | 5, 9 |
@@ -956,7 +956,7 @@ Acceptance gate:
 
 ### Stage 7: Archival name allocation
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 1 and 3.
 
