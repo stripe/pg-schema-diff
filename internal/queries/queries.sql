@@ -38,6 +38,9 @@ SELECT
     relation.relnamespace::BIGINT AS schema_oid,
     relation_namespace.nspname::TEXT AS schema_name,
     relation.relname::TEXT AS relation_name,
+    COALESCE(pg_catalog.obj_description(
+        relation.oid, 'pg_class'
+    ), '')::TEXT AS relation_comment,
     relation.relowner::BIGINT AS owner_oid,
     owner.rolname::TEXT AS owner_name,
     relation.relkind::TEXT AS relation_kind,
@@ -56,6 +59,15 @@ SELECT
     COALESCE(toast_namespace.nspname, '')::TEXT AS toast_schema_name,
     COALESCE(toast_relation.relname, '')::TEXT AS toast_relation_name,
     COALESCE(index_data.indrelid, 0)::BIGINT AS indexed_relation_oid,
+    COALESCE(index_constraint.oid, 0)::BIGINT AS index_constraint_oid,
+    COALESCE(index_data.indisclustered, false) AS index_is_clustered,
+    COALESCE(index_data.indisreplident, false) AS index_is_replica_identity,
+    COALESCE(index_data.indisprimary, false) AS index_is_primary,
+    COALESCE(index_data.indisunique, false) AS index_is_unique,
+    COALESCE(index_data.indisexclusion, false) AS index_is_exclusion,
+    COALESCE(index_data.indisvalid, false) AS index_is_valid,
+    COALESCE(index_data.indisready, false) AS index_is_ready,
+    COALESCE(index_data.indislive, false) AS index_is_live,
     COALESCE(extension.oid, 0)::BIGINT AS extension_oid,
     COALESCE(extension.extname, '')::TEXT AS extension_name
 FROM pg_catalog.pg_class AS relation
@@ -74,6 +86,8 @@ LEFT JOIN pg_catalog.pg_namespace AS toast_namespace
     ON toast_relation.relnamespace = toast_namespace.oid
 LEFT JOIN pg_catalog.pg_index AS index_data
     ON relation.oid = index_data.indexrelid
+LEFT JOIN pg_catalog.pg_constraint AS index_constraint
+    ON relation.oid = index_constraint.conindid
 LEFT JOIN pg_catalog.pg_depend AS extension_dependency
     ON
         extension_dependency.classid = 'pg_class'::REGCLASS
@@ -104,6 +118,28 @@ SELECT
     relation_namespace.nspname::TEXT AS schema_name,
     constraint_data.conindid::BIGINT AS index_oid,
     constraint_data.conparentid::BIGINT AS parent_constraint_oid,
+    constraint_data.confrelid::BIGINT AS referenced_relation_oid,
+    COALESCE(constraint_data.conkey, ARRAY[]::SMALLINT[])::SMALLINT[]
+        AS key_column_numbers,
+    constraint_data.condeferrable AS is_deferrable,
+    constraint_data.condeferred AS is_deferred,
+    constraint_data.convalidated AS is_validated,
+    constraint_data.conislocal AS is_local,
+    constraint_data.coninhcount AS inheritance_count,
+    constraint_data.connoinherit AS is_no_inherit,
+    COALESCE(
+        CASE
+            WHEN constraint_data.contype = 'c'
+                THEN pg_catalog.pg_get_expr(
+                    constraint_data.conbin, constraint_data.conrelid
+                )
+            ELSE ''
+        END,
+        ''
+    )::TEXT AS check_expression,
+    COALESCE(pg_catalog.obj_description(
+        constraint_data.oid, 'pg_constraint'
+    ), '')::TEXT AS constraint_comment,
     COALESCE(extension.oid, 0)::BIGINT AS extension_oid,
     COALESCE(extension.extname, '')::TEXT AS extension_name
 FROM pg_catalog.pg_constraint AS constraint_data
@@ -155,6 +191,337 @@ WHERE
     AND child_relation.relkind IN ('r', 'p', 'f', 'v', 'm', 'S', 'i', 'I', 'c')
     AND parent_relation.relkind IN ('r', 'p', 'f', 'v', 'm', 'S', 'i', 'I', 'c')
 ORDER BY inheritance.inhrelid, inheritance.inhseqno, inheritance.inhparent;
+
+-- name: GetCatalogTables :many
+SELECT
+    relation.oid::BIGINT AS relation_oid,
+    relation.relrowsecurity AS rls_enabled,
+    relation.relforcerowsecurity AS rls_forced,
+    relation.relreplident::TEXT AS replica_identity,
+    COALESCE(replica_index.indexrelid, 0)::BIGINT
+        AS replica_identity_index_oid,
+    COALESCE(clustered_index.indexrelid, 0)::BIGINT AS clustered_index_oid,
+    COALESCE(relation.reloptions, ARRAY[]::TEXT[])::TEXT[] AS options,
+    relation.reltablespace::BIGINT AS tablespace_oid,
+    COALESCE(tablespace.spcname, '')::TEXT AS tablespace_name,
+    relation.relam::BIGINT AS access_method_oid,
+    COALESCE(access_method.amname, '')::TEXT AS access_method_name
+FROM pg_catalog.pg_class AS relation
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+LEFT JOIN pg_catalog.pg_index AS replica_index
+    ON relation.oid = replica_index.indrelid
+    AND replica_index.indisreplident
+LEFT JOIN pg_catalog.pg_index AS clustered_index
+    ON relation.oid = clustered_index.indrelid
+    AND clustered_index.indisclustered
+LEFT JOIN pg_catalog.pg_tablespace AS tablespace
+    ON relation.reltablespace = tablespace.oid
+LEFT JOIN pg_catalog.pg_am AS access_method ON relation.relam = access_method.oid
+WHERE
+    relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+    AND relation.relkind IN ('r', 'p', 'f')
+ORDER BY relation.oid;
+
+-- name: GetCatalogColumns :many
+SELECT
+    attribute.attrelid::BIGINT AS relation_oid,
+    attribute.attnum AS column_number,
+    CASE
+        WHEN attribute.attisdropped THEN ''
+        ELSE attribute.attname
+    END::TEXT AS column_name,
+    attribute.attisdropped AS is_dropped,
+    attribute.atttypid::BIGINT AS type_oid,
+    COALESCE(type_namespace.oid, 0)::BIGINT AS type_schema_oid,
+    COALESCE(type_namespace.nspname, '')::TEXT AS type_schema_name,
+    COALESCE(column_type.typname, '')::TEXT AS type_name,
+    attribute.atttypmod AS type_modifier,
+    CASE
+        WHEN attribute.attisdropped THEN ''
+        ELSE pg_catalog.format_type(attribute.atttypid, attribute.atttypmod)
+    END::TEXT AS formatted_type,
+    attribute.attcollation::BIGINT AS collation_oid,
+    COALESCE(collation_namespace.oid, 0)::BIGINT AS collation_schema_oid,
+    COALESCE(collation_namespace.nspname, '')::TEXT AS collation_schema_name,
+    COALESCE(collation_data.collname, '')::TEXT AS collation_name,
+    attribute.attnotnull AS is_not_null,
+    attribute.attidentity::TEXT AS identity_mode,
+    attribute.attgenerated::TEXT AS generated_mode,
+    COALESCE(
+        CASE
+            WHEN attribute.attgenerated = ''
+                THEN pg_catalog.pg_get_expr(default_value.adbin, default_value.adrelid)
+            ELSE ''
+        END,
+        ''
+    )::TEXT AS default_expression,
+    COALESCE(
+        CASE
+            WHEN attribute.attgenerated != ''
+                THEN pg_catalog.pg_get_expr(default_value.adbin, default_value.adrelid)
+            ELSE ''
+        END,
+        ''
+    )::TEXT AS generated_expression,
+    attribute.atthasmissing AS has_missing_value,
+    COALESCE(
+        pg_catalog.encode(
+            pg_catalog.array_send(attribute.attmissingval), 'hex'
+        ),
+        ''
+    )::TEXT AS missing_value_binary,
+    attribute.attstorage::TEXT AS storage_mode,
+    attribute.attcompression::TEXT AS compression_mode,
+    COALESCE(attribute.attoptions, ARRAY[]::TEXT[])::TEXT[] AS options,
+    COALESCE(attribute.attstattarget, -1) AS statistics_target,
+    attribute.attislocal AS is_local,
+    attribute.attinhcount AS inheritance_count,
+    COALESCE(pg_catalog.col_description(
+        attribute.attrelid, attribute.attnum
+    ), '')::TEXT AS column_comment
+FROM pg_catalog.pg_attribute AS attribute
+INNER JOIN pg_catalog.pg_class AS relation
+    ON attribute.attrelid = relation.oid
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+LEFT JOIN pg_catalog.pg_type AS column_type
+    ON attribute.atttypid = column_type.oid
+LEFT JOIN pg_catalog.pg_namespace AS type_namespace
+    ON column_type.typnamespace = type_namespace.oid
+LEFT JOIN pg_catalog.pg_collation AS collation_data
+    ON attribute.attcollation = collation_data.oid
+LEFT JOIN pg_catalog.pg_namespace AS collation_namespace
+    ON collation_data.collnamespace = collation_namespace.oid
+LEFT JOIN pg_catalog.pg_attrdef AS default_value
+    ON attribute.attrelid = default_value.adrelid
+    AND attribute.attnum = default_value.adnum
+WHERE
+    relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+    AND relation.relkind IN ('r', 'p', 'f')
+    AND attribute.attnum > 0
+ORDER BY attribute.attrelid, attribute.attnum;
+
+-- name: GetCatalogTriggers :many
+SELECT
+    trigger_data.oid::BIGINT AS trigger_oid,
+    trigger_data.tgrelid::BIGINT AS relation_oid,
+    trigger_data.tgname::TEXT AS trigger_name,
+    trigger_data.tgfoid::BIGINT AS function_oid,
+    trigger_data.tgtype AS trigger_type,
+    trigger_data.tgenabled::TEXT AS enabled_mode,
+    trigger_data.tgisinternal AS is_internal,
+    trigger_data.tgparentid::BIGINT AS parent_trigger_oid,
+    trigger_data.tgconstraint::BIGINT AS constraint_oid,
+    pg_catalog.pg_get_triggerdef(trigger_data.oid, false)::TEXT
+        AS trigger_definition,
+    COALESCE(pg_catalog.obj_description(
+        trigger_data.oid, 'pg_trigger'
+    ), '')::TEXT AS trigger_comment
+FROM pg_catalog.pg_trigger AS trigger_data
+INNER JOIN pg_catalog.pg_class AS relation
+    ON trigger_data.tgrelid = relation.oid
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+WHERE
+    relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+    AND relation.relkind IN ('r', 'p', 'f')
+ORDER BY trigger_data.tgrelid, trigger_data.tgname, trigger_data.oid;
+
+-- name: GetCatalogRules :many
+SELECT
+    rule.oid::BIGINT AS rule_oid,
+    rule.ev_class::BIGINT AS relation_oid,
+    rule.rulename::TEXT AS rule_name,
+    rule.ev_type::TEXT AS event_type,
+    rule.ev_enabled::TEXT AS enabled_mode,
+    rule.is_instead,
+    pg_catalog.pg_get_ruledef(rule.oid, false)::TEXT AS rule_definition,
+    COALESCE(pg_catalog.obj_description(
+        rule.oid, 'pg_rewrite'
+    ), '')::TEXT AS rule_comment
+FROM pg_catalog.pg_rewrite AS rule
+INNER JOIN pg_catalog.pg_class AS relation ON rule.ev_class = relation.oid
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+WHERE
+    relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+    AND relation.relkind IN ('r', 'p', 'f')
+ORDER BY rule.ev_class, rule.rulename, rule.oid;
+
+-- name: GetCatalogPolicies :many
+SELECT
+    policy.oid::BIGINT AS policy_oid,
+    policy.polrelid::BIGINT AS relation_oid,
+    policy.polname::TEXT AS policy_name,
+    policy.polcmd::TEXT AS command,
+    policy.polpermissive AS is_permissive,
+    ARRAY(
+        SELECT role_oid::BIGINT
+        FROM UNNEST(policy.polroles) AS policy_role (role_oid)
+        ORDER BY role_oid
+    )::BIGINT[] AS role_oids,
+    ARRAY(
+        SELECT CASE
+            WHEN policy_role.role_oid = 0 THEN 'PUBLIC'
+            ELSE role.rolname
+        END::TEXT
+        FROM UNNEST(policy.polroles) AS policy_role (role_oid)
+        LEFT JOIN pg_catalog.pg_roles AS role ON policy_role.role_oid = role.oid
+        ORDER BY policy_role.role_oid
+    )::TEXT[] AS role_names,
+    COALESCE(pg_catalog.pg_get_expr(
+        policy.polqual, policy.polrelid
+    ), '')::TEXT AS using_expression,
+    COALESCE(pg_catalog.pg_get_expr(
+        policy.polwithcheck, policy.polrelid
+    ), '')::TEXT AS check_expression,
+    COALESCE(pg_catalog.obj_description(
+        policy.oid, 'pg_policy'
+    ), '')::TEXT AS policy_comment
+FROM pg_catalog.pg_policy AS policy
+INNER JOIN pg_catalog.pg_class AS relation ON policy.polrelid = relation.oid
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+WHERE
+    relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+    AND relation.relkind IN ('r', 'p', 'f')
+ORDER BY policy.polrelid, policy.polname, policy.oid;
+
+-- name: GetCatalogOwnedSequences :many
+SELECT
+    dependency.objid::BIGINT AS sequence_oid,
+    dependency.refobjid::BIGINT AS relation_oid,
+    dependency.refobjsubid AS column_number,
+    owner_attribute.attname::TEXT AS column_name,
+    dependency.deptype::TEXT AS dependency_type
+FROM pg_catalog.pg_depend AS dependency
+INNER JOIN pg_catalog.pg_class AS sequence
+    ON dependency.classid = 'pg_class'::REGCLASS
+    AND dependency.objid = sequence.oid
+    AND sequence.relkind = 'S'
+INNER JOIN pg_catalog.pg_namespace AS sequence_namespace
+    ON sequence.relnamespace = sequence_namespace.oid
+INNER JOIN pg_catalog.pg_class AS owner_relation
+    ON dependency.refclassid = 'pg_class'::REGCLASS
+    AND dependency.refobjid = owner_relation.oid
+INNER JOIN pg_catalog.pg_namespace AS owner_namespace
+    ON owner_relation.relnamespace = owner_namespace.oid
+INNER JOIN pg_catalog.pg_attribute AS owner_attribute
+    ON dependency.refobjid = owner_attribute.attrelid
+    AND dependency.refobjsubid = owner_attribute.attnum
+WHERE
+    dependency.deptype IN ('a', 'i')
+    AND dependency.objsubid = 0
+    AND dependency.refobjsubid > 0
+    AND sequence_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND sequence_namespace.nspname !~ '^pg_toast'
+    AND sequence_namespace.nspname !~ '^pg_temp'
+    AND owner_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND owner_namespace.nspname !~ '^pg_toast'
+    AND owner_namespace.nspname !~ '^pg_temp'
+    AND owner_relation.relkind IN ('r', 'p', 'f')
+ORDER BY dependency.refobjid, dependency.refobjsubid, dependency.objid;
+
+-- name: GetCatalogExtendedStatistics :many
+SELECT
+    statistic.oid::BIGINT AS statistic_oid,
+    statistic.stxnamespace::BIGINT AS schema_oid,
+    statistic_namespace.nspname::TEXT AS schema_name,
+    statistic.stxname::TEXT AS statistic_name,
+    statistic.stxowner::BIGINT AS owner_oid,
+    owner.rolname::TEXT AS owner_name,
+    statistic.stxrelid::BIGINT AS relation_oid,
+    statistic.stxkeys::SMALLINT[] AS column_numbers,
+    COALESCE(
+        pg_catalog.pg_get_statisticsobjdef_expressions(statistic.oid),
+        ARRAY[]::TEXT[]
+    )::TEXT[] AS expressions,
+    ARRAY(
+        SELECT kind::TEXT
+        FROM UNNEST(statistic.stxkind) AS kind
+        ORDER BY kind
+    )::TEXT[] AS kinds,
+    COALESCE(pg_catalog.obj_description(
+        statistic.oid, 'pg_statistic_ext'
+    ), '')::TEXT AS statistic_comment
+FROM pg_catalog.pg_statistic_ext AS statistic
+INNER JOIN pg_catalog.pg_namespace AS statistic_namespace
+    ON statistic.stxnamespace = statistic_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner ON statistic.stxowner = owner.oid
+INNER JOIN pg_catalog.pg_class AS relation
+    ON statistic.stxrelid = relation.oid
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+WHERE
+    statistic_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND statistic_namespace.nspname !~ '^pg_toast'
+    AND statistic_namespace.nspname !~ '^pg_temp'
+    AND relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+    AND relation.relkind IN ('r', 'p', 'f')
+ORDER BY statistic_namespace.nspname, statistic.stxname, statistic.oid;
+
+-- name: GetCatalogPartitionAttachments :many
+SELECT
+    child.oid::BIGINT AS relation_oid,
+    inheritance.inhparent::BIGINT AS parent_relation_oid,
+    pg_catalog.pg_get_expr(child.relpartbound, child.oid)::TEXT
+        AS bound_expression
+FROM pg_catalog.pg_class AS child
+INNER JOIN pg_catalog.pg_namespace AS child_namespace
+    ON child.relnamespace = child_namespace.oid
+INNER JOIN pg_catalog.pg_inherits AS inheritance
+    ON child.oid = inheritance.inhrelid
+INNER JOIN pg_catalog.pg_class AS parent
+    ON inheritance.inhparent = parent.oid
+INNER JOIN pg_catalog.pg_namespace AS parent_namespace
+    ON parent.relnamespace = parent_namespace.oid
+WHERE
+    child.relispartition
+    AND child_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND child_namespace.nspname !~ '^pg_toast'
+    AND child_namespace.nspname !~ '^pg_temp'
+    AND parent_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND parent_namespace.nspname !~ '^pg_toast'
+    AND parent_namespace.nspname !~ '^pg_temp'
+    AND child.relkind IN ('r', 'p', 'f')
+    AND parent.relkind IN ('r', 'p', 'f')
+ORDER BY child.oid, inheritance.inhseqno, inheritance.inhparent;
+
+-- name: GetCatalogSecurityLabels :many
+SELECT
+    security_label.objoid::BIGINT AS relation_oid,
+    security_label.objsubid AS column_number,
+    security_label.provider::TEXT AS provider,
+    security_label.label::TEXT AS label
+FROM pg_catalog.pg_seclabel AS security_label
+INNER JOIN pg_catalog.pg_class AS relation
+    ON security_label.classoid = 'pg_class'::REGCLASS
+    AND security_label.objoid = relation.oid
+INNER JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation.relnamespace = relation_namespace.oid
+WHERE
+    relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp'
+    AND relation.relkind IN ('r', 'p', 'f')
+ORDER BY
+    security_label.objoid,
+    security_label.objsubid,
+    security_label.provider,
+    security_label.label;
 
 -- name: GetTables :many
 SELECT
