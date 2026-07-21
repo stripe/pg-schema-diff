@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-7 complete
+Status: Proposed; delivery Stages 0-8 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first seven delivery stages are complete. They do not yet retain tables or
+The first eight delivery stages are complete. They do not yet retain tables or
 generate cleanup statements; ordinary table deletion still has the behavior
 described above.
 
@@ -130,6 +130,8 @@ The implemented foundation includes:
   ACLs plus role identities and membership options. A dormant typed planner
   validates explicit grant ancestry and orders dependent revokes without
   rendering SQL or using `CASCADE`.
+- Dormant strict v1 marker and typed cleanup-operation codecs with canonical
+  ordering, validation, and domain-separated cleanup digests.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -316,6 +318,10 @@ JSON with SHA-256 and domain `pg-schema-diff/cleanup-statements/v1`. Exclude SQL
 whitespace, rendered quoting, hazard order/messages, and marker text. Formatting
 or message changes therefore do not invalidate existing v1 markers; operation
 semantic changes require a new digest version.
+
+The v1 envelope encodes canonical JSON with unpadded base64url. Cleanup digests
+use lowercase `sha256:<64 hex>` and hash the UTF-8 domain, one `0x00` separator
+byte, and canonical cleanup-operation JSON in that order.
 
 Markers have two generation purposes:
 
@@ -744,7 +750,7 @@ stage's scope.
 | 5 | Dependency and platform inventory | Complete | 3 |
 | 6 | ACL inventory and revoke planner | Complete | 3 |
 | 7 | Archival name allocation | Complete | 1, 3 |
-| 8 | Marker and cleanup-operation codecs | Pending | 4, 5, 6, 7 |
+| 8 | Marker and cleanup-operation codecs | Complete | 4, 5, 6, 7 |
 | 9 | Archived-state resolver | Pending | 8 |
 | 10 | Source safety preflight | Pending | 5, 9 |
 | 11 | Archived dependency closure | Pending | 5, 9, 10 |
@@ -989,7 +995,7 @@ Acceptance gate:
 
 ### Stage 8: Marker and cleanup-operation codecs
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 4, 5, 6, and 7.
 
