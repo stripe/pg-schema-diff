@@ -409,6 +409,11 @@ func TestResolveArchivedStateDependencySchemasAreStructuralOnly(t *testing.T) {
 				fixture.snapshot, schema.SchemaSnapshot{})
 			require.NoError(t, err)
 			candidate := resolution.CandidateGroups[0]
+			assert.Equal(
+				t,
+				resolverTestPrefix+"_dep_o_20260721T091011123456Z_ABCDEFGH",
+				candidate.ExpectedDependencySchemaName,
+			)
 			if moved {
 				assert.Equal(t, archivedCandidateGroupStateCompleteCandidate, candidate.State)
 				assert.Empty(t, candidate.Resume.RemainingDependencyObjectMoves)

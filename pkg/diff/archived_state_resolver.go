@@ -26,11 +26,12 @@ type archivedStateResolution struct {
 }
 
 type structurallyValidArchivedCandidateGroup struct {
-	GroupID     archivalGroupID
-	State       archivedCandidateGroupState
-	Marker      archivalMarkerV1
-	SchemaNames []string
-	Resume      archivedGroupResumeDescriptor
+	GroupID                      archivalGroupID
+	State                        archivedCandidateGroupState
+	Marker                       archivalMarkerV1
+	SchemaNames                  []string
+	ExpectedDependencySchemaName string
+	Resume                       archivedGroupResumeDescriptor
 }
 
 type archivedGroupResumeDescriptor struct {
@@ -179,6 +180,20 @@ func resolveArchivedState(
 		if err != nil {
 			return archivedStateResolution{}, fmt.Errorf(
 				"resolving archival group %q: %w", groupID, err,
+			)
+		}
+		timestamp, nonce, err := parseArchivalGroupID(groupID)
+		if err != nil {
+			return archivedStateResolution{}, fmt.Errorf(
+				"resolving archival group %q dependency schema: %w", groupID, err,
+			)
+		}
+		candidate.ExpectedDependencySchemaName, err = buildArchivalDependencySchemaName(
+			prefix, timestamp, nonce,
+		)
+		if err != nil {
+			return archivedStateResolution{}, fmt.Errorf(
+				"resolving archival group %q dependency schema: %w", groupID, err,
 			)
 		}
 		resolution.CandidateGroups = append(resolution.CandidateGroups, candidate)

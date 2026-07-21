@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-10 complete
+Status: Proposed; delivery Stages 0-11 complete
 
 ## Summary
 
@@ -779,7 +779,7 @@ stage's scope.
 | 8 | Marker and cleanup-operation codecs | Complete | 4, 5, 6, 7 |
 | 9 | Archived-state resolver | Complete | 8 |
 | 10 | Source safety preflight | Complete | 5, 9 |
-| 11 | Archived dependency closure | Pending | 5, 9, 10 |
+| 11 | Archived dependency closure | Complete | 5, 9, 10 |
 | 12 | Dormant plain-table move engine | Pending | 7, 9, 10, 11 |
 | 13 | Replacement-aware regular graph | Pending | 12 |
 | 14 | Isolation and dependency rewiring | Pending | 6, 10, 11, 13 |
@@ -1006,6 +1006,9 @@ Deliverables:
   collisions.
 - Allocate one schema per physical relation and one shared group ID per partition
   tree.
+- Allocate one separate dependency schema per logical group with the same prefix,
+  captured timestamp, and group nonce. Use the fixed `dep_o` discriminator so
+  Stage 9 can independently recompute and Stage 11 can validate the marker claim.
 
 Out of scope:
 
@@ -1115,7 +1118,7 @@ Acceptance gate:
 
 ### Stage 11: Archived dependency closure
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 5, 9, and 10.
 

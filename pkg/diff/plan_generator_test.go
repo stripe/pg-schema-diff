@@ -338,3 +338,42 @@ func TestGenerateKeepsSourceSafetyPreflightDormant(t *testing.T) {
 	require.Len(t, plan.Statements, 1)
 	assert.Equal(t, `DROP TABLE "public"."archived"`, plan.Statements[0].DDL)
 }
+
+func TestGenerateKeepsArchivedDependencyClosureDormant(t *testing.T) {
+	t.Parallel()
+
+	expectedDeps := schemaSourcePlanDeps{
+		logger: slog.Default(), getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+	}
+	current := fakeSchemaSource{
+		t: t, expectedDeps: expectedDeps,
+		snapshot: schema.SchemaSnapshot{
+			Hash: "legacy-hash",
+			Schema: schema.Schema{Tables: []schema.Table{{
+				SchemaQualifiedName: schema.SchemaQualifiedName{
+					SchemaName: "public", EscapedName: `"archived"`,
+				},
+			}}},
+			Inventory: schema.CatalogInventory{
+				Relations: []schema.CatalogRelation{{
+					OID: 10, SchemaName: "public", Name: "archived", Kind: schema.RelKindOrdinaryTable,
+				}},
+				Types: []schema.CatalogType{{
+					OID: 20, SchemaName: "public", Name: "status", Kind: schema.CatalogTypeKindEnum,
+				}},
+				Dependencies: []schema.CatalogDependency{{
+					Dependent:  closureTableAddress(10, "public", "archived"),
+					Referenced: closureAddress(pgTypeCatalogOID, 20, "public", "status", "public.status"),
+				}},
+			},
+		},
+	}
+	target := fakeSchemaSource{t: t, expectedDeps: expectedDeps}
+
+	plan, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
+	require.NoError(t, err)
+	require.Len(t, plan.Statements, 1)
+	assert.Equal(t, `DROP TABLE "public"."archived"`, plan.Statements[0].DDL)
+	assert.Empty(t, plan.CleanupStatements)
+	assert.Equal(t, "legacy-hash", plan.CurrentSchemaHash)
+}

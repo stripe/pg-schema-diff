@@ -158,13 +158,15 @@ type CatalogDomainConstraint struct {
 }
 
 type CatalogRange struct {
-	TypeOID                uint32
-	SubtypeOID             uint32
-	MultirangeTypeOID      uint32
-	CollationOID           uint32
-	OperatorClassOID       uint32
-	CanonicalFunctionOID   uint32
-	SubtypeDiffFunctionOID uint32
+	TypeOID                 uint32
+	SubtypeOID              uint32
+	MultirangeTypeOID       uint32
+	CollationOID            uint32
+	OperatorClassOID        uint32
+	OperatorClassSchemaName string
+	OperatorClassName       string
+	CanonicalFunctionOID    uint32
+	SubtypeDiffFunctionOID  uint32
 }
 
 type CatalogTypeSupportFunction struct {
@@ -568,11 +570,13 @@ func fetchCatalogDependencyInventory(
 	for _, raw := range rawRanges {
 		inventory.Ranges = append(inventory.Ranges, CatalogRange{
 			TypeOID: catalogOID(raw.RangeTypeOid), SubtypeOID: catalogOID(raw.SubtypeOid),
-			MultirangeTypeOID:      catalogOID(raw.MultirangeTypeOid),
-			CollationOID:           catalogOID(raw.CollationOid),
-			OperatorClassOID:       catalogOID(raw.OperatorClassOid),
-			CanonicalFunctionOID:   catalogOID(raw.CanonicalFunctionOid),
-			SubtypeDiffFunctionOID: catalogOID(raw.SubtypeDiffFunctionOid),
+			MultirangeTypeOID:       catalogOID(raw.MultirangeTypeOid),
+			CollationOID:            catalogOID(raw.CollationOid),
+			OperatorClassOID:        catalogOID(raw.OperatorClassOid),
+			OperatorClassSchemaName: raw.OperatorClassSchemaName,
+			OperatorClassName:       raw.OperatorClassName,
+			CanonicalFunctionOID:    catalogOID(raw.CanonicalFunctionOid),
+			SubtypeDiffFunctionOID:  catalogOID(raw.SubtypeDiffFunctionOid),
 		})
 	}
 

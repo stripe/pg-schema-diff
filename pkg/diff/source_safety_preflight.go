@@ -35,10 +35,11 @@ type sourceSafetyExpectedRetainedObject struct {
 }
 
 type sourceSafetyPreflightResult struct {
-	IncomingDependencies []sourceSafetyIncomingDependency
-	ForeignKeys          []sourceSafetyForeignKey
-	PublicationRelations []schema.CatalogPublicationRelation
-	PublicationSchemas   []schema.CatalogPublicationSchema
+	ExpectedRetainedObjects []sourceSafetyExpectedRetainedObject
+	IncomingDependencies    []sourceSafetyIncomingDependency
+	ForeignKeys             []sourceSafetyForeignKey
+	PublicationRelations    []schema.CatalogPublicationRelation
+	PublicationSchemas      []schema.CatalogPublicationSchema
 }
 
 type sourceSafetyManagedScope string
@@ -185,8 +186,9 @@ func runSourceSafetyPreflight(request sourceSafetyPreflightRequest) (sourceSafet
 	}
 
 	result := sourceSafetyPreflightResult{
-		PublicationRelations: sourceSafetyPublicationRelations(current.Inventory, proposedRelations),
-		PublicationSchemas:   sourceSafetyPublicationSchemas(current.Inventory, proposedRelations),
+		ExpectedRetainedObjects: sourceSafetyExpectedRetainedObjects(retainedAddresses),
+		PublicationRelations:    sourceSafetyPublicationRelations(current.Inventory, proposedRelations),
+		PublicationSchemas:      sourceSafetyPublicationSchemas(current.Inventory, proposedRelations),
 	}
 
 	foreignKeyOIDs := make(map[uint32]struct{})
@@ -266,6 +268,11 @@ func runSourceSafetyPreflight(request sourceSafetyPreflightRequest) (sourceSafet
 	// PostgreSQL does not record body references for these routines. A persistent
 	// routine therefore has to be treated as a potential incoming dependency.
 	for _, routine := range current.Inventory.Routines {
+		if routine.SchemaName == "pg_catalog" || routine.SchemaName == "information_schema" ||
+			strings.HasPrefix(routine.SchemaName, "pg_toast") ||
+			strings.HasPrefix(routine.SchemaName, "pg_temp") {
+			continue
+		}
 		if routine.ReferenceTrackability != schema.CatalogRoutineReferenceTrackabilityUntrackable {
 			continue
 		}
@@ -316,6 +323,19 @@ func runSourceSafetyPreflight(request sourceSafetyPreflightRequest) (sourceSafet
 	}
 
 	return result, nil
+}
+
+func sourceSafetyExpectedRetainedObjects(
+	retained []sourceSafetyProtectedAddress,
+) []sourceSafetyExpectedRetainedObject {
+	result := make([]sourceSafetyExpectedRetainedObject, 0, len(retained))
+	for _, object := range retained {
+		result = append(result, sourceSafetyExpectedRetainedObject{
+			TableRelationOID: object.tableRelationOID,
+			Address:          object.address,
+		})
+	}
+	return result
 }
 
 func buildSourceSafetyProtectedAddresses(

@@ -92,6 +92,10 @@ func TestAllocateArchivalNamesUsesGenerationContextAndDeterministicOrder(t *test
 	assert.Equal(t, "IJKLMNOP", allocations[1].Nonce)
 	assert.Equal(t, archivalGroupID("20260721T161011123456Z_ABCDEFGH"), allocations[0].GroupID)
 	assert.Equal(t, archivalGroupID("20260721T161011123456Z_IJKLMNOP"), allocations[1].GroupID)
+	assert.Equal(t, "archive_dep_o_20260721T161011123456Z_ABCDEFGH",
+		allocations[0].DependencySchemaName)
+	assert.Equal(t, `"archive_dep_o_20260721T161011123456Z_ABCDEFGH"`,
+		allocations[0].EscapedDependencySchemaName)
 	assert.Equal(t, uint32(1), allocations[0].Members[0].RelationOID)
 	assert.Equal(t, uint32(2), allocations[1].Members[0].RelationOID)
 	assert.Equal(
@@ -258,6 +262,53 @@ func TestAllocateArchivalNamesRejectsUnfilteredSchemaCollisions(t *testing.T) {
 			assert.ErrorContains(t, err, testCase.expectedErrorText)
 		})
 	}
+}
+
+func TestAllocateArchivalNamesRejectsDependencySchemaCollisions(t *testing.T) {
+	const dependencySchema = "archive_dep_o_20260721T091011123456Z_AAAAAAAA"
+	baseInventory := schema.CatalogInventory{Relations: []schema.CatalogRelation{{
+		OID: 1, SchemaName: "public", Name: "table_name", Kind: schema.RelKindOrdinaryTable,
+	}}}
+	for _, testCase := range []struct {
+		name     string
+		current  schema.CatalogInventory
+		target   schema.CatalogInventory
+		contains string
+	}{
+		{
+			name: "current schema", current: schema.CatalogInventory{
+				Relations: baseInventory.Relations, Schemas: []schema.CatalogSchema{{Name: dependencySchema}},
+			}, contains: "collides with a current schema",
+		},
+		{
+			name: "target schema", current: baseInventory,
+			target:   schema.CatalogInventory{Schemas: []schema.CatalogSchema{{Name: dependencySchema}}},
+			contains: "collides with a target schema",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			allocations, err := allocateArchivalNames(
+				archivalNameTestPlanOptions(archivalNameTestTimestamp(), bytes.NewReader(make([]byte, 8))),
+				testCase.current, testCase.target,
+				[]archivalGroupNameAllocationRequest{ordinaryArchivalNameRequest(1)},
+			)
+			assert.Nil(t, allocations)
+			assert.ErrorContains(t, err, testCase.contains)
+		})
+	}
+
+	t.Run("member allocation", func(t *testing.T) {
+		inventory := schema.CatalogInventory{Relations: []schema.CatalogRelation{{
+			OID: 1, SchemaName: "dep", Name: "o", Kind: schema.RelKindOrdinaryTable,
+		}}}
+		allocations, err := allocateArchivalNames(
+			archivalNameTestPlanOptions(archivalNameTestTimestamp(), bytes.NewReader(make([]byte, 8))),
+			inventory, schema.CatalogInventory{},
+			[]archivalGroupNameAllocationRequest{ordinaryArchivalNameRequest(1)},
+		)
+		assert.Nil(t, allocations)
+		assert.ErrorContains(t, err, "duplicate generated archival schema name")
+	})
 }
 
 func TestAllocateArchivalNamesRejectsReservedTargetGrammar(t *testing.T) {

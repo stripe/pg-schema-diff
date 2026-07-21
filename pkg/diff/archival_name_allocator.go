@@ -34,10 +34,12 @@ type archivalPhysicalMemberNameAllocationRequest struct {
 }
 
 type archivalGroupNameAllocation struct {
-	GroupID   archivalGroupID
-	Nonce     string
-	Timestamp string
-	Members   []archivalPhysicalMemberNameAllocation
+	GroupID                     archivalGroupID
+	Nonce                       string
+	Timestamp                   string
+	DependencySchemaName        string
+	EscapedDependencySchemaName string
+	Members                     []archivalPhysicalMemberNameAllocation
 }
 
 type archivalPhysicalMemberNameAllocation struct {
@@ -101,6 +103,16 @@ func allocateArchivalNames(
 			Timestamp: timestamp,
 			Members:   make([]archivalPhysicalMemberNameAllocation, 0, len(group.members)),
 		}
+		dependencySchemaName, err := buildArchivalDependencySchemaName(
+			planOpts.schemaPartialArchivalPrefix, timestamp, nonce,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("allocating dependency schema for relation %s.%s: %w",
+				group.root.SchemaName, group.root.Name, err)
+		}
+		allocation.DependencySchemaName = dependencySchemaName
+		allocation.EscapedDependencySchemaName =
+			schema.EscapeIdentifier(dependencySchemaName)
 		for _, member := range group.members {
 			cleanupSchemaName, err := buildArchivalSchemaName(
 				planOpts.schemaPartialArchivalPrefix,
@@ -134,6 +146,10 @@ func allocateArchivalNames(
 		return nil, err
 	}
 	return allocations, nil
+}
+
+func buildArchivalDependencySchemaName(prefix, timestamp, nonce string) (string, error) {
+	return buildArchivalSchemaName(prefix, "dep", "o", timestamp, nonce)
 }
 
 func prepareArchivalNameRequests(
@@ -409,20 +425,22 @@ func validateArchivalNameAllocations(
 	groupIDs := make(map[archivalGroupID]struct{})
 	for groupIdx, allocation := range allocations {
 		for memberIdx, member := range allocation.Members {
-			if _, duplicate := generatedSchemas[member.CleanupSchemaName]; duplicate {
-				return fmt.Errorf("duplicate generated archival schema name %q", member.CleanupSchemaName)
-			}
-			generatedSchemas[member.CleanupSchemaName] = struct{}{}
-			if _, collision := currentSchemas[member.CleanupSchemaName]; collision {
-				return fmt.Errorf("generated archival schema name %q collides with a current schema",
-					member.CleanupSchemaName)
-			}
-			if _, collision := targetSchemas[member.CleanupSchemaName]; collision {
-				return fmt.Errorf("generated archival schema name %q collides with a target schema",
-					member.CleanupSchemaName)
-			}
 			if err := validateArchivalDestinationNamespace(
 				member.CleanupSchemaName, prepared[groupIdx].members[memberIdx].objects,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	for _, allocation := range allocations {
+		if err := validateGeneratedArchivalSchemaName(
+			allocation.DependencySchemaName, currentSchemas, targetSchemas, generatedSchemas,
+		); err != nil {
+			return err
+		}
+		for _, member := range allocation.Members {
+			if err := validateGeneratedArchivalSchemaName(
+				member.CleanupSchemaName, currentSchemas, targetSchemas, generatedSchemas,
 			); err != nil {
 				return err
 			}
@@ -433,6 +451,25 @@ func validateArchivalNameAllocations(
 		groupIDs[allocation.GroupID] = struct{}{}
 	}
 	return validateNoReservedArchivalTargetSchemas(prefix, targetInventory)
+}
+
+func validateGeneratedArchivalSchemaName(
+	name string,
+	currentSchemas map[string]struct{},
+	targetSchemas map[string]struct{},
+	generatedSchemas map[string]struct{},
+) error {
+	if _, duplicate := generatedSchemas[name]; duplicate {
+		return fmt.Errorf("duplicate generated archival schema name %q", name)
+	}
+	generatedSchemas[name] = struct{}{}
+	if _, collision := currentSchemas[name]; collision {
+		return fmt.Errorf("generated archival schema name %q collides with a current schema", name)
+	}
+	if _, collision := targetSchemas[name]; collision {
+		return fmt.Errorf("generated archival schema name %q collides with a target schema", name)
+	}
+	return nil
 }
 
 type archivalObjectNamespace string

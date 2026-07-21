@@ -294,10 +294,7 @@ INNER JOIN pg_catalog.pg_namespace AS collation_namespace
     ON collation_data.collnamespace = collation_namespace.oid
 INNER JOIN pg_catalog.pg_roles AS owner ON collation_data.collowner = owner.oid
 WHERE
-    collation_namespace.nspname NOT IN (
-        'pg_catalog', 'information_schema'
-    )
-    AND collation_namespace.nspname !~ '^pg_toast'
+    collation_namespace.nspname !~ '^pg_toast'
     AND collation_namespace.nspname !~ '^pg_temp'
 ORDER BY
     collation_namespace.nspname,
@@ -1624,8 +1621,7 @@ INNER JOIN pg_catalog.pg_namespace AS operator_namespace
     ON operator.oprnamespace = operator_namespace.oid
 INNER JOIN pg_catalog.pg_roles AS owner ON operator.oprowner = owner.oid
 WHERE
-    operator_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND operator_namespace.nspname !~ '^pg_toast'
+    operator_namespace.nspname !~ '^pg_toast'
     AND operator_namespace.nspname !~ '^pg_temp'
 ORDER BY
     operator_namespace.nspname,
@@ -2108,6 +2104,8 @@ SELECT
     range_data.rngmultitypid::BIGINT AS multirange_type_oid,
     range_data.rngcollation::BIGINT AS collation_oid,
     range_data.rngsubopc::BIGINT AS operator_class_oid,
+    operator_class_namespace.nspname::TEXT AS operator_class_schema_name,
+    operator_class.opcname::TEXT AS operator_class_name,
     range_data.rngcanonical::BIGINT AS canonical_function_oid,
     range_data.rngsubdiff::BIGINT AS subtype_diff_function_oid
 FROM pg_catalog.pg_range AS range_data
@@ -2115,6 +2113,10 @@ INNER JOIN pg_catalog.pg_type AS range_type
     ON range_data.rngtypid = range_type.oid
 INNER JOIN pg_catalog.pg_namespace AS type_namespace
     ON range_type.typnamespace = type_namespace.oid
+INNER JOIN pg_catalog.pg_opclass AS operator_class
+    ON range_data.rngsubopc = operator_class.oid
+INNER JOIN pg_catalog.pg_namespace AS operator_class_namespace
+    ON operator_class.opcnamespace = operator_class_namespace.oid
 WHERE
     type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND type_namespace.nspname !~ '^pg_toast'
@@ -2123,13 +2125,15 @@ ORDER BY range_data.rngtypid
 `
 
 type GetCatalogRangesRow struct {
-	RangeTypeOid           int64
-	SubtypeOid             int64
-	MultirangeTypeOid      int64
-	CollationOid           int64
-	OperatorClassOid       int64
-	CanonicalFunctionOid   int64
-	SubtypeDiffFunctionOid int64
+	RangeTypeOid            int64
+	SubtypeOid              int64
+	MultirangeTypeOid       int64
+	CollationOid            int64
+	OperatorClassOid        int64
+	OperatorClassSchemaName string
+	OperatorClassName       string
+	CanonicalFunctionOid    int64
+	SubtypeDiffFunctionOid  int64
 }
 
 func (q *Queries) GetCatalogRanges(ctx context.Context, db DBTX) ([]GetCatalogRangesRow, error) {
@@ -2147,6 +2151,8 @@ func (q *Queries) GetCatalogRanges(ctx context.Context, db DBTX) ([]GetCatalogRa
 			&i.MultirangeTypeOid,
 			&i.CollationOid,
 			&i.OperatorClassOid,
+			&i.OperatorClassSchemaName,
+			&i.OperatorClassName,
 			&i.CanonicalFunctionOid,
 			&i.SubtypeDiffFunctionOid,
 		); err != nil {
@@ -2502,9 +2508,9 @@ INNER JOIN pg_catalog.pg_namespace AS routine_namespace
 INNER JOIN pg_catalog.pg_roles AS owner ON routine.proowner = owner.oid
 INNER JOIN pg_catalog.pg_language AS language ON routine.prolang = language.oid
 WHERE
-    routine_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND routine_namespace.nspname !~ '^pg_toast'
+    routine_namespace.nspname !~ '^pg_toast'
     AND routine_namespace.nspname !~ '^pg_temp'
+    AND routine.prokind != 'a'
 ORDER BY
     routine_namespace.nspname,
     routine.proname,
@@ -3178,8 +3184,7 @@ LEFT JOIN pg_catalog.pg_extension AS extension
     ON extension_dependency.refclassid = 'pg_extension'::REGCLASS
     AND extension_dependency.refobjid = extension.oid
 WHERE
-    type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND type_namespace.nspname !~ '^pg_toast'
+    type_namespace.nspname !~ '^pg_toast'
     AND type_namespace.nspname !~ '^pg_temp'
 ORDER BY type_namespace.nspname, type_data.typname, type_data.oid
 `
