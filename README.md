@@ -214,5 +214,5 @@ An abridged list of unsupported migrations:
 an object, it will be treated as a drop and an add
 
 # Contributing
-This project is in its early stages. We appreciate all the feature/bug requests we receive, but we have limited cycles
+We appreciate all the feature/bug requests we receive, but we have limited cycles
 to review direct code contributions at this time. See [Contributing](CONTRIBUTING.md) to learn more.
