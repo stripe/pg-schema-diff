@@ -243,19 +243,11 @@ func applyDDL(db *pgengine.DB, ddl []string) error {
 }
 
 func applyPlan(db *pgengine.DB, plan diff.Plan) error {
-	conn, err := sql.Open("pgx", db.GetDSN())
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	ctx := context.Background()
+	var ddl []string
 	for _, stmt := range plan.Statements {
-		if err := diff.ExecuteStatement(ctx, conn, stmt); err != nil {
-			return err
-		}
+		ddl = append(ddl, stmt.ToSQL())
 	}
-	return nil
+	return applyDDL(db, ddl)
 }
 
 func getUniqueHazardTypesFromStatements(statements []diff.Statement) []diff.MigrationHazardType {

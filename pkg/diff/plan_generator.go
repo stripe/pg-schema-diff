@@ -338,8 +338,8 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, stat
 			// that don't exist in the temp DB)
 			continue
 		}
-		if err := ExecuteStatement(ctx, conn, stmt); err != nil {
-			return err
+		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
+			return fmt.Errorf("executing migration statement. the database maybe be in a dirty state: %s: %w", stmt.DDL, err)
 		}
 	}
 	return nil

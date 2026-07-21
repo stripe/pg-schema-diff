@@ -11,16 +11,14 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/stripe/pg-schema-diff/internal/pgengine"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/log"
-	"github.com/stripe/pg-schema-diff/pkg/sqldb"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
-// Regression for CVE-2018-1058 / SAT-28189: a shadow public.to_timestamp(bigint)
-// must not run during apply when search_path is pinned to pg_catalog.
-func TestSearchPathPinningPreventsToTimestampShadow(t *testing.T) {
+// Regression for CVE-2018-1058: a shadow public.to_timestamp(bigint) must not
+// run when pg-schema-diff emits a schema-qualified pg_catalog.to_timestamp call.
+func TestQualifiedToTimestampPreventsShadowFunction(t *testing.T) {
 	t.Parallel()
 
 	db, err := pgEngine.CreateDatabaseWithName(fmt.Sprintf("pgtemp_%s", uuid.NewString()))
@@ -81,25 +79,6 @@ func TestSearchPathPinningPreventsToTimestampShadow(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotEqual(t, 1970, ts.Year(),
-		"shadow to_timestamp(bigint) would have returned 1970-01-01 if search_path were not pinned")
+		"shadow to_timestamp(bigint) would have returned 1970-01-01 if pg_catalog.to_timestamp were not used")
 	assert.Equal(t, 2023, ts.Year())
-}
-
-func TestPinSearchPath(t *testing.T) {
-	t.Parallel()
-
-	engine, err := pgengine.StartEngine()
-	require.NoError(t, err)
-	defer engine.Close()
-
-	conn, err := sql.Open("pgx", engine.GetPostgresDatabaseDSN())
-	require.NoError(t, err)
-	defer conn.Close()
-
-	ctx := context.Background()
-	require.NoError(t, sqldb.PinSearchPath(ctx, conn))
-
-	var searchPath string
-	require.NoError(t, conn.QueryRowContext(ctx, `SHOW search_path`).Scan(&searchPath))
-	assert.Equal(t, "pg_catalog", searchPath)
 }

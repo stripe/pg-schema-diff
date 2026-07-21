@@ -1404,9 +1404,8 @@ func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
 				newType,
 				schema.EscapeIdentifier(col.Name),
 			),
-			Timeout:                 statementTimeoutDefault,
-			LockTimeout:             lockTimeoutDefault,
-			pinSearchPathBeforeExec: true,
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
 			Hazards: []MigrationHazard{{
 				Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
 				Message: "This will completely lock the table while the data is being " +
