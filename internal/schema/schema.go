@@ -10,7 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mitchellh/hashstructure/v2"
-	"golang.org/x/sync/errgroup"
+
+	dbsqlc "github.com/stripe/pg-schema-diff/internal/queries"
 )
 
 type (
@@ -62,6 +63,13 @@ type Schema struct {
 	Triggers              []Trigger
 	Views                 []View
 	MaterializedViews     []MaterializedView
+}
+
+// SchemaSnapshot is the normalized modeled schema and its existing schema hash
+// from one catalog snapshot. Callers treat snapshots as immutable.
+type SchemaSnapshot struct {
+	Schema Schema
+	Hash   string
 }
 
 // Normalize sorts schema objects while preserving the physical order of table columns.
@@ -567,8 +575,62 @@ type getSchemaOptions struct {
 	excludeSchemaPatterns []string
 }
 
-// GetSchema fetches the database schema. It is a non-atomic operation.
-func GetSchema(ctx context.Context, db *pgxpool.Pool, opts ...GetSchemaOpt) (*Schema, error) {
+// GetSchemaSnapshot fetches and hashes the database schema from one consistent
+// catalog snapshot.
+func GetSchemaSnapshot(ctx context.Context, db *pgxpool.Pool, opts ...GetSchemaOpt) (SchemaSnapshot, error) {
+	nameFilter, err := getSchemaNameFilter(opts...)
+	if err != nil {
+		return SchemaSnapshot{}, err
+	}
+
+	conn, err := db.Acquire(ctx)
+	if err != nil {
+		return SchemaSnapshot{}, fmt.Errorf("acquiring connection for schema snapshot: %w", err)
+	}
+	defer conn.Release()
+
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.RepeatableRead,
+		AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return SchemaSnapshot{}, fmt.Errorf("beginning schema snapshot transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(context.WithoutCancel(ctx))
+		}
+	}()
+
+	snapshot, err := getSchemaSnapshot(ctx, tx, nameFilter)
+	if err != nil {
+		return SchemaSnapshot{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SchemaSnapshot{}, fmt.Errorf("committing schema snapshot transaction: %w", err)
+	}
+	committed = true
+
+	return snapshot, nil
+}
+
+func getSchemaSnapshot(ctx context.Context, db dbsqlc.DBTX, nameFilter nameFilter) (SchemaSnapshot, error) {
+	fetchedSchema, err := (&schemaFetcher{nameFilter: nameFilter}).getSchema(ctx, db)
+	if err != nil {
+		return SchemaSnapshot{}, err
+	}
+
+	normalizedSchema := fetchedSchema.Normalize()
+	hash, err := normalizedSchema.Hash()
+	if err != nil {
+		return SchemaSnapshot{}, fmt.Errorf("hashing schema: %w", err)
+	}
+
+	return SchemaSnapshot{Schema: normalizedSchema, Hash: hash}, nil
+}
+
+func getSchemaNameFilter(opts ...GetSchemaOpt) (nameFilter, error) {
 	options := getSchemaOptions{}
 	for _, opt := range opts {
 		opt(&options)
@@ -579,7 +641,7 @@ func GetSchema(ctx context.Context, db *pgxpool.Pool, opts ...GetSchemaOpt) (*Sc
 		return nil, fmt.Errorf("building name filter: %w", err)
 	}
 
-	return (&schemaFetcher{nameFilter: nameFilter}).getSchema(ctx, db)
+	return nameFilter, nil
 }
 
 func buildNameFilter(options getSchemaOptions) (nameFilter, error) {
@@ -650,72 +712,55 @@ type (
 	}
 )
 
-func (s *schemaFetcher) getSchema(ctx context.Context, db *pgxpool.Pool) (*Schema, error) {
+func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (*Schema, error) {
 	var result Schema
-	// Fetch object types in parallel. Tables, check constraints, and functions also parallelize their per-object queries.
-	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(maxConcurrentSchemaQueries)
-	group.Go(func() error {
-		var err error
-		result.NamedSchemas, err = fetchNamedSchemas(groupCtx, db)
-		return wrapSchemaFetchError("named schemas", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.Extensions, err = fetchExtensions(groupCtx, db)
-		return wrapSchemaFetchError("extensions", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.Enums, err = fetchEnums(groupCtx, db)
-		return wrapSchemaFetchError("enums", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.Tables, err = fetchTables(groupCtx, db)
-		return wrapSchemaFetchError("tables", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.Indexes, err = fetchIndexes(groupCtx, db)
-		return wrapSchemaFetchError("indexes", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.ForeignKeyConstraints, err = fetchForeignKeyCons(groupCtx, db)
-		return wrapSchemaFetchError("foreign key constraints", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.Sequences, err = fetchSequences(groupCtx, db)
-		return wrapSchemaFetchError("sequences", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.Functions, err = fetchFunctions(groupCtx, db)
-		return wrapSchemaFetchError("functions", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.Procedures, err = fetchProcedures(groupCtx, db)
-		return wrapSchemaFetchError("procedures", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.Triggers, err = fetchTriggers(groupCtx, db)
-		return wrapSchemaFetchError("triggers", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.Views, err = fetchViews(groupCtx, db)
-		return wrapSchemaFetchError("views", err)
-	})
-	group.Go(func() error {
-		var err error
-		result.MaterializedViews, err = fetchMaterializedViews(groupCtx, db)
-		return wrapSchemaFetchError("materialized views", err)
-	})
-	if err := group.Wait(); err != nil {
+	var err error
+	result.NamedSchemas, err = fetchNamedSchemas(ctx, db)
+	if err := wrapSchemaFetchError("named schemas", err); err != nil {
+		return nil, err
+	}
+	result.Extensions, err = fetchExtensions(ctx, db)
+	if err := wrapSchemaFetchError("extensions", err); err != nil {
+		return nil, err
+	}
+	result.Enums, err = fetchEnums(ctx, db)
+	if err := wrapSchemaFetchError("enums", err); err != nil {
+		return nil, err
+	}
+	result.Tables, err = fetchTables(ctx, db)
+	if err := wrapSchemaFetchError("tables", err); err != nil {
+		return nil, err
+	}
+	result.Indexes, err = fetchIndexes(ctx, db)
+	if err := wrapSchemaFetchError("indexes", err); err != nil {
+		return nil, err
+	}
+	result.ForeignKeyConstraints, err = fetchForeignKeyCons(ctx, db)
+	if err := wrapSchemaFetchError("foreign key constraints", err); err != nil {
+		return nil, err
+	}
+	result.Sequences, err = fetchSequences(ctx, db)
+	if err := wrapSchemaFetchError("sequences", err); err != nil {
+		return nil, err
+	}
+	result.Functions, err = fetchFunctions(ctx, db)
+	if err := wrapSchemaFetchError("functions", err); err != nil {
+		return nil, err
+	}
+	result.Procedures, err = fetchProcedures(ctx, db)
+	if err := wrapSchemaFetchError("procedures", err); err != nil {
+		return nil, err
+	}
+	result.Triggers, err = fetchTriggers(ctx, db)
+	if err := wrapSchemaFetchError("triggers", err); err != nil {
+		return nil, err
+	}
+	result.Views, err = fetchViews(ctx, db)
+	if err := wrapSchemaFetchError("views", err); err != nil {
+		return nil, err
+	}
+	result.MaterializedViews, err = fetchMaterializedViews(ctx, db)
+	if err := wrapSchemaFetchError("materialized views", err); err != nil {
 		return nil, err
 	}
 

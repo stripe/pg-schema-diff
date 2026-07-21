@@ -133,13 +133,13 @@ func TestOnInstanceFactorySuite(t *testing.T) {
 		conn2.Release()
 
 		// A newly created temporary database should contain no user-defined objects.
-		schema, err := internalschema.GetSchema(t.Context(), tempDb.ConnPool)
+		snapshot, err := internalschema.GetSchemaSnapshot(t.Context(), tempDb.ConnPool)
 		require.NoError(t, err)
-		assert.Equal(t, &internalschema.Schema{
+		assert.Equal(t, (internalschema.Schema{
 			NamedSchemas: []internalschema.NamedSchema{{
 				Name: "public",
 			}},
-		}, schema)
+		}).Normalize(), snapshot.Schema)
 
 		// Drop database
 		require.NoError(t, tempDb.Close(t.Context()))

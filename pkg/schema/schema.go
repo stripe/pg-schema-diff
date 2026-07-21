@@ -23,14 +23,10 @@ var (
 // We do not expose the Schema struct yet because it is subject to change, and we do not want folks depending on its API.
 func GetSchemaHash(ctx context.Context, connPool *pgxpool.Pool, opts ...GetSchemaOpt) (string, error) {
 	opts = append([]GetSchemaOpt{WithExcludeSchemaPatterns(DefaultCleanupSchemaPrefix + ".*")}, opts...)
-	schema, err := internalschema.GetSchema(ctx, connPool, opts...)
+	snapshot, err := internalschema.GetSchemaSnapshot(ctx, connPool, opts...)
 	if err != nil {
 		return "", fmt.Errorf("getting public schema: %w", err)
 	}
-	hash, err := schema.Hash()
-	if err != nil {
-		return "", fmt.Errorf("hashing schema: %w", err)
-	}
 
-	return hash, nil
+	return snapshot.Hash, nil
 }

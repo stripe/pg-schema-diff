@@ -1399,7 +1399,7 @@ func runTestCase(t *testing.T, factory *testdb.Factory, testCase *testCase) {
 		require.NoError(t, err)
 	}
 
-	fetchedSchema, err := GetSchema(t.Context(), db.ConnPool, testCase.opts...)
+	snapshot, err := GetSchemaSnapshot(t.Context(), db.ConnPool, testCase.opts...)
 	if testCase.expectedErrIs != nil {
 		require.ErrorIs(t, err, testCase.expectedErrIs)
 		return
@@ -1413,12 +1413,11 @@ func runTestCase(t *testing.T, factory *testdb.Factory, testCase *testCase) {
 	}
 
 	expectedNormalized := testCase.expectedSchema.Normalize()
-	fetchedNormalized := fetchedSchema.Normalize()
+	fetchedNormalized := snapshot.Schema
 	assert.Equal(t, expectedNormalized, fetchedNormalized, "expected=\n%# v \n fetched=%# v\n",
 		pretty.Formatter(expectedNormalized), pretty.Formatter(fetchedNormalized))
 
-	fetchedSchemaHash, err := fetchedSchema.Hash()
-	require.NoError(t, err)
+	fetchedSchemaHash := snapshot.Hash
 	expectedSchemaHash, err := testCase.expectedSchema.Hash()
 	require.NoError(t, err)
 	// same schemas should have the same hashes

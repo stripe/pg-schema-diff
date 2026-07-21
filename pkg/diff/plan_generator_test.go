@@ -19,19 +19,19 @@ type fakeSchemaSource struct {
 	t *testing.T
 
 	expectedDeps schemaSourcePlanDeps
-	schema       schema.Schema
+	snapshot     schema.SchemaSnapshot
 	err          error
 }
 
-func (f fakeSchemaSource) GetSchema(_ context.Context, deps schemaSourcePlanDeps) (*schema.Schema, error) {
+func (f fakeSchemaSource) GetSchemaSnapshot(_ context.Context, deps schemaSourcePlanDeps) (schema.SchemaSnapshot, error) {
 	assert.Equal(f.t, f.expectedDeps.logger, deps.logger)
 	assert.Equal(f.t, f.expectedDeps.tempDBFactory, deps.tempDBFactory)
 	// We can't easily compare the function pointers, so we'll just assert the length of the slices.
 	assert.Len(f.t, f.expectedDeps.getSchemaOpts, len(deps.getSchemaOpts))
 	if f.err != nil {
-		return nil, f.err
+		return schema.SchemaSnapshot{}, f.err
 	}
-	return &f.schema, nil
+	return f.snapshot, nil
 }
 
 func mustApplyDDLToTestDB(t testing.TB, db *pgxpool.Pool, ddl []string) {
@@ -248,6 +248,7 @@ func TestGenerateCapturesGenerationTimestamp(t *testing.T) {
 			logger:        slog.Default(),
 			getSchemaOpts: make([]schema.GetSchemaOpt, 1),
 		},
+		snapshot: schema.SchemaSnapshot{Hash: "snapshot-hash"},
 	}
 
 	plan, err := Generate(t.Context(), source, source, WithDoNotValidatePlan(), clockOpt)
@@ -257,4 +258,5 @@ func TestGenerateCapturesGenerationTimestamp(t *testing.T) {
 	assert.Equal(t, clockTime.UTC(), capturedOptions.generationTimestamp)
 	assert.Equal(t, time.UTC, capturedOptions.generationTimestamp.Location())
 	assert.Empty(t, plan.CleanupStatements)
+	assert.Equal(t, "snapshot-hash", plan.CurrentSchemaHash)
 }

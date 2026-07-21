@@ -20,7 +20,7 @@ type schemaSourcePlanDeps struct {
 }
 
 type SchemaSource interface {
-	GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (*schema.Schema, error)
+	GetSchemaSnapshot(ctx context.Context, deps schemaSourcePlanDeps) (schema.SchemaSnapshot, error)
 }
 
 type (
@@ -101,14 +101,14 @@ func DDLSchemaSource(stmts []string) SchemaSource {
 	return &ddlSchemaSource{ddl: ddl}
 }
 
-func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (*schema.Schema, error) {
+func (s *ddlSchemaSource) GetSchemaSnapshot(ctx context.Context, deps schemaSourcePlanDeps) (schema.SchemaSnapshot, error) {
 	if deps.tempDBFactory == nil {
-		return nil, errTempDbFactoryRequired
+		return schema.SchemaSnapshot{}, errTempDbFactoryRequired
 	}
 
 	tempDb, err := deps.tempDBFactory.Create(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("creating temp database: %w", err)
+		return schema.SchemaSnapshot{}, fmt.Errorf("creating temp database: %w", err)
 	}
 	defer func() {
 		if err := tempDb.Close(ctx); err != nil {
@@ -125,11 +125,11 @@ func (s *ddlSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDe
 			if ddlStmt.file != "" {
 				debugInfo = fmt.Sprintf(" (from %s)", ddlStmt.file)
 			}
-			return nil, fmt.Errorf("running DDL%s: %w", debugInfo, err)
+			return schema.SchemaSnapshot{}, fmt.Errorf("running DDL%s: %w", debugInfo, err)
 		}
 	}
 
-	return schema.GetSchema(ctx, tempDb.ConnPool, deps.getSchemaOpts...)
+	return schema.GetSchemaSnapshot(ctx, tempDb.ConnPool, deps.getSchemaOpts...)
 }
 
 type dbSchemaSource struct {
@@ -141,6 +141,6 @@ func DBSchemaSource(connPool *pgxpool.Pool) SchemaSource {
 	return &dbSchemaSource{connPool: connPool}
 }
 
-func (s *dbSchemaSource) GetSchema(ctx context.Context, deps schemaSourcePlanDeps) (*schema.Schema, error) {
-	return schema.GetSchema(ctx, s.connPool, deps.getSchemaOpts...)
+func (s *dbSchemaSource) GetSchemaSnapshot(ctx context.Context, deps schemaSourcePlanDeps) (schema.SchemaSnapshot, error) {
+	return schema.GetSchemaSnapshot(ctx, s.connPool, deps.getSchemaOpts...)
 }

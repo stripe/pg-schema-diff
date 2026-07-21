@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-1 complete
+Status: Proposed; delivery Stages 0-2 complete
 
 ## Summary
 
@@ -85,9 +85,9 @@ Other generators depend on that physical deletion:
 - Enum, extension, and named-schema deletion occurs after the table graph.
 - Validation expects the migrated modeled schema to match the target exactly.
 
-### Implemented filtering foundation
+### Implemented foundation
 
-The first two delivery stages are complete. They do not yet retain tables or
+The first three delivery stages are complete. They do not yet retain tables or
 generate cleanup statements; ordinary table deletion still has the behavior
 described above.
 
@@ -111,6 +111,10 @@ The implemented foundation includes:
   the ordinary `Statements` list.
 - One UTC generation timestamp captured in the internal generation context per
   `Generate` call. The timestamp does not yet affect SQL or serialized plans.
+- Consistent catalog snapshots for every database-backed schema fetch. Each
+  fetch pins one connection, runs sequential catalog queries in a read-only
+  repeatable-read transaction, and normalizes and hashes the modeled schema
+  before committing.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -381,9 +385,8 @@ the marker/catalog rules above.
 ## Consistent Catalog Snapshot
 
 Cleanup generation, collision checks, marker validation, and dependency closure
-must observe one catalog state. The current `schema.GetSchema` is explicitly
-non-atomic and issues parallel queries through a pool, so it cannot be reused
-unchanged.
+must observe one catalog state. Schema acquisition now provides that foundation
+instead of issuing parallel queries through a pool.
 
 For `DBSchemaSource`:
 
@@ -401,10 +404,11 @@ DDL/directory sources already materialize into a temporary database. After all
 DDL is applied, fetch the target and its relation/type namespace from one
 read-only snapshot there as well.
 
-Refactor the internal source/fetch interfaces to return a `SchemaSnapshot`
-containing the modeled schema plus raw catalog safety inventory. All diff,
-retention, cleanup, marker, and hash generation for one `Generate` call consumes
-that immutable snapshot.
+Internal source/fetch interfaces return a `SchemaSnapshot` containing the
+normalized modeled schema and its existing hash. Later inventory stages extend
+that transport with raw catalog safety inventory. All diff, retention, cleanup,
+marker, and hash generation for one `Generate` call consumes that immutable
+snapshot.
 
 ## Incoming Dependencies
 
@@ -719,7 +723,7 @@ stage's scope.
 | --- | --- | --- | --- |
 | 0 | Schema-filtering foundation | Complete | None |
 | 1 | Plan envelope and generation context | Complete | 0 |
-| 2 | Consistent catalog snapshots | Pending | 0 |
+| 2 | Consistent catalog snapshots | Complete | 0 |
 | 3 | Namespace and partition inventory | Pending | 2 |
 | 4 | Table-local metadata inventory | Pending | 3 |
 | 5 | Dependency and platform inventory | Pending | 3 |
@@ -798,7 +802,7 @@ Acceptance gate:
 
 ### Stage 2: Consistent catalog snapshots
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stage 0.
 

@@ -76,12 +76,10 @@ func TestSchemaTestSuite(t *testing.T) {
 			schema.WithIncludeSchemaPatterns("public"))
 		require.NoError(t, err)
 
-		schema, err := internalschema.GetSchema(t.Context(), db.ConnPool,
+		snapshot, err := internalschema.GetSchemaSnapshot(t.Context(), db.ConnPool,
 			internalschema.WithIncludeSchemaPatterns("public"))
 		require.NoError(t, err)
-		expectedHash, err := schema.Hash()
-		require.NoError(t, err)
-		assert.Equal(t, expectedHash, hash)
+		assert.Equal(t, snapshot.Hash, hash)
 	})
 
 	t.Run("TestGetSchemaHashIgnoresDefaultCleanupSchemas", func(t *testing.T) {
@@ -100,22 +98,18 @@ func TestSchemaTestSuite(t *testing.T) {
 		hash, err := schema.GetSchemaHash(t.Context(), db.ConnPool)
 		require.NoError(t, err)
 
-		filteredSchema, err := internalschema.GetSchema(t.Context(), db.ConnPool,
+		filteredSnapshot, err := internalschema.GetSchemaSnapshot(t.Context(), db.ConnPool,
 			internalschema.WithExcludeSchemaPatterns(schema.DefaultCleanupSchemaPrefix+".*"))
 		require.NoError(t, err)
-		expectedHash, err := filteredSchema.Hash()
-		require.NoError(t, err)
-		assert.Equal(t, expectedHash, hash)
+		assert.Equal(t, filteredSnapshot.Hash, hash)
 
 		customHash, err := schema.GetSchemaHash(t.Context(), db.ConnPool,
 			schema.WithExcludeSchemaPatterns("deleted.*"))
 		require.NoError(t, err)
-		customFilteredSchema, err := internalschema.GetSchema(t.Context(), db.ConnPool,
+		customFilteredSnapshot, err := internalschema.GetSchemaSnapshot(t.Context(), db.ConnPool,
 			internalschema.WithExcludeSchemaPatterns(schema.DefaultCleanupSchemaPrefix+".*", "deleted.*"))
 		require.NoError(t, err)
-		expectedCustomHash, err := customFilteredSchema.Hash()
-		require.NoError(t, err)
-		assert.Equal(t, expectedCustomHash, customHash)
+		assert.Equal(t, customFilteredSnapshot.Hash, customHash)
 		assert.NotEqual(t, hash, customHash)
 	})
 }

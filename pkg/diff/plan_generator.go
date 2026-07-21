@@ -141,7 +141,7 @@ func Generate(
 	planOptions.getSchemaOpts = append(planOptions.getSchemaOpts,
 		schema.WithExcludeSchemaPatterns(regexp.QuoteMeta(planOptions.schemaPartialArchivalPrefix)+".*"))
 
-	currentSchema, err := fromSchema.GetSchema(ctx, schemaSourcePlanDeps{
+	currentSnapshot, err := fromSchema.GetSchemaSnapshot(ctx, schemaSourcePlanDeps{
 		tempDBFactory: planOptions.tempDbFactory,
 		logger:        planOptions.logger,
 		getSchemaOpts: planOptions.getSchemaOpts,
@@ -149,7 +149,7 @@ func Generate(
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting current schema: %w", err)
 	}
-	newSchema, err := targetSchema.GetSchema(ctx, schemaSourcePlanDeps{
+	newSnapshot, err := targetSchema.GetSchemaSnapshot(ctx, schemaSourcePlanDeps{
 		tempDBFactory: planOptions.tempDbFactory,
 		logger:        planOptions.logger,
 		getSchemaOpts: planOptions.getSchemaOpts,
@@ -158,27 +158,22 @@ func Generate(
 		return Plan{}, fmt.Errorf("getting new schema: %w", err)
 	}
 
-	statements, err := generateMigrationStatements(*currentSchema, *newSchema, planOptions)
+	statements, err := generateMigrationStatements(currentSnapshot.Schema, newSnapshot.Schema, planOptions)
 	if err != nil {
 		return Plan{}, fmt.Errorf("generating plan statements: %w", err)
 	}
 
-	hash, err := currentSchema.Hash()
-	if err != nil {
-		return Plan{}, fmt.Errorf("generating current schema hash: %w", err)
-	}
-
 	plan := Plan{
 		Statements:        statements,
-		CurrentSchemaHash: hash,
+		CurrentSchemaHash: currentSnapshot.Hash,
 	}
 
 	if planOptions.validatePlan {
 		if planOptions.tempDbFactory == nil {
 			return Plan{}, fmt.Errorf("cannot validate plan without a tempDbFactory: %w", errTempDbFactoryRequired)
 		}
-		if err := assertValidPlan(ctx, planOptions.tempDbFactory, *currentSchema,
-			*newSchema, plan, planOptions); err != nil {
+		if err := assertValidPlan(ctx, planOptions.tempDbFactory, currentSnapshot.Schema,
+			newSnapshot.Schema, plan, planOptions); err != nil {
 			return Plan{}, fmt.Errorf("validating migration plan: %w \n%# v", err, pretty.Formatter(plan))
 		}
 	}
@@ -277,7 +272,11 @@ func setSchemaForEmptyDatabase(ctx context.Context, emptyDb *tempdb.Database, ta
 }
 
 func schemaFromTempDb(ctx context.Context, db *tempdb.Database, plan *planOptions) (*schema.Schema, error) {
-	return schema.GetSchema(ctx, db.ConnPool, plan.getSchemaOpts...)
+	snapshot, err := schema.GetSchemaSnapshot(ctx, db.ConnPool, plan.getSchemaOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return &snapshot.Schema, nil
 }
 
 // clearTablePrivileges returns a copy of the schema with all table privileges cleared.
