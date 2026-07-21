@@ -38,6 +38,21 @@ func TestQualifyTypeForCast(t *testing.T) {
 			expected: "pg_catalog.numeric(65,10)",
 		},
 		{
+			name:     "text maps to pg_catalog typname text",
+			input:    "text",
+			expected: "pg_catalog.text",
+		},
+		{
+			name:     "uuid maps to pg_catalog typname uuid",
+			input:    "uuid",
+			expected: "pg_catalog.uuid",
+		},
+		{
+			name:     "jsonb maps to pg_catalog typname jsonb",
+			input:    "jsonb",
+			expected: "pg_catalog.jsonb",
+		},
+		{
 			name:     "user type already schema qualified",
 			input:    `"public"."myenum"`,
 			expected: `"public"."myenum"`,
