@@ -260,3 +260,81 @@ func TestGenerateCapturesGenerationTimestamp(t *testing.T) {
 	assert.Empty(t, plan.CleanupStatements)
 	assert.Equal(t, "snapshot-hash", plan.CurrentSchemaHash)
 }
+
+func TestGenerateRejectsChangedExtensionOwningHiddenTableWithoutValidation(t *testing.T) {
+	t.Parallel()
+
+	extension := schema.CatalogExtensionIdentity{
+		Name: "hidden_owner", Version: "1", SchemaName: "public",
+	}
+	expectedDeps := schemaSourcePlanDeps{
+		logger:        slog.Default(),
+		getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+	}
+	current := fakeSchemaSource{
+		t: t, expectedDeps: expectedDeps,
+		snapshot: schema.SchemaSnapshot{
+			Schema: schema.Schema{Extensions: []schema.Extension{{
+				SchemaQualifiedName: schema.SchemaQualifiedName{
+					SchemaName: "public", EscapedName: `"hidden_owner"`,
+				},
+				Version: extension.Version,
+			}}},
+			Inventory: schema.CatalogInventory{
+				Extensions: []schema.CatalogExtensionIdentity{extension},
+				Relations: []schema.CatalogRelation{{
+					OID: 10, SchemaName: "hidden", Name: "member", Kind: schema.RelKindOrdinaryTable,
+					Extension: &schema.CatalogExtension{Name: extension.Name, OID: 1},
+				}},
+			},
+		},
+	}
+	target := fakeSchemaSource{t: t, expectedDeps: expectedDeps}
+
+	_, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
+	require.ErrorContains(t, err, "extension owns table-like relation hidden.member")
+}
+
+func TestGenerateKeepsSourceSafetyPreflightDormant(t *testing.T) {
+	t.Parallel()
+
+	expectedDeps := schemaSourcePlanDeps{
+		logger:        slog.Default(),
+		getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+	}
+	current := fakeSchemaSource{
+		t: t, expectedDeps: expectedDeps,
+		snapshot: schema.SchemaSnapshot{
+			Schema: schema.Schema{Tables: []schema.Table{{
+				SchemaQualifiedName: schema.SchemaQualifiedName{
+					SchemaName: "public", EscapedName: `"archived"`,
+				},
+			}}},
+			Inventory: schema.CatalogInventory{
+				Relations: []schema.CatalogRelation{
+					{OID: 10, SchemaName: "public", Name: "archived", Kind: schema.RelKindOrdinaryTable},
+					{OID: 20, SchemaName: "excluded", Name: "dependent", Kind: schema.RelKindView},
+				},
+				Views: []schema.CatalogView{{
+					RelationOID: 20, SchemaName: "excluded", Name: "dependent", Kind: schema.RelKindView,
+				}},
+				Dependencies: []schema.CatalogDependency{{
+					Dependent: schema.CatalogDependencyObject{
+						ClassOID: pgRewriteCatalogOID, ObjectOID: 21, ObjectType: "rule",
+						Identity: "_RETURN on excluded.dependent",
+					},
+					Referenced: schema.CatalogDependencyObject{
+						ClassOID: pgClassCatalogOID, ObjectOID: 10, ObjectType: "table",
+						Identity: "public.archived",
+					},
+				}},
+			},
+		},
+	}
+	target := fakeSchemaSource{t: t, expectedDeps: expectedDeps}
+
+	plan, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
+	require.NoError(t, err)
+	require.Len(t, plan.Statements, 1)
+	assert.Equal(t, `DROP TABLE "public"."archived"`, plan.Statements[0].DDL)
+}

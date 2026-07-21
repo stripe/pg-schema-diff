@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-9 complete
+Status: Proposed; delivery Stages 0-10 complete
 
 ## Summary
 
@@ -87,9 +87,12 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first nine delivery stages are complete. They do not yet retain tables or
+The first ten delivery stages are complete. They do not yet retain tables or
 generate cleanup statements; ordinary table deletion still has the behavior
-described above.
+described above. Public `Generate` now independently rejects extension drops or
+version/schema updates when the changed extension owns an unfiltered ordinary,
+partitioned, partition, or foreign-table relation. No other archival preflight
+or retention behavior is active.
 
 The implemented foundation includes:
 
@@ -137,6 +140,14 @@ The implemented foundation includes:
   validates exact OID-based local identities and partition topology, and returns
   provisional candidate views plus deterministic resume descriptors without
   emitting SQL or changing public filtering.
+- A dormant source-snapshot safety preflight that classifies incoming dependents
+  by modeled scope and target intent, inventories crossing foreign keys and
+  publication memberships, and rejects unround-trippable dependencies, platform
+  blockers, extension members, and unknown dependency classes before graph
+  construction.
+- An independent public extension safety check that rejects extension drops or
+  version/schema updates owning hidden table-like relations, including when plan
+  validation is disabled and no modeled table diff exists.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -767,7 +778,7 @@ stage's scope.
 | 7 | Archival name allocation | Complete | 1, 3 |
 | 8 | Marker and cleanup-operation codecs | Complete | 4, 5, 6, 7 |
 | 9 | Archived-state resolver | Complete | 8 |
-| 10 | Source safety preflight | Pending | 5, 9 |
+| 10 | Source safety preflight | Complete | 5, 9 |
 | 11 | Archived dependency closure | Pending | 5, 9, 10 |
 | 12 | Dormant plain-table move engine | Pending | 7, 9, 10, 11 |
 | 13 | Replacement-aware regular graph | Pending | 12 |
@@ -1073,7 +1084,7 @@ Acceptance gate:
 
 ### Stage 10: Source safety preflight
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 5 and 9.
 

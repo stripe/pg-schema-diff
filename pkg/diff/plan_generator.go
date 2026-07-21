@@ -157,6 +157,9 @@ func Generate(
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting new schema: %w", err)
 	}
+	if err := validateNoChangedExtensionOwnsTable(currentSnapshot, newSnapshot); err != nil {
+		return Plan{}, err
+	}
 
 	statements, err := generateMigrationStatements(currentSnapshot.Schema, newSnapshot.Schema, planOptions)
 	if err != nil {
