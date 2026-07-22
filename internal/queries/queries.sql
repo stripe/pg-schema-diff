@@ -88,6 +88,7 @@ LEFT JOIN pg_catalog.pg_index AS index_data
     ON relation.oid = index_data.indexrelid
 LEFT JOIN pg_catalog.pg_constraint AS index_constraint
     ON relation.oid = index_constraint.conindid
+    AND index_constraint.contype IN ('p', 'u', 'x')
 LEFT JOIN pg_catalog.pg_depend AS extension_dependency
     ON
         extension_dependency.classid = 'pg_class'::REGCLASS

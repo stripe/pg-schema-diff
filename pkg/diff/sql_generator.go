@@ -532,6 +532,8 @@ type schemaSQLGenerator struct {
 	planOptions              *planOptions
 	tableDispositions        tableDispositions
 	plainTableArchivalGroups []preparedPlainTableArchivalGroup
+	archivalInventory        schema.CatalogInventory
+	archivalIsolation        archivalIsolationPlan
 }
 
 func newSchemaSQLGenerator(randReader io.Reader, planOpts *planOptions) *schemaSQLGenerator {
@@ -551,8 +553,11 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving table dispositions: %w", err)
 	}
 	if err := validateReplacementAwareStage13Scope(diff, tableDispositions,
-		s.plainTableArchivalGroups); err != nil {
+		s.plainTableArchivalGroups, s.archivalIsolation); err != nil {
 		return nil, err
+	}
+	if len(s.plainTableArchivalGroups) != 0 {
+		diff = rewriteSchemaDiffForArchivalIsolation(diff, s.archivalIsolation)
 	}
 
 	materializedViewsInNewSchemaByName := buildSchemaObjByNameMap(diff.new.MaterializedViews)
@@ -695,7 +700,8 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	legacySuffix = append(legacySuffix, namedSchemaStatements.Deletes...)
 	if len(s.plainTableArchivalGroups) != 0 {
 		sqlGraph, err = integrateReplacementAwareRegularGraph(
-			sqlGraph, diff, s.plainTableArchivalGroups, tableDispositions, enumStatements, legacySuffix,
+			sqlGraph, diff, s.archivalInventory, s.plainTableArchivalGroups, s.archivalIsolation,
+			tableDispositions, enumStatements, legacySuffix,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("integrating replacement-aware regular graph: %w", err)

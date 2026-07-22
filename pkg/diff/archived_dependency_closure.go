@@ -127,6 +127,7 @@ func planArchivedDependencyClosure(
 	}
 
 	currentTraversal := buildArchivedDependencyTraversal(current.Inventory)
+	removeArchivedBoundaryForeignKeyTraversal(&currentTraversal, request.SourcePreflight)
 	targetTraversal := buildArchivedDependencyTraversal(target.Inventory)
 	managedTargetAddresses := managedTargetDependencyAddresses(target, targetTraversal)
 	resolvedByAddress := make(map[archivedDependencyAddressKey]resolvedArchivedDependency)
@@ -143,7 +144,8 @@ func planArchivedDependencyClosure(
 		keys := sortedArchivedDependencyAddressKeys(reachable)
 		for _, key := range keys {
 			address := currentTraversal.addressForKey(key)
-			if isArchivedDependencyLocalAddress(key, seeds) || helpers[key] ||
+			if isArchivedDependencyLocalAddress(key, seeds) ||
+				(helpers[key] && isAutomaticallyMovedArchivedDependencyHelper(current.Inventory, key)) ||
 				isIgnoredArchivedDependencyClass(key.classOID) {
 				continue
 			}
@@ -278,6 +280,61 @@ func planArchivedDependencyClosure(
 	return result, nil
 }
 
+func removeArchivedBoundaryForeignKeyTraversal(
+	traversal *archivedDependencyTraversal,
+	preflight sourceSafetyPreflightResult,
+) {
+	excluded := make(map[archivedDependencyAddressKey]struct{})
+	for _, foreignKey := range preflight.ForeignKeys {
+		if foreignKey.Direction == sourceSafetyForeignKeyDirectionSelf {
+			continue
+		}
+		excluded[archivedDependencyAddressKey{
+			classOID: pgConstraintCatalogOID, objectOID: foreignKey.ForeignKey.OID,
+		}] = struct{}{}
+		for _, triggerOID := range foreignKey.TriggerOIDs {
+			excluded[archivedDependencyAddressKey{classOID: pgTriggerCatalogOID, objectOID: triggerOID}] = struct{}{}
+		}
+	}
+	for key := range excluded {
+		delete(traversal.outgoing, key)
+		delete(traversal.internalDependents, key)
+	}
+	for key, dependents := range traversal.internalDependents {
+		traversal.internalDependents[key] = slices.DeleteFunc(dependents,
+			func(dependent schema.CatalogDependencyObject) bool {
+				_, skip := excluded[archivedDependencyKey(dependent)]
+				return skip
+			})
+	}
+}
+
+func isAutomaticallyMovedArchivedDependencyHelper(
+	inventory schema.CatalogInventory,
+	key archivedDependencyAddressKey,
+) bool {
+	switch key.classOID {
+	case pgProcCatalogOID:
+		// Range constructors and other generated routines do not follow ALTER TYPE.
+		return false
+	case pgAttrDefCatalogOID, pgConstraintCatalogOID, pgCastCatalogOID:
+		return true
+	case pgClassCatalogOID:
+		for _, relation := range inventory.Relations {
+			if relation.OID == key.objectOID && relation.Kind == schema.RelKindCompositeType {
+				return true
+			}
+		}
+		return false
+	case pgTypeCatalogOID:
+		catalogType, count := catalogTypeByOIDForClosure(inventory, key.objectOID)
+		return count == 1 && (catalogType.Kind == schema.CatalogTypeKindArray ||
+			catalogType.Kind == schema.CatalogTypeKindRow)
+	default:
+		return false
+	}
+}
+
 func prepareArchivedDependencyGroups(
 	request archivedDependencyClosureRequest,
 	inventory schema.CatalogInventory,
@@ -372,8 +429,25 @@ func archivedDependencyGroupSeeds(
 	group preparedArchivedDependencyGroup,
 	preflight sourceSafetyPreflightResult,
 ) ([]schema.CatalogDependencyObject, error) {
+	excluded := make(map[archivedDependencyAddressKey]struct{})
+	for _, foreignKey := range preflight.ForeignKeys {
+		if foreignKey.Direction == sourceSafetyForeignKeyDirectionSelf {
+			continue
+		}
+		excluded[archivedDependencyAddressKey{
+			classOID: pgConstraintCatalogOID, objectOID: foreignKey.ForeignKey.OID,
+		}] = struct{}{}
+		for _, triggerOID := range foreignKey.TriggerOIDs {
+			excluded[archivedDependencyAddressKey{
+				classOID: pgTriggerCatalogOID, objectOID: triggerOID,
+			}] = struct{}{}
+		}
+	}
 	byTable := make(map[uint32][]schema.CatalogDependencyObject)
 	for _, retained := range preflight.ExpectedRetainedObjects {
+		if _, skip := excluded[archivedDependencyKey(retained.Address)]; skip {
+			continue
+		}
 		byTable[retained.TableRelationOID] = append(byTable[retained.TableRelationOID], retained.Address)
 	}
 	var seeds []schema.CatalogDependencyObject
@@ -1422,6 +1496,9 @@ func archivedDependencyMarkerObject(
 	name string,
 	identityArguments ...string,
 ) archivalMarkerObjectIdentity {
+	if len(identityArguments) == 1 && strings.TrimSpace(identityArguments[0]) == "" {
+		identityArguments = nil
+	}
 	return archivalMarkerObjectIdentity{
 		Kind: kind, OID: oid, SchemaName: schemaName, Name: name,
 		IdentityArguments: slices.Clone(identityArguments),

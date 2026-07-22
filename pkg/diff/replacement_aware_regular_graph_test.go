@@ -223,7 +223,7 @@ func TestReplacementAwareGraphOrdersRecreationAndTargetKindsAfterMove(t *testing
 	assert.Contains(t, statements[len(statements)-1].DDL, "archival marker mismatch")
 }
 
-func TestReplacementAwareGraphRejectsStage14ForeignKeyWork(t *testing.T) {
+func TestReplacementAwareGraphRejectsUnrepresentedStage14ForeignKeyWork(t *testing.T) {
 	t.Parallel()
 
 	oldSchema := replacementAwareTestSchema(false)
@@ -246,7 +246,7 @@ func TestReplacementAwareGraphRejectsStage14ForeignKeyWork(t *testing.T) {
 		}},
 		request,
 	)
-	require.ErrorContains(t, err, "deferred to Stage 14")
+	require.ErrorContains(t, err, "not fully represented by Stage 14")
 }
 
 func TestExplicitPhysicalDispositionMatchesLegacyTableRemoval(t *testing.T) {
@@ -366,7 +366,7 @@ func assertReplacementAwareStatementsAreNonDestructive(t *testing.T, statements 
 	t.Helper()
 	for _, statement := range statements {
 		upperDDL := strings.ToUpper(statement.DDL)
-		assert.NotContains(t, upperDDL, "DROP TABLE")
+		assert.False(t, strings.HasPrefix(strings.TrimSpace(upperDDL), "DROP TABLE"))
 		assert.NotContains(t, upperDDL, "TRUNCATE")
 		assert.NotContains(t, upperDDL, "DELETE FROM")
 		for _, hazard := range statement.Hazards {

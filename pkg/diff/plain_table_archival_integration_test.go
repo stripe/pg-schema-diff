@@ -301,6 +301,7 @@ func plainTableArchivalDatabaseRequest(
 			),
 			AutomaticallyMovedObjects: markerObjectsFromCatalog(move.CleanupSchemaObjects, cleanupSchema),
 			AttachedObjects:           markerObjectsFromCatalog(move.AttachedObjects, cleanupSchema),
+			ExplicitlyMovedObjects:    markerObjectsFromCatalog(move.ExplicitMoveObjects, cleanupSchema),
 			InternalToastObjects:      markerObjectsFromCatalog(move.InternalObjects, ""),
 		}},
 		ExclusiveDependencySchemas: []archivalMarkerSchemaIdentity{{Name: dependencySchema}},

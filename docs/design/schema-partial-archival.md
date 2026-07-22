@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-13 complete
+Status: Proposed; delivery Stages 0-14 complete
 
 ## Summary
 
@@ -792,7 +792,7 @@ stage's scope.
 | 11 | Archived dependency closure | Complete | 5, 9, 10 |
 | 12 | Dormant plain-table move engine | Complete | 7, 9, 10, 11 |
 | 13 | Replacement-aware regular graph | Complete | 12 |
-| 14 | Isolation and dependency rewiring | Pending | 6, 10, 11, 13 |
+| 14 | Isolation and dependency rewiring | Complete | 6, 10, 11, 13 |
 | 15 | Declarative partition retention | Pending | 3, 14 |
 | 16 | Global cleanup graph | Pending | 1, 8, 11, 15 |
 | 17 | Two-phase plan validation | Pending | 4, 6, 10, 16 |
@@ -1223,7 +1223,7 @@ Acceptance gate:
 
 ### Stage 14: Isolation and dependency rewiring
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 6, 10, 11, and 13.
 

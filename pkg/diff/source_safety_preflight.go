@@ -105,6 +105,7 @@ const (
 
 type sourceSafetyForeignKey struct {
 	ForeignKey   schema.CatalogForeignKey
+	TriggerOIDs  []uint32
 	Direction    sourceSafetyForeignKeyDirection
 	ManagedScope sourceSafetyManagedScope
 	TargetIntent sourceSafetyTargetIntent
@@ -216,7 +217,17 @@ func runSourceSafetyPreflight(request sourceSafetyPreflightRequest) (sourceSafet
 	for _, trigger := range current.Inventory.Triggers {
 		if _, belongsToForeignKey := foreignKeyOIDs[trigger.ConstraintOID]; belongsToForeignKey {
 			foreignKeyTriggerOIDs[trigger.OID] = struct{}{}
+			for idx := range result.ForeignKeys {
+				if result.ForeignKeys[idx].ForeignKey.OID == trigger.ConstraintOID {
+					result.ForeignKeys[idx].TriggerOIDs = append(
+						result.ForeignKeys[idx].TriggerOIDs, trigger.OID,
+					)
+				}
+			}
 		}
+	}
+	for idx := range result.ForeignKeys {
+		slices.Sort(result.ForeignKeys[idx].TriggerOIDs)
 	}
 	publicationRelationOIDs := make(map[uint32]struct{}, len(result.PublicationRelations))
 	for _, membership := range result.PublicationRelations {

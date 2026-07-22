@@ -12,6 +12,7 @@ import (
 
 type plainTableArchivalRequest struct {
 	CurrentInventory  schema.CatalogInventory
+	TargetSchema      schema.Schema
 	Groups            []plainTableArchivalGroupRequest
 	SourcePreflight   sourceSafetyPreflightResult
 	DependencyClosure archivedDependencyClosureResult
@@ -46,12 +47,12 @@ func plainTableArchivalVertexPhase(kind plainTableArchivalVertexKind) int {
 	switch kind {
 	case plainTableArchivalVertexKindGroupInitialization:
 		return 1
-	case plainTableArchivalVertexKindTableMove, plainTableArchivalVertexKindResumeTableMove:
-		return 2
 	case plainTableArchivalVertexKindMarkerRefresh:
-		return 3
-	case plainTableArchivalVertexKindCatalogAssertion:
+		return 2
+	case plainTableArchivalVertexKindTableMove, plainTableArchivalVertexKindResumeTableMove:
 		return 4
+	case plainTableArchivalVertexKindCatalogAssertion:
+		return 8
 	default:
 		return 99
 	}
@@ -84,7 +85,12 @@ func generatePlainTableArchivalStatements(request plainTableArchivalRequest) ([]
 	if err != nil {
 		return nil, err
 	}
-	graph, err := buildPlainTableArchivalGraph(groups)
+	isolation, err := planArchivalIsolation(request.CurrentInventory, request.TargetSchema,
+		request.SourcePreflight, request.DependencyClosure, groups)
+	if err != nil {
+		return nil, err
+	}
+	graph, err := buildPlainTableArchivalGraph(request.CurrentInventory, groups, isolation)
 	if err != nil {
 		return nil, err
 	}
@@ -191,22 +197,6 @@ func validateStage12PlainMarker(marker archivalMarkerV1) error {
 		return fmt.Errorf("plain-table group must declare exactly one dependency schema, got %d",
 			len(marker.ExclusiveDependencySchemas))
 	}
-	if len(marker.ExclusiveDependencyObjects) != 0 ||
-		len(marker.SharedCleanupComponentGroupEdges) != 0 {
-		return fmt.Errorf("dependency move assignments are not supported by the plain-table move engine")
-	}
-	if len(marker.OriginalACLs) != 0 {
-		return fmt.Errorf("live-object ACL revoke work is not supported by the plain-table move engine")
-	}
-	if len(marker.OriginalForeignKeys) != 0 {
-		return fmt.Errorf("foreign-key rewiring is not supported by the plain-table move engine")
-	}
-	if len(marker.OriginalPublicationMemberships) != 0 {
-		return fmt.Errorf("publication changes are not supported by the plain-table move engine")
-	}
-	if len(marker.Members[0].ExplicitlyMovedObjects) != 0 {
-		return fmt.Errorf("explicit extended-statistics moves are not supported by the plain-table move engine")
-	}
 	return nil
 }
 
@@ -256,10 +246,6 @@ func validateResumedPlainTableArchivalGroup(
 	resume := *group.resume
 	if resume.GroupID != group.id {
 		return fmt.Errorf("stage 9 resume group %q does not match marker group %q", resume.GroupID, group.id)
-	}
-	if len(resume.RemainingExplicitObjectMoves) != 0 ||
-		len(resume.RemainingDependencyObjectMoves) != 0 {
-		return fmt.Errorf("stage 9 resume group %q contains later-stage object moves", group.id)
 	}
 	if len(resume.RemainingMemberMoves) > 1 {
 		return fmt.Errorf("stage 9 resume group %q contains %d table moves; one plain table is required",
@@ -384,19 +370,6 @@ func validatePlainTableMemberAgainstInventory(
 		return fmt.Errorf("relation OID %d is %s.%s instead of expected %s.%s",
 			relation.OID, relation.SchemaName, relation.Name, expectedSchema, member.SourceTable.Name)
 	}
-	move, err := inventory.ExpectedTableMove(relation.OID)
-	if err != nil {
-		return err
-	}
-	if len(move.ExplicitMoveObjects) != 0 {
-		return fmt.Errorf("relation %s.%s requires explicit extended-statistics moves",
-			relation.SchemaName, relation.Name)
-	}
-	declaredSchemas := map[string]struct{}{member.CleanupTable.SchemaName: {}}
-	if err := validateMemberCatalogObjects(inventory, member, move, moved, declaredSchemas,
-		make(map[string]struct{})); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -411,23 +384,55 @@ func validatePlainTableArchivalPreflight(
 	if !slices.Equal(expectedOIDs, validatedOIDs) {
 		return fmt.Errorf("stage 10 preflight did not validate exactly the requested plain-table OIDs")
 	}
-	if len(preflight.IncomingDependencies) != 0 {
-		return fmt.Errorf("incoming dependency deletion or recreation is not supported by the plain-table move engine")
-	}
-	for _, foreignKey := range preflight.ForeignKeys {
-		if foreignKey.Direction != sourceSafetyForeignKeyDirectionSelf &&
-			foreignKey.Direction != sourceSafetyForeignKeyDirectionInternal {
-			return fmt.Errorf("cross-boundary foreign key %s.%s is not supported by the plain-table move engine",
-				foreignKey.ForeignKey.OwningSchemaName, foreignKey.ForeignKey.Name)
-		}
-	}
-	if len(preflight.PublicationRelations) != 0 || len(preflight.PublicationSchemas) != 0 {
-		return fmt.Errorf("publication membership changes are not supported by the plain-table move engine")
-	}
 	if err := validateStage12PlatformInventory(inventory, groups); err != nil {
 		return err
 	}
-	return validateStage12ACLInventory(inventory, groups)
+	for _, group := range groups {
+		move, err := inventory.ExpectedTableMove(group.member.SourceTable.OID)
+		if err != nil {
+			return err
+		}
+		move = filterPlainTableIsolationObjects(move, preflight)
+		relation, err := uniqueRelationByOID(inventory, group.member.SourceTable.OID)
+		if err != nil {
+			return err
+		}
+		moved := relation.SchemaName == group.member.CleanupTable.SchemaName
+		declaredSchemas := map[string]struct{}{group.member.CleanupTable.SchemaName: {}}
+		if err := validateMemberCatalogObjects(inventory, group.member, move, moved,
+			declaredSchemas, make(map[string]struct{})); err != nil {
+			return fmt.Errorf("validating Stage 14 table-local isolation for group %q: %w", group.id, err)
+		}
+	}
+	return nil
+}
+
+func filterPlainTableIsolationObjects(
+	move schema.CatalogExpectedTableMove,
+	preflight sourceSafetyPreflightResult,
+) schema.CatalogExpectedTableMove {
+	constraints := make(map[uint32]struct{})
+	triggers := make(map[uint32]struct{})
+	for _, foreignKey := range preflight.ForeignKeys {
+		if foreignKey.Direction == sourceSafetyForeignKeyDirectionSelf {
+			continue
+		}
+		constraints[foreignKey.ForeignKey.OID] = struct{}{}
+		for _, triggerOID := range foreignKey.TriggerOIDs {
+			triggers[triggerOID] = struct{}{}
+		}
+	}
+	move.CleanupSchemaObjects = slices.DeleteFunc(slices.Clone(move.CleanupSchemaObjects),
+		func(object schema.CatalogObjectIdentity) bool {
+			_, drop := constraints[object.OID]
+			return object.Kind == schema.CatalogObjectKindConstraint && drop
+		})
+	move.AttachedObjects = slices.DeleteFunc(slices.Clone(move.AttachedObjects),
+		func(object schema.CatalogObjectIdentity) bool {
+			_, drop := triggers[object.OID]
+			return object.Kind == schema.CatalogObjectKindTrigger && drop
+		})
+	return move
 }
 
 func validateStage12PlatformInventory(
@@ -488,33 +493,6 @@ func stage12ExtensionMemberIsRetained(
 	return false
 }
 
-func validateStage12ACLInventory(
-	inventory schema.CatalogInventory,
-	groups []preparedPlainTableArchivalGroup,
-) error {
-	var objects []schema.CatalogDependencyObject
-	for _, group := range groups {
-		objects = append(objects, schema.CatalogDependencyObject{
-			ClassOID: pgClassCatalogOID, ObjectOID: group.member.SourceTable.OID,
-		})
-		for _, object := range group.member.AutomaticallyMovedObjects {
-			if object.Kind == archivalMarkerObjectKindOwnedSequence {
-				objects = append(objects, schema.CatalogDependencyObject{
-					ClassOID: pgClassCatalogOID, ObjectOID: object.OID,
-				})
-			}
-		}
-	}
-	revokes, err := inventory.PlanACLRevokes(objects)
-	if err != nil {
-		return fmt.Errorf("validating Stage 12 ACL state: %w", err)
-	}
-	if len(revokes.Revokes) != 0 {
-		return fmt.Errorf("live-object ACL revoke work is not supported by the plain-table move engine")
-	}
-	return nil
-}
-
 func validatePlainTableArchivalClosure(
 	groups []preparedPlainTableArchivalGroup,
 	closure archivedDependencyClosureResult,
@@ -527,9 +505,6 @@ func validatePlainTableArchivalClosure(
 	slices.Sort(validated)
 	if !slices.Equal(expected, validated) {
 		return fmt.Errorf("stage 11 dependency closure did not validate exactly the requested groups")
-	}
-	if len(closure.Assignments) != 0 || len(closure.SharedGroupEdges) != 0 {
-		return fmt.Errorf("dependency move assignments are not supported by the plain-table move engine")
 	}
 	resumeGroupIDs := make([]archivalGroupID, 0, len(groups))
 	for _, group := range groups {
@@ -559,10 +534,10 @@ func validatePlainTableArchivalClosure(
 		}
 		switch object.Classification {
 		case archivedDependencyClassificationTargetCompatible,
-			archivedDependencyClassificationSharedWithTarget:
-		case archivedDependencyClassificationExclusiveMovable,
-			archivedDependencyClassificationSharedArchivedOnly,
-			archivedDependencyClassificationUnsupported:
+			archivedDependencyClassificationSharedWithTarget,
+			archivedDependencyClassificationExclusiveMovable,
+			archivedDependencyClassificationSharedArchivedOnly:
+		case archivedDependencyClassificationUnsupported:
 			return fmt.Errorf("dependency %s requires later-stage handling",
 				markerObjectDisplayName(object.Identity))
 		default:
@@ -582,11 +557,27 @@ func plainTableArchivalRelationOIDs(groups []preparedPlainTableArchivalGroup) []
 	return oids
 }
 
-func buildPlainTableArchivalGraph(groups []preparedPlainTableArchivalGroup) (*sqlGraph, error) {
+type plainTableArchivalPhaseBarrierID struct {
+	phase int
+}
+
+func (id plainTableArchivalPhaseBarrierID) String() string {
+	return fmt.Sprintf("archival:%02d:phase_barrier", id.phase)
+}
+
+func buildPlainTableArchivalGraph(
+	inventory schema.CatalogInventory,
+	groups []preparedPlainTableArchivalGroup,
+	isolation archivalIsolationPlan,
+) (*sqlGraph, error) {
 	graph := newSqlGraph()
-	phaseIDs := make(map[int][]plainTableArchivalVertexID, 4)
+	phaseIDs := make(map[int][]sqlVertexId, 8)
 	for idx := range groups {
 		group := &groups[idx]
+		groupIsolation, ok := archivalIsolationGroupPlanByID(isolation.Groups, group.id)
+		if !ok {
+			return nil, fmt.Errorf("isolation plan is missing group %q", group.id)
+		}
 		moveKind := plainTableArchivalVertexKindTableMove
 		if group.resume != nil {
 			moveKind = plainTableArchivalVertexKindResumeTableMove
@@ -598,7 +589,7 @@ func buildPlainTableArchivalGraph(groups []preparedPlainTableArchivalGroup) (*sq
 			plainTableArchivalVertex(group.id, plainTableArchivalVertexKindMarkerRefresh,
 				renderPlainTableArchivalMarkerRefresh(*group)),
 			plainTableArchivalVertex(group.id, plainTableArchivalVertexKindCatalogAssertion,
-				[]Statement{{DDL: renderPlainTableArchivalAssertion(*group)}}),
+				[]Statement{{DDL: renderPlainTableArchivalAssertion(*group, groupIsolation, isolation)}}),
 		}
 		for _, vertex := range vertices {
 			graph.AddVertex(vertex)
@@ -607,12 +598,36 @@ func buildPlainTableArchivalGraph(groups []preparedPlainTableArchivalGroup) (*sq
 			phaseIDs[phase] = append(phaseIDs[phase], id)
 		}
 	}
-	for phase := 1; phase < 4; phase++ {
-		for _, sourceID := range phaseIDs[phase] {
-			for _, targetID := range phaseIDs[phase+1] {
-				if err := graph.AddEdge(sourceID.String(), targetID.String()); err != nil {
-					return nil, fmt.Errorf("adding plain-table archival phase dependency: %w", err)
-				}
+	isolationVertices, err := archivalIsolationVertices(inventory, isolation)
+	if err != nil {
+		return nil, err
+	}
+	for _, vertex := range isolationVertices {
+		graph.AddVertex(vertex)
+		id := vertex.id.(archivalIsolationVertexID)
+		phaseIDs[id.phase] = append(phaseIDs[id.phase], id)
+	}
+	for phase := 1; phase <= 9; phase++ {
+		graph.AddVertex(sqlVertex{id: plainTableArchivalPhaseBarrierID{phase: phase}})
+	}
+	for phase := 1; phase <= 9; phase++ {
+		barrier := plainTableArchivalPhaseBarrierID{phase: phase}
+		if phase == 9 {
+			continue
+		}
+		next := plainTableArchivalPhaseBarrierID{phase: phase + 1}
+		if len(phaseIDs[phase]) == 0 {
+			if err := graph.AddEdge(barrier.String(), next.String()); err != nil {
+				return nil, fmt.Errorf("adding empty archival phase dependency: %w", err)
+			}
+			continue
+		}
+		for _, operationID := range phaseIDs[phase] {
+			if err := graph.AddEdge(barrier.String(), operationID.String()); err != nil {
+				return nil, fmt.Errorf("adding archival phase start dependency: %w", err)
+			}
+			if err := graph.AddEdge(operationID.String(), next.String()); err != nil {
+				return nil, fmt.Errorf("adding archival phase end dependency: %w", err)
 			}
 		}
 	}
@@ -695,7 +710,11 @@ func renderPlainTableArchivalMarkerRefresh(group preparedPlainTableArchivalGroup
 	return []Statement{{DDL: doBlock(body.String())}}
 }
 
-func renderPlainTableArchivalAssertion(group preparedPlainTableArchivalGroup) string {
+func renderPlainTableArchivalAssertion(
+	group preparedPlainTableArchivalGroup,
+	isolation archivalIsolationGroupPlan,
+	completeIsolation archivalIsolationPlan,
+) string {
 	var body strings.Builder
 	body.WriteString("BEGIN\n")
 	for _, schemaName := range archivedMarkerSchemaNames(group.marker) {
@@ -708,6 +727,8 @@ func renderPlainTableArchivalAssertion(group preparedPlainTableArchivalGroup) st
 	}
 	appendPlainTableMemberAssertions(&body, group)
 	appendPlainTableDependencySchemaAssertions(&body, group)
+	appendArchivalIsolationAssertions(&body, group, isolation)
+	appendPlainTablePreservedForeignKeyAssertions(&body, group.id, completeIsolation)
 	body.WriteString("END")
 	return doBlock(body.String())
 }
@@ -755,7 +776,20 @@ func appendPlainTableMemberAssertions(body *strings.Builder, group preparedPlain
 		fmt.Sprintf("SELECT c.reltoastrelid::bigint FROM pg_catalog.pg_class AS c "+
 			"WHERE c.oid = %d AND c.reltoastrelid <> 0", tableOID),
 		markerObjectOIDs(member.InternalToastObjects, archivalMarkerObjectKindToastRelation))
-	for _, catalog := range []string{"pg_proc", "pg_collation", "pg_operator", "pg_statistic_ext"} {
+	appendExactOIDSetAssertion(body, "extended statistic", group.id,
+		fmt.Sprintf("SELECT s.oid::bigint FROM pg_catalog.pg_statistic_ext AS s JOIN pg_catalog.pg_namespace AS n "+
+			"ON n.oid = s.stxnamespace WHERE n.nspname = %s",
+			schema.EscapeLiteral(member.CleanupTable.SchemaName)),
+		markerObjectOIDs(member.ExplicitlyMovedObjects, archivalMarkerObjectKindExtendedStatistic))
+	for _, object := range member.ExplicitlyMovedObjects {
+		predicate, ok := plainTableMarkerObjectAssertion(object, tableOID)
+		if ok {
+			appendPlainTableAssertion(body, predicate, fmt.Sprintf(
+				"archival %s identity mismatch for group %s OID %d", object.Kind, group.id, object.OID,
+			))
+		}
+	}
+	for _, catalog := range []string{"pg_proc", "pg_collation", "pg_operator"} {
 		appendPlainTableAssertion(body, fmt.Sprintf(
 			"NOT EXISTS (SELECT 1 FROM pg_catalog.%s AS o JOIN pg_catalog.pg_namespace AS n "+
 				"ON n.oid = o.%s WHERE n.nspname = %s)",
@@ -768,24 +802,11 @@ func appendPlainTableMemberAssertions(body *strings.Builder, group preparedPlain
 
 func appendPlainTableDependencySchemaAssertions(body *strings.Builder, group preparedPlainTableArchivalGroup) {
 	schemaName := group.marker.ExclusiveDependencySchemas[0].Name
-	for _, relation := range []struct {
-		catalog         string
-		namespaceColumn string
-	}{
-		{catalog: "pg_class", namespaceColumn: "relnamespace"},
-		{catalog: "pg_type", namespaceColumn: "typnamespace"},
-		{catalog: "pg_constraint", namespaceColumn: "connamespace"},
-		{catalog: "pg_proc", namespaceColumn: "pronamespace"},
-		{catalog: "pg_collation", namespaceColumn: "collnamespace"},
-		{catalog: "pg_operator", namespaceColumn: "oprnamespace"},
-		{catalog: "pg_statistic_ext", namespaceColumn: "stxnamespace"},
-	} {
-		appendPlainTableAssertion(body, fmt.Sprintf(
-			"NOT EXISTS (SELECT 1 FROM pg_catalog.%s AS o JOIN pg_catalog.pg_namespace AS n "+
-				"ON n.oid = o.%s WHERE n.nspname = %s)",
-			relation.catalog, relation.namespaceColumn, schema.EscapeLiteral(schemaName),
-		),
-			fmt.Sprintf("dependency schema for group %s is not empty", group.id))
+	for _, object := range group.marker.ExclusiveDependencyObjects {
+		appendPlainTableAssertion(body, archivalDependencyObjectAssertion(object), fmt.Sprintf(
+			"archival dependency identity mismatch for group %s OID %d in schema %s",
+			group.id, object.OID, schemaName,
+		))
 	}
 }
 
@@ -835,8 +856,42 @@ func plainTableMarkerObjectAssertion(object archivalMarkerObjectIdentity, tableO
 			"ON n.oid = c.relnamespace JOIN pg_catalog.pg_class AS owner ON owner.reltoastrelid = c.oid "+
 			"WHERE c.oid = %d AND n.nspname = %s AND c.relname = %s AND owner.oid = %d)",
 			object.OID, schemaLiteral, nameLiteral, tableOID), true
+	case archivalMarkerObjectKindExtendedStatistic:
+		return fmt.Sprintf("EXISTS (SELECT 1 FROM pg_catalog.pg_statistic_ext AS s "+
+			"JOIN pg_catalog.pg_namespace AS n ON n.oid = s.stxnamespace "+
+			"WHERE s.oid = %d AND n.nspname = %s AND s.stxname = %s AND s.stxrelid = %d)",
+			object.OID, schemaLiteral, nameLiteral, tableOID), true
 	default:
 		return "", false
+	}
+}
+
+func archivalDependencyObjectAssertion(object archivalMarkerObjectIdentity) string {
+	schemaLiteral := schema.EscapeLiteral(object.SchemaName)
+	nameLiteral := schema.EscapeLiteral(object.Name)
+	switch object.Kind {
+	case archivalMarkerObjectKindSequence:
+		return fmt.Sprintf("EXISTS (SELECT 1 FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n "+
+			"ON n.oid = c.relnamespace WHERE c.oid = %d AND n.nspname = %s AND c.relname = %s AND c.relkind = 'S')",
+			object.OID, schemaLiteral, nameLiteral)
+	case archivalMarkerObjectKindFunction:
+		return fmt.Sprintf("EXISTS (SELECT 1 FROM pg_catalog.pg_proc AS p JOIN pg_catalog.pg_namespace AS n "+
+			"ON n.oid = p.pronamespace WHERE p.oid = %d AND n.nspname = %s AND p.proname = %s)",
+			object.OID, schemaLiteral, nameLiteral)
+	case archivalMarkerObjectKindType:
+		return fmt.Sprintf("EXISTS (SELECT 1 FROM pg_catalog.pg_type AS t JOIN pg_catalog.pg_namespace AS n "+
+			"ON n.oid = t.typnamespace WHERE t.oid = %d AND n.nspname = %s AND t.typname = %s)",
+			object.OID, schemaLiteral, nameLiteral)
+	case archivalMarkerObjectKindCollation:
+		return fmt.Sprintf("EXISTS (SELECT 1 FROM pg_catalog.pg_collation AS c JOIN pg_catalog.pg_namespace AS n "+
+			"ON n.oid = c.collnamespace WHERE c.oid = %d AND n.nspname = %s AND c.collname = %s)",
+			object.OID, schemaLiteral, nameLiteral)
+	case archivalMarkerObjectKindOperator:
+		return fmt.Sprintf("EXISTS (SELECT 1 FROM pg_catalog.pg_operator AS o JOIN pg_catalog.pg_namespace AS n "+
+			"ON n.oid = o.oprnamespace WHERE o.oid = %d AND n.nspname = %s AND o.oprname = %s)",
+			object.OID, schemaLiteral, nameLiteral)
+	default:
+		return "FALSE"
 	}
 }
 

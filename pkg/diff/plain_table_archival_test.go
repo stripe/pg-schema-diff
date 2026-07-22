@@ -19,7 +19,10 @@ func TestPlainTableArchivalGraphDeterministicPhaseOrdering(t *testing.T) {
 
 	groups, err := preparePlainTableArchivalGroups(request)
 	require.NoError(t, err)
-	graph, err := buildPlainTableArchivalGraph(groups)
+	isolation, err := planArchivalIsolation(request.CurrentInventory, request.TargetSchema,
+		request.SourcePreflight, request.DependencyClosure, groups)
+	require.NoError(t, err)
+	graph, err := buildPlainTableArchivalGraph(request.CurrentInventory, groups, isolation)
 	require.NoError(t, err)
 	vertices, err := graph.TopologicallySortWithPriority(func(a, b sqlVertex) bool {
 		return a.GetPriority() < b.GetPriority()
@@ -27,17 +30,20 @@ func TestPlainTableArchivalGraphDeterministicPhaseOrdering(t *testing.T) {
 	require.NoError(t, err)
 	var vertexIDs []string
 	for _, vertex := range vertices {
+		if _, barrier := vertex.id.(plainTableArchivalPhaseBarrierID); barrier {
+			continue
+		}
 		vertexIDs = append(vertexIDs, vertex.GetId())
 	}
 	assert.Equal(t, []string{
 		"archival:01:20260721T091011123456Z_12345678:group_initialization",
 		"archival:01:20260721T091011123456Z_ABCDEFGH:group_initialization",
-		"archival:02:20260721T091011123456Z_12345678:table_move",
-		"archival:02:20260721T091011123456Z_ABCDEFGH:table_move",
-		"archival:03:20260721T091011123456Z_12345678:marker_refresh",
-		"archival:03:20260721T091011123456Z_ABCDEFGH:marker_refresh",
-		"archival:04:20260721T091011123456Z_12345678:catalog_assertion",
-		"archival:04:20260721T091011123456Z_ABCDEFGH:catalog_assertion",
+		"archival:02:20260721T091011123456Z_12345678:marker_refresh",
+		"archival:02:20260721T091011123456Z_ABCDEFGH:marker_refresh",
+		"archival:04:20260721T091011123456Z_12345678:table_move",
+		"archival:04:20260721T091011123456Z_ABCDEFGH:table_move",
+		"archival:08:20260721T091011123456Z_12345678:catalog_assertion",
+		"archival:08:20260721T091011123456Z_ABCDEFGH:catalog_assertion",
 	}, vertexIDs)
 
 	statements, err := generatePlainTableArchivalStatements(request)
@@ -149,9 +155,9 @@ func TestPlainTableArchivalResumeReusesValidatedSchemas(t *testing.T) {
 				assert.NotContains(t, statements[0].DDL, "ALTER TABLE")
 			} else {
 				require.Len(t, statements, 3)
-				assert.Contains(t, statements[0].DDL, "ALTER TABLE")
+				assert.Contains(t, statements[1].DDL, "ALTER TABLE")
 			}
-			assert.Contains(t, statements[len(statements)-2].DDL, newMarkerText)
+			assert.Contains(t, statements[0].DDL, newMarkerText)
 			assert.Contains(t, statements[len(statements)-1].DDL, "archival marker mismatch")
 		})
 	}
@@ -356,6 +362,7 @@ func plainTableArchivalUnitRequest(
 		),
 		AutomaticallyMovedObjects: markerObjectsFromCatalog(move.CleanupSchemaObjects, cleanupSchema),
 		AttachedObjects:           markerObjectsFromCatalog(move.AttachedObjects, cleanupSchema),
+		ExplicitlyMovedObjects:    markerObjectsFromCatalog(move.ExplicitMoveObjects, cleanupSchema),
 		InternalToastObjects:      markerObjectsFromCatalog(move.InternalObjects, ""),
 	}
 	marker := archivalMarkerV1{
