@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-17 complete
+Status: Proposed; delivery Stages 0-18 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first seventeen delivery stages are complete. Public `Generate` does not yet
+The first eighteen delivery stages are complete. Public `Generate` does not yet
 retain tables or generate cleanup statements; ordinary table deletion still has
 the behavior described above. Public `Generate` independently rejects extension
 drops or version/schema updates when the changed extension owns an unfiltered
@@ -123,7 +123,8 @@ The implemented foundation includes:
   inheritance, and table-local preservation metadata. Typed expected-move
   identities distinguish cleanup-schema followers, attached subobjects,
   explicit extended-statistics moves, and PostgreSQL-owned TOAST state. The
-  inventory does not yet affect hashes or diffs.
+  inventory does not yet affect public hashes or diffs; Stage 18's dormant
+  candidate hash covers it.
 - Unfiltered raw dependency edges, complete foreign keys, dependent
   relation/routine and type-platform identities, extension membership, event
   triggers, and all publication forms. Routine body facts are classified
@@ -181,6 +182,10 @@ The implemented foundation includes:
   filtered retention postcondition, then proves cleanup scope, target identity
   preservation, and the complete cleanup postcondition in the same temporary
   database. It remains disconnected from public `assertValidPlan` and `Generate`.
+- A dormant versioned snapshot hash with an explicit field-by-field encoder for
+  the managed modeled schema, complete unfiltered safety inventory, and trusted
+  source marker identities. Plan and public-package candidate seams share the
+  encoder, but legacy hashes remain active until Stage 19.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -822,6 +827,93 @@ Refactor public `pkg/schema.GetSchemaHash` to acquire the same snapshot and use
 the same filter/safety-closure semantics so callers can reproduce the plan hash.
 This changes hash compatibility and must be versioned/documented.
 
+### Candidate snapshot hash v1
+
+Stage 18 defines, but does not activate, this output format:
+
+```text
+pg-schema-diff:snapshot:v1:sha256:<64 lowercase hexadecimal characters>
+```
+
+The SHA-256 preimage is the UTF-8 bytes of the domain
+`pg-schema-diff:snapshot:v1`, one `0x00` separator byte, and canonical JSON in
+that order. The JSON has no insignificant whitespace and has exactly these
+top-level fields in this order:
+
+```json
+{
+  "modeled_schema": [],
+  "catalog_inventory": [],
+  "trusted_archival_groups": []
+}
+```
+
+The arrays shown above contain typed sections or records. A section is
+`{"name":<string>,"records":[...]}`. A record is
+`{"kind":<string>,"fields":[...]}`. A field is
+`{"name":<string>,"value":<JSON value>}`. Field arrays have a fixed v1 order;
+they are not semantic maps. Strings use Go `encoding/json` string escaping,
+booleans and decimal numbers use their JSON scalar forms, every nil or empty
+slice is `[]`, and a genuinely absent optional identity is `null`. String maps
+in modeled views are sorted `option` records rather than JSON objects.
+
+The modeled sections, in fixed order, are `named_schemas`, `extensions`,
+`enums`, `tables`, `indexes`, `foreign_key_constraints`, `sequences`,
+`functions`, `procedures`, `triggers`, `views`, and `materialized_views`. They
+encode every v1 modeled field explicitly. Physical column, enum-label,
+index-column, routine-argument, foreign-key-column, and other semantically
+ordered arrays retain their order. Unordered modeled objects, dependencies,
+constraints, policies, privileges, option pairs, and map entries sort by their
+complete encoded record.
+
+The unfiltered catalog sections, in fixed order, are `schemas`, `relations`,
+`types`, `tables`, `columns`, `indexes`, `constraints`, `triggers`, `rules`,
+`policies`, `sequences`, `owned_sequences`, `extended_statistics`,
+`inheritance_edges`, `partition_attachments`, `security_labels`,
+`dependencies`, `foreign_keys`, `views`, `routines`, `enum_labels`,
+`composite_attributes`, `domain_constraints`, `ranges`,
+`type_support_functions`, `collations`, `operators`, `extensions`,
+`extension_members`, `event_triggers`, `publications`,
+`publication_relations`, `publication_schemas`, `acl_grants`, `default_acls`,
+`roles`, and `role_memberships`. Every field of those Stage 3-6 inventory
+records is projected explicitly by `internal/schema/snapshot_hash.go`; that
+field sequence is the normative v1 material contract. Adding an unrelated Go
+field does not add it to v1. All catalog OIDs are included conservatively,
+including namespace, relation/type, dependency-address, ownership, extension,
+publication, ACL, and role identities. False-positive invalidation across a
+database-local identity change is preferable to losing source continuity.
+
+Raw dependency edges and the complete typed object inventories used to resolve
+them are both committed. Derived preflight/closure decisions are not encoded a
+second time: they depend on target intent or proposed archival work rather than
+only on the immutable source, and the public hash path could not reproduce them
+from a source database alone. Their complete source inputs are encoded instead.
+
+Trusted archival groups sort by complete record and contain the validated group
+ID plus each source schema's OID, name, and raw canonical marker comment. The
+shared hasher intentionally does not parse markers. Diff orchestration owns the
+strict marker/name/catalog/digest validation and supplies group identities;
+`pkg/schema` must use that same trust result when Stage 19 activates the path.
+This prevents a second, weaker marker parser while keeping the shared bytes
+reproducible. Newly predicted post-plan groups are not source hash material.
+
+Generation timestamps and randomness, rendered SQL, statements and their order,
+hazards and messages, temporary database identities, logger/options state,
+legacy `SchemaSnapshot.Hash`, the duplicate unfiltered modeled reconstruction,
+and cleanup execution/progress state are excluded. The managed modeled schema
+already reflects accumulated include/exclude filters and the selected cleanup
+prefix; the safety inventory remains unfiltered.
+
+The fixed minimal contract vector in the Stage 18 tests is:
+
+```text
+pg-schema-diff:snapshot:v1:sha256:3af1b7820b9fd2b3181e47cfb3cd539cbe313e28b46b16f9be6af2d3e7406858
+```
+
+`Generate.CurrentSchemaHash` and `schema.GetSchemaHash` continue to return the
+legacy modeled-schema hash in Stage 18. Stage 19 remains responsible for
+activating this candidate format on both public paths.
+
 This design does not introduce a future cleanup execution hash or cleanup
 application contract.
 
@@ -866,7 +958,7 @@ stage's scope.
 | 15 | Declarative partition retention | Complete | 3, 14 |
 | 16 | Global cleanup graph | Complete | 1, 8, 11, 15 |
 | 17 | Two-phase plan validation | Complete | 4, 6, 10, 16 |
-| 18 | Versioned snapshot hash | Pending | 2, 4, 5, 6, 9, 10, 11, 16 |
+| 18 | Versioned snapshot hash | Complete | 2, 4, 5, 6, 9, 10, 11, 16 |
 | 19 | Schema partial archival activation and documentation | Pending | 13-18 |
 
 ### Stage 0: Schema-filtering foundation
@@ -1435,7 +1527,7 @@ Acceptance gate:
 
 ### Stage 18: Versioned snapshot hash
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 2, 4, 5, 6, 9, 10, 11, and 16.
 

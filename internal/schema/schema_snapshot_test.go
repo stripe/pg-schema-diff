@@ -231,6 +231,14 @@ func TestSchemaSnapshotIsCoherentDuringConcurrentDDL(t *testing.T) {
 	result := <-resultCh
 	require.NoError(t, ddlErr)
 	require.NoError(t, result.err)
+	concurrentHash, err := BuildSchemaSnapshotHashV1(result.snapshot, nil)
+	require.NoError(t, err)
+	repeatedSnapshot, err := getSchemaSnapshot(t.Context(), tx, nameFilter)
+	require.NoError(t, err)
+	repeatedHash, err := BuildSchemaSnapshotHashV1(repeatedSnapshot, nil)
+	require.NoError(t, err)
+	assert.Equal(t, repeatedHash, concurrentHash,
+		"one repeatable-read transaction must not mix pre-DDL and post-DDL candidate material")
 	for _, namedSchema := range result.snapshot.Schema.NamedSchemas {
 		assert.NotEqual(t, "concurrent_ddl", namedSchema.Name)
 	}
@@ -241,6 +249,9 @@ func TestSchemaSnapshotIsCoherentDuringConcurrentDDL(t *testing.T) {
 
 	afterDDL, err := GetSchemaSnapshot(t.Context(), db.ConnPool)
 	require.NoError(t, err)
+	afterHash, err := BuildSchemaSnapshotHashV1(afterDDL, nil)
+	require.NoError(t, err)
+	assert.NotEqual(t, concurrentHash, afterHash)
 	assert.Contains(t, afterDDL.Schema.NamedSchemas, NamedSchema{Name: "concurrent_ddl"})
 	var foundNewTable bool
 	for _, table := range afterDDL.Schema.Tables {
