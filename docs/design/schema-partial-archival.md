@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-15 complete
+Status: Proposed; delivery Stages 0-16 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first fifteen delivery stages are complete. Public `Generate` does not yet
+The first sixteen delivery stages are complete. Public `Generate` does not yet
 retain tables or generate cleanup statements; ordinary table deletion still has
 the behavior described above. Public `Generate` independently rejects extension
 drops or version/schema updates when the changed extension owns an unfiltered
@@ -165,6 +165,16 @@ The implemented foundation includes:
   and records the removed routing metadata. Stage 14 ACL, FK, publication,
   extended-statistics, and dependency isolation applies to every physical member;
   same-group FKs remain attached and cross-boundary FKs are removed.
+- A dormant global cleanup planner that validates every existing component's
+  previous operation digest before applying current closure changes, emits one
+  canonical typed DAG across new and existing groups, renders only explicit
+  `RESTRICT` drops, and feeds component-finalized marker text back to regular
+  initialization/refresh inputs. Each marker digest covers its connected cleanup
+  component; operation IDs and edges, rather than a separate SQL ordering graph,
+  determine the global lexical topological statement order. Existing complete
+  groups receive ordinary marker-comment updates when a later dependency move or
+  shared component changes their payload. The planner remains disconnected from
+  public `Generate`.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -820,7 +830,7 @@ stage's scope.
 | 13 | Replacement-aware regular graph | Complete | 12 |
 | 14 | Isolation and dependency rewiring | Complete | 6, 10, 11, 13 |
 | 15 | Declarative partition retention | Complete | 3, 14 |
-| 16 | Global cleanup graph | Pending | 1, 8, 11, 15 |
+| 16 | Global cleanup graph | Complete | 1, 8, 11, 15 |
 | 17 | Two-phase plan validation | Pending | 4, 6, 10, 16 |
 | 18 | Versioned snapshot hash | Pending | 2, 4, 5, 6, 9, 10, 11, 16 |
 | 19 | Schema partial archival activation and documentation | Pending | 13-18 |
@@ -1316,7 +1326,7 @@ Acceptance gate:
 
 ### Stage 16: Global cleanup graph
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 1, 8, 11, and 15.
 

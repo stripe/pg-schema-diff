@@ -596,14 +596,23 @@ func validatePlainTableArchivalClosure(
 	groups []preparedArchivalGroup,
 	closure archivedDependencyClosureResult,
 ) error {
-	expected := make([]archivalGroupID, 0, len(groups))
+	expected := make([]archivalGroupID, 0,
+		len(groups)+len(closure.DependencyValidatedCandidateGroups))
+	requested := make(map[archivalGroupID]struct{}, len(groups))
 	for _, group := range groups {
 		expected = append(expected, group.id)
+		requested[group.id] = struct{}{}
 	}
+	for _, candidate := range closure.DependencyValidatedCandidateGroups {
+		if _, requestedGroup := requested[candidate.Candidate.GroupID]; !requestedGroup {
+			expected = append(expected, candidate.Candidate.GroupID)
+		}
+	}
+	slices.Sort(expected)
 	validated := slices.Clone(closure.ValidatedGroupIDs)
 	slices.Sort(validated)
 	if !slices.Equal(expected, validated) {
-		return fmt.Errorf("stage 11 dependency closure did not validate exactly the requested groups")
+		return fmt.Errorf("stage 11 dependency closure did not validate exactly the requested and existing groups")
 	}
 	resumeGroupIDs := make([]archivalGroupID, 0, len(groups))
 	for _, group := range groups {
@@ -611,10 +620,11 @@ func validatePlainTableArchivalClosure(
 			resumeGroupIDs = append(resumeGroupIDs, group.id)
 		}
 	}
-	validatedCandidateIDs := make([]archivalGroupID, 0,
-		len(closure.DependencyValidatedCandidateGroups))
+	validatedCandidateIDs := make([]archivalGroupID, 0, len(resumeGroupIDs))
 	for _, candidate := range closure.DependencyValidatedCandidateGroups {
-		validatedCandidateIDs = append(validatedCandidateIDs, candidate.Candidate.GroupID)
+		if _, requestedGroup := requested[candidate.Candidate.GroupID]; requestedGroup {
+			validatedCandidateIDs = append(validatedCandidateIDs, candidate.Candidate.GroupID)
+		}
 	}
 	slices.Sort(validatedCandidateIDs)
 	if !slices.Equal(resumeGroupIDs, validatedCandidateIDs) {

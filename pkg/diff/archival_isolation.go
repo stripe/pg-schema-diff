@@ -172,6 +172,20 @@ func planArchivalIsolation(
 			SharedDependencyEdges: canonicalArchivedDependencyGroupEdges(nil),
 		})
 	}
+	for _, validated := range closure.DependencyValidatedCandidateGroups {
+		candidate := validated.Candidate
+		if _, exists := groupPlans[candidate.GroupID]; exists {
+			continue
+		}
+		marker := canonicalizeArchivalMarker(candidate.Marker)
+		plan.Groups = append(plan.Groups, archivalIsolationGroupPlan{
+			GroupID:      candidate.GroupID,
+			OriginalACLs: marker.OriginalACLs, OriginalForeignKeys: marker.OriginalForeignKeys,
+			OriginalPublications:  marker.OriginalPublicationMemberships,
+			Dependencies:          canonicalMarkerObjects(nil),
+			SharedDependencyEdges: canonicalArchivedDependencyGroupEdges(nil),
+		})
+	}
 	for idx := range plan.Groups {
 		groupPlans[plan.Groups[idx].GroupID] = &plan.Groups[idx]
 	}
@@ -275,10 +289,12 @@ func planArchivalDependencyIsolation(
 	for _, assignment := range closure.Assignments {
 		_, ok := groupPlans[assignment.GroupID]
 		if !ok {
-			return fmt.Errorf("dependency assignment references unrequested archival group %q", assignment.GroupID)
+			return fmt.Errorf("dependency assignment references unvalidated archival group %q", assignment.GroupID)
 		}
 		if assignment.Destination.SchemaName == "" ||
-			assignment.Destination.SchemaName != groupDependencySchema(groups, assignment.GroupID) {
+			assignment.Destination.SchemaName != archivalDependencySchemaForGroup(
+				groups, closure.DependencyValidatedCandidateGroups, assignment.GroupID,
+			) {
 			return fmt.Errorf("dependency assignment for group %q has an invalid destination schema", assignment.GroupID)
 		}
 		if err := validateArchivalDependencyMoveIdentity(inventory, assignment); err != nil {
@@ -321,12 +337,14 @@ func planArchivalDependencyIsolation(
 	for groupID, objects := range assignmentsByGroup {
 		groupPlans[groupID].Dependencies = canonicalMarkerObjects(objects)
 	}
-	for _, group := range groups {
-		groupPlans[group.id].SharedDependencyEdges = incidentArchivedDependencyEdges(
-			group.id, closure.SharedGroupEdges,
+	for _, groupPlan := range groupPlans {
+		groupPlan.SharedDependencyEdges = incidentArchivedDependencyEdges(
+			groupPlan.GroupID, closure.SharedGroupEdges,
 		)
 	}
+	predictedGroupIDs := make(map[archivalGroupID]struct{}, len(groups))
 	for _, group := range groups {
+		predictedGroupIDs[group.id] = struct{}{}
 		if group.resume == nil {
 			for _, assignment := range closure.Assignments {
 				if assignment.GroupID == group.id {
@@ -362,6 +380,24 @@ func planArchivalDependencyIsolation(
 			})
 		}
 	}
+	for _, assignment := range closure.Assignments {
+		if _, predicted := predictedGroupIDs[assignment.GroupID]; predicted {
+			continue
+		}
+		actual, err := findCurrentCatalogObject(inventory, assignment.Source)
+		if err != nil {
+			return err
+		}
+		if actual.SchemaName == assignment.Destination.SchemaName {
+			continue
+		}
+		if actual.SchemaName != assignment.Source.SchemaName {
+			return fmt.Errorf("dependency OID %d for existing group %q is in unexpected schema %q",
+				assignment.Source.OID, assignment.GroupID, actual.SchemaName)
+		}
+		plan.DependencyMoves = append(plan.DependencyMoves,
+			archivalObjectMoveOperation(assignment))
+	}
 	slices.SortFunc(plan.StatisticMoves, compareArchivalObjectMoves)
 	slices.SortFunc(plan.DependencyMoves, func(a, b archivalObjectMoveOperation) int {
 		return cmp.Or(
@@ -371,6 +407,22 @@ func planArchivalDependencyIsolation(
 		)
 	})
 	return nil
+}
+
+func archivalDependencySchemaForGroup(
+	groups []preparedArchivalGroup,
+	candidates []dependencyValidatedArchivedCandidateGroup,
+	groupID archivalGroupID,
+) string {
+	if dependencySchema := groupDependencySchema(groups, groupID); dependencySchema != "" {
+		return dependencySchema
+	}
+	for _, validated := range candidates {
+		if validated.Candidate.GroupID == groupID {
+			return validated.Candidate.ExpectedDependencySchemaName
+		}
+	}
+	return ""
 }
 
 func planArchivalACLIsolation(

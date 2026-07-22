@@ -1188,6 +1188,9 @@ func validateCandidateArchivedDependencies(
 	groups []preparedArchivedDependencyGroup,
 	result archivedDependencyClosureResult,
 ) ([]dependencyValidatedArchivedCandidateGroup, error) {
+	hasProposedGroups := slices.ContainsFunc(groups, func(group preparedArchivedDependencyGroup) bool {
+		return group.candidate == nil
+	})
 	assignmentsByGroup := make(map[archivalGroupID][]archivalMarkerObjectIdentity)
 	for _, assignment := range result.Assignments {
 		assignmentsByGroup[assignment.GroupID] =
@@ -1201,18 +1204,24 @@ func validateCandidateArchivedDependencies(
 		candidate := *group.candidate
 		expectedObjects := canonicalMarkerObjects(assignmentsByGroup[group.id])
 		actualObjects := canonicalMarkerObjects(candidate.Marker.ExclusiveDependencyObjects)
-		if err := validateExactCandidateDependencyObjects(group.id, expectedObjects, actualObjects); err != nil {
-			return nil, err
-		}
-		expectedEdges := incidentArchivedDependencyEdges(group.id, result.SharedGroupEdges)
-		actualEdges := canonicalArchivedDependencyGroupEdges(
-			candidate.Marker.SharedCleanupComponentGroupEdges,
-		)
-		if !slices.Equal(expectedEdges, actualEdges) {
-			return nil, fmt.Errorf(
-				"candidate archival group %q shared dependency edges do not match computed closure",
-				group.id,
+		if hasProposedGroups {
+			if err := validateCandidateDependencyObjectSubset(group.id, actualObjects, expectedObjects); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := validateExactCandidateDependencyObjects(group.id, expectedObjects, actualObjects); err != nil {
+				return nil, err
+			}
+			expectedEdges := incidentArchivedDependencyEdges(group.id, result.SharedGroupEdges)
+			actualEdges := canonicalArchivedDependencyGroupEdges(
+				candidate.Marker.SharedCleanupComponentGroupEdges,
 			)
+			if !slices.Equal(expectedEdges, actualEdges) {
+				return nil, fmt.Errorf(
+					"candidate archival group %q shared dependency edges do not match computed closure",
+					group.id,
+				)
+			}
 		}
 		validated = append(validated, dependencyValidatedArchivedCandidateGroup{Candidate: candidate})
 	}
@@ -1220,6 +1229,22 @@ func validateCandidateArchivedDependencies(
 		return cmp.Compare(a.Candidate.GroupID, b.Candidate.GroupID)
 	})
 	return validated, nil
+}
+
+func validateCandidateDependencyObjectSubset(
+	groupID archivalGroupID,
+	actual []archivalMarkerObjectIdentity,
+	expected []archivalMarkerObjectIdentity,
+) error {
+	for _, object := range actual {
+		if !slices.ContainsFunc(expected, func(candidate archivalMarkerObjectIdentity) bool {
+			return compareMarkerObjects(candidate, object) == 0
+		}) {
+			return fmt.Errorf("candidate archival group %q has stale unexplained exclusive dependency %s OID %d",
+				groupID, markerObjectIdentityKey(object), object.OID)
+		}
+	}
+	return nil
 }
 
 func validateExactCandidateDependencyObjects(
