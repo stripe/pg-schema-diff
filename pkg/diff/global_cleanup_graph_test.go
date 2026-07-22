@@ -209,7 +209,7 @@ func TestPlanGlobalCleanupExistingOnlyReconstructsAndValidatesDigest(t *testing.
 	})
 	require.NoError(t, err)
 	assert.Empty(t, existing.FinalizedRegularGroups)
-	assert.Empty(t, existing.MarkerUpdateStatements)
+	assert.Empty(t, existing.ComponentInitializationStatements)
 	assert.Equal(t, initial.Operations, existing.Operations)
 	assert.Equal(t, initial.CleanupStatements, existing.CleanupStatements)
 	assert.Equal(t, []archivalGroupID{candidate.GroupID}, existing.TrustedGroupIDs)
@@ -343,9 +343,9 @@ func TestPlanGlobalCleanupLaterSharedDependencyMoveUpdatesExistingMarker(t *test
 		Isolation: isolation,
 	})
 	require.NoError(t, err)
-	require.Len(t, result.MarkerUpdateStatements, 1)
+	require.Len(t, result.ComponentInitializationStatements, 1)
 	for _, schemaName := range oldCandidate.SchemaNames {
-		assert.Contains(t, result.MarkerUpdateStatements[0].DDL, schema.EscapeIdentifier(schemaName))
+		assert.Contains(t, result.ComponentInitializationStatements[0].DDL, schema.EscapeIdentifier(schemaName))
 	}
 	require.Len(t, result.FinalizedMarkers, 2)
 	assert.Equal(
@@ -428,9 +428,9 @@ func TestPlanGlobalCleanupFinalizedMarkerFeedsInitializationWithoutPlaceholder(t
 	require.Len(t, result.FinalizedRegularGroups, 1)
 	require.Len(t, result.FinalizedMarkers, 1)
 	assert.NotEqual(t, originalMarker, result.FinalizedMarkers[0].Text)
-	initialization := renderPlainTableArchivalInitialization(result.FinalizedRegularGroups[0])
-	require.Len(t, initialization, 1)
-	assert.Contains(t, initialization[0].DDL,
+	assert.Empty(t, renderPlainTableArchivalInitialization(result.FinalizedRegularGroups[0]))
+	require.Len(t, result.ComponentInitializationStatements, 1)
+	assert.Contains(t, result.ComponentInitializationStatements[0].DDL,
 		escapeArchivalMarkerSQLLiteral(result.FinalizedMarkers[0].Text))
 	parsed, err := parseArchivalMarker(result.FinalizedMarkers[0].Text)
 	require.NoError(t, err)
@@ -495,9 +495,9 @@ func TestPlanGlobalCleanupFinalizedMarkerFeedsResumeRefresh(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, result.FinalizedRegularGroups, 1)
-	refresh := renderPlainTableArchivalMarkerRefresh(result.FinalizedRegularGroups[0])
-	require.Len(t, refresh, 1)
-	assert.Contains(t, refresh[0].DDL,
+	assert.Empty(t, renderPlainTableArchivalMarkerRefresh(result.FinalizedRegularGroups[0]))
+	require.Len(t, result.ComponentInitializationStatements, 1)
+	assert.Contains(t, result.ComponentInitializationStatements[0].DDL,
 		escapeArchivalMarkerSQLLiteral(result.FinalizedMarkers[0].Text))
 	parsed, err := parseArchivalMarker(result.FinalizedMarkers[0].Text)
 	require.NoError(t, err)

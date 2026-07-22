@@ -28,13 +28,13 @@ type globalCleanupFinalizedMarker struct {
 }
 
 type globalCleanupPlanResult struct {
-	Operations             []cleanupOperationV1
-	CleanupStatements      []Statement
-	FinalizedMarkers       []globalCleanupFinalizedMarker
-	FinalizedRegularGroups []preparedArchivalGroup
-	MarkerUpdateStatements []Statement
-	TrustedGroupIDs        []archivalGroupID
-	TrustedSchemaNames     []string
+	Operations                        []cleanupOperationV1
+	CleanupStatements                 []Statement
+	FinalizedMarkers                  []globalCleanupFinalizedMarker
+	FinalizedRegularGroups            []preparedArchivalGroup
+	ComponentInitializationStatements []Statement
+	TrustedGroupIDs                   []archivalGroupID
+	TrustedSchemaNames                []string
 }
 
 type globalCleanupGroup struct {
@@ -172,15 +172,22 @@ func planGlobalCleanup(request globalCleanupPlanRequest) (globalCleanupPlanResul
 	if err != nil {
 		return globalCleanupPlanResult{}, err
 	}
+	componentInitializations, err := renderGlobalCleanupComponentInitializations(
+		groups, finalEdges, finalMarkers,
+	)
+	if err != nil {
+		return globalCleanupPlanResult{}, err
+	}
 	statements, err := renderGlobalCleanupStatements(orderedOperations, groups)
 	if err != nil {
 		return globalCleanupPlanResult{}, err
 	}
 
 	result := globalCleanupPlanResult{
-		Operations:        cloneCleanupOperations(orderedOperations),
-		CleanupStatements: statements,
-		FinalizedMarkers:  finalMarkers,
+		Operations:                        cloneCleanupOperations(orderedOperations),
+		CleanupStatements:                 statements,
+		FinalizedMarkers:                  finalMarkers,
+		ComponentInitializationStatements: componentInitializations,
 	}
 	finalMarkerByGroup := make(map[archivalGroupID]globalCleanupFinalizedMarker, len(finalMarkers))
 	for _, finalized := range finalMarkers {
@@ -197,21 +204,74 @@ func planGlobalCleanup(request globalCleanupPlanRequest) (globalCleanupPlanResul
 		finalized := finalMarkerByGroup[group.id]
 		prepared.marker = finalized.Payload
 		prepared.markerText = finalized.Text
+		prepared.componentInitialized = true
 		result.FinalizedRegularGroups = append(result.FinalizedRegularGroups, prepared)
-	}
-	for _, group := range groups {
-		if group.existing == nil || group.predicted != nil {
-			continue
-		}
-		finalized := finalMarkerByGroup[group.id]
-		if finalized.Text != group.oldMarkerText {
-			result.MarkerUpdateStatements = append(result.MarkerUpdateStatements,
-				renderGlobalCleanupMarkerUpdate(group.existing.SchemaNames, finalized.Text))
-		}
 	}
 	slices.Sort(result.TrustedSchemaNames)
 	result.TrustedSchemaNames = slices.Compact(result.TrustedSchemaNames)
 	return result, nil
+}
+
+func renderGlobalCleanupComponentInitializations(
+	groups []globalCleanupGroup,
+	edges []archivalMarkerSharedGroupEdgeV1,
+	markers []globalCleanupFinalizedMarker,
+) ([]Statement, error) {
+	markerByGroup := make(map[archivalGroupID]globalCleanupFinalizedMarker, len(markers))
+	for _, marker := range markers {
+		markerByGroup[marker.GroupID] = marker
+	}
+	components, err := globalCleanupGroupComponents(groups, edges)
+	if err != nil {
+		return nil, err
+	}
+	var statements []Statement
+	for _, component := range components {
+		needsInitialization := false
+		hasNewSchemas := false
+		for _, groupID := range component {
+			group := globalCleanupGroupByID(groups, groupID)
+			marker, ok := markerByGroup[groupID]
+			if group == nil || !ok {
+				return nil, fmt.Errorf("cleanup component references an unfinalized group %q", groupID)
+			}
+			if group.predicted != nil || marker.Text != group.oldMarkerText {
+				needsInitialization = true
+			}
+			if group.predicted != nil && group.predicted.allocation != nil {
+				hasNewSchemas = true
+			}
+		}
+		if !needsInitialization {
+			continue
+		}
+		var body strings.Builder
+		body.WriteString("DECLARE\n    archival_role_name text;\nBEGIN\n")
+		for _, groupID := range component {
+			group := globalCleanupGroupByID(groups, groupID)
+			if group.predicted == nil || group.predicted.allocation == nil {
+				continue
+			}
+			for _, schemaName := range archivedMarkerSchemaNames(group.marker) {
+				appendArchivalSchemaCreation(&body, schemaName)
+			}
+		}
+		for _, groupID := range component {
+			marker := markerByGroup[groupID]
+			for _, schemaName := range archivedMarkerSchemaNames(marker.Payload) {
+				fmt.Fprintf(&body, "    COMMENT ON SCHEMA %s IS %s;\n",
+					schema.EscapeIdentifier(schemaName),
+					escapeArchivalMarkerSQLLiteral(marker.Text))
+			}
+		}
+		body.WriteString("END")
+		statement := Statement{DDL: doBlock(body.String())}
+		if hasNewSchemas {
+			statement.Hazards = []MigrationHazard{migrationHazardArchivalSchemaLockdown}
+		}
+		statements = append(statements, statement)
+	}
+	return statements, nil
 }
 
 // finalizeGlobalCleanupComponentInputs resolves the marker/component half of
@@ -507,6 +567,9 @@ func validateGlobalCleanupDependencyMoves(
 		actual, err := findCurrentCatalogObject(inventory, assignment.Source)
 		if err != nil {
 			return err
+		}
+		if compareMarkerObjects(assignment.Source, assignment.Destination) == 0 {
+			continue
 		}
 		switch actual.SchemaName {
 		case assignment.Source.SchemaName:
@@ -911,22 +974,6 @@ func renderGlobalCleanupStatements(
 		statements = append(statements, statement)
 	}
 	return statements, nil
-}
-
-func renderGlobalCleanupMarkerUpdate(
-	schemaNames []string,
-	markerText string,
-) Statement {
-	names := slices.Clone(schemaNames)
-	slices.Sort(names)
-	var body strings.Builder
-	body.WriteString("BEGIN\n")
-	for _, schemaName := range names {
-		fmt.Fprintf(&body, "    COMMENT ON SCHEMA %s IS %s;\n",
-			schema.EscapeIdentifier(schemaName), escapeArchivalMarkerSQLLiteral(markerText))
-	}
-	body.WriteString("END")
-	return Statement{DDL: doBlock(body.String())}
 }
 
 func cleanupDependencyHazards() []MigrationHazard {

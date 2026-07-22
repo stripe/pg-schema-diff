@@ -43,6 +43,7 @@ type archivedDependencyClosureRequest struct {
 	ProposedGroups  []archivedDependencyClosureGroupRequest
 	CandidateGroups []structurallyValidArchivedCandidateGroup
 	SourcePreflight sourceSafetyPreflightResult
+	SourceTrustOnly bool
 }
 
 type archivedDependencyClosureResult struct {
@@ -202,11 +203,20 @@ func planArchivedDependencyClosure(
 		slices.Sort(owners)
 		owners = slices.Compact(owners)
 
-		targetMatch, targetCompatible, targetManaged, err := matchArchivedDependencyInTarget(
-			resolved, target, managedTargetAddresses,
-		)
-		if err != nil {
-			return archivedDependencyClosureResult{}, err
+		targetMatch := false
+		targetCompatible := false
+		targetManaged := false
+		if request.SourceTrustOnly {
+			_, targetManaged = managedTargetAddresses[key]
+			targetMatch = targetManaged || !resolved.movable
+			targetCompatible = targetMatch
+		} else {
+			targetMatch, targetCompatible, targetManaged, err = matchArchivedDependencyInTarget(
+				resolved, target, managedTargetAddresses,
+			)
+			if err != nil {
+				return archivedDependencyClosureResult{}, err
+			}
 		}
 		object := archivedDependencyClosureObject{
 			Kind: resolved.kind, Address: resolved.address, Identity: resolved.identity,

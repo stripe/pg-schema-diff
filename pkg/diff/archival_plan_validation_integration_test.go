@@ -138,6 +138,7 @@ func TestArchivalPlanValidationResumesInitializedGroupBeforePostconditions(t *te
 	})
 	require.NoError(t, err)
 	regularRequest.Groups[0].FinalizedMarker = cleanup.FinalizedMarkers[0].Text
+	regularRequest.ComponentInitializationManaged = true
 	diff, _, err := buildSchemaDiff(current.Schema, initial.TargetSnapshot.Schema)
 	require.NoError(t, err)
 	member := candidate.Marker.Members[0]
@@ -145,10 +146,11 @@ func TestArchivalPlanValidationResumesInitializedGroupBeforePostconditions(t *te
 		newSchemaSQLGenerator(&deterministicRandReader{}, &planOptions{}), diff,
 		tableDispositions{markerTableName(member.SourceTable).GetName(): {
 			Kind: tableDispositionKindArchivalMove, GroupID: candidate.GroupID,
+			RelationOID: member.SourceTable.OID,
 		}}, regularRequest,
 	)
 	require.NoError(t, err)
-	ordinary = append(ordinary, cleanup.MarkerUpdateStatements...)
+	ordinary = append(cleanup.ComponentInitializationStatements, ordinary...)
 	request := archivalPlanValidationRequest{
 		TempDBFactory: factory, Prefix: "archive", CurrentSnapshot: current,
 		TargetSnapshot: initial.TargetSnapshot, OrdinaryStatements: ordinary, Cleanup: cleanup,
@@ -438,11 +440,13 @@ func newArchivalValidationFixture(
 	})
 	require.NoError(t, err)
 	regularRequest.Groups[0].FinalizedMarker = cleanup.FinalizedMarkers[0].Text
+	regularRequest.ComponentInitializationManaged = true
 	diff, _, err := buildSchemaDiff(current.Schema, target.Schema)
 	require.NoError(t, err)
 	dispositions := tableDispositions{
 		markerTableName(marker.Members[0].SourceTable).GetName(): {
 			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID,
+			RelationOID: marker.Members[0].SourceTable.OID,
 		},
 	}
 	ordinary, err := generateReplacementAwareSchemaSQL(
@@ -450,7 +454,7 @@ func newArchivalValidationFixture(
 		diff, dispositions, regularRequest,
 	)
 	require.NoError(t, err)
-	ordinary = append(ordinary, cleanup.MarkerUpdateStatements...)
+	ordinary = append(cleanup.ComponentInitializationStatements, ordinary...)
 	return archivalPlanValidationRequest{
 		TempDBFactory: factory, Prefix: "archive", CurrentSnapshot: current,
 		TargetSnapshot: target, OrdinaryStatements: ordinary, Cleanup: cleanup,
@@ -464,7 +468,9 @@ func cloneArchivalValidationCleanup(cleanup globalCleanupPlanResult) globalClean
 	result.CleanupStatements = slices.Clone(cleanup.CleanupStatements)
 	result.FinalizedMarkers = slices.Clone(cleanup.FinalizedMarkers)
 	result.FinalizedRegularGroups = slices.Clone(cleanup.FinalizedRegularGroups)
-	result.MarkerUpdateStatements = slices.Clone(cleanup.MarkerUpdateStatements)
+	result.ComponentInitializationStatements = slices.Clone(
+		cleanup.ComponentInitializationStatements,
+	)
 	result.TrustedGroupIDs = slices.Clone(cleanup.TrustedGroupIDs)
 	result.TrustedSchemaNames = slices.Clone(cleanup.TrustedSchemaNames)
 	return result
@@ -577,12 +583,14 @@ func newPartitionArchivalValidationFixture(
 	})
 	require.NoError(t, err)
 	regularRequest.Groups[0].FinalizedMarker = cleanup.FinalizedMarkers[0].Text
+	regularRequest.ComponentInitializationManaged = true
 	diff, _, err := buildSchemaDiff(current.Schema, target.Schema)
 	require.NoError(t, err)
 	dispositions := make(tableDispositions, len(marker.Members))
 	for _, member := range marker.Members {
 		dispositions[markerTableName(member.SourceTable).GetName()] = tableDisposition{
 			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID,
+			RelationOID: member.SourceTable.OID,
 		}
 	}
 	ordinary, err := generateReplacementAwareSchemaSQL(
@@ -590,7 +598,7 @@ func newPartitionArchivalValidationFixture(
 		diff, dispositions, regularRequest,
 	)
 	require.NoError(t, err)
-	ordinary = append(ordinary, cleanup.MarkerUpdateStatements...)
+	ordinary = append(cleanup.ComponentInitializationStatements, ordinary...)
 	rootMember := markerRoot(cleanup.FinalizedMarkers[0].Payload)
 	setupTable := schema.EscapeIdentifier(root.SchemaName) + "." + schema.EscapeIdentifier(root.Name)
 	if detached {
@@ -656,17 +664,14 @@ func resumedArchivalValidationRequest(
 	})
 	require.NoError(t, err)
 	regularRequest.Groups[0].FinalizedMarker = cleanup.FinalizedMarkers[0].Text
+	regularRequest.ComponentInitializationManaged = true
 	diff, _, err := buildSchemaDiff(current.Schema, target.Schema)
 	require.NoError(t, err)
-	dispositions := make(tableDispositions, len(candidate.Marker.Members))
-	for _, member := range candidate.Marker.Members {
-		dispositions[markerTableName(member.SourceTable).GetName()] = tableDisposition{
-			Kind: tableDispositionKindCleanupOnly, GroupID: candidate.GroupID,
-		}
-	}
+	dispositions := make(tableDispositions, len(candidate.Resume.RemainingMemberMoves))
 	for _, move := range candidate.Resume.RemainingMemberMoves {
 		dispositions[markerTableName(move.SourceTable).GetName()] = tableDisposition{
 			Kind: tableDispositionKindArchivalMove, GroupID: candidate.GroupID,
+			RelationOID: move.RelationOID,
 		}
 	}
 	ordinary, err := generateReplacementAwareSchemaSQL(
@@ -674,7 +679,7 @@ func resumedArchivalValidationRequest(
 		diff, dispositions, regularRequest,
 	)
 	require.NoError(t, err)
-	ordinary = append(ordinary, cleanup.MarkerUpdateStatements...)
+	ordinary = append(cleanup.ComponentInitializationStatements, ordinary...)
 	return archivalPlanValidationRequest{
 		TempDBFactory: factory, Prefix: "archive", CurrentSnapshot: current,
 		TargetSnapshot: target, OrdinaryStatements: ordinary, Cleanup: cleanup,

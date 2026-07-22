@@ -138,8 +138,8 @@ The implemented behavior includes:
 - An independent public extension safety check that rejects extension drops or
   version/schema updates owning hidden table-like relations, including when plan
   validation is disabled and no modeled table diff exists.
-- An archival move graph that atomically initializes and locks down marked
-  cleanup groups, moves ordinary tables or complete recursive declarative
+- An archival move graph that atomically initializes and locks down connected
+  cleanup components, moves ordinary tables or complete recursive declarative
   partition trees, resumes partial multi-member state using recorded names,
   refreshes supplied finalized markers, and asserts exact post-move catalog
   identities. Descendants move deepest-first with lexical tie-breaking and each
@@ -161,8 +161,8 @@ The implemented behavior includes:
   initialization/refresh inputs. Each marker digest covers its connected cleanup
   component; operation IDs and edges, rather than a separate SQL ordering graph,
   determine the global lexical topological statement order. Existing complete
-  groups receive ordinary marker-comment updates when a later dependency move or
-  shared component changes their payload.
+  groups receive marker-comment updates in the same transactional component
+  initialization that creates new peer schemas, before any component move.
 - Two-phase archival validation that revalidates source-only facts before
   temporary SQL, reconstructs the unfiltered modeled source and trusted existing
   groups, translates database-local OIDs for synthetic assertions, proves the
@@ -394,8 +394,9 @@ Markers have two generation purposes:
 - Reconstruct `CleanupStatements` on later `Generate` calls, even when no new
   ordinary migration statements are needed.
 
-If a later plan changes the global cleanup component, generate ordinary marker
-updates for every affected group before returning the revised cleanup list.
+If a later plan changes the global cleanup component, one transactional ordinary
+statement creates all new schemas and updates every affected marker copy before
+any table or dependency move in that component.
 
 No worker state, deadline, or execution progress is stored in the marker in this
 design.
@@ -411,6 +412,10 @@ Progress is derived from marker intent plus current catalogs. On every
 - A retained-parent subtree with every member moved but its boundary still
   attached is partial resumable state; its resume descriptor contains the one
   remaining detach operation.
+- A group with table moves complete but any marker-recorded table, column, or
+  sequence ACL still present is partial resumable state. Resume planning derives
+  only the revokes still valid against the current grant graph, preserving
+  dependent-first and grant-option ordering.
 - A fully populated valid group is filtered from managed diffing and contributes
   cleanup vertices.
 - A malformed marker, unexpected object, conflicting source object, or topology
@@ -464,12 +469,13 @@ or use a deliberately modeled `CASCADE` only after recording every affected gran
 Reject unsupported/cyclic/role-missing grant state rather than emitting a revoke
 that can fail after the move.
 
-Generate schema creation, ACL lockdown, and marker creation for every cleanup and
-dependency schema in one compound `Statement`, implemented as a generated `DO`
-block. PostgreSQL executes that statement transactionally, so failure rolls back
-the complete logical group's initialization and cannot leave only some expected
-member schemas. Subsequent move statements remain separately resumable through
-the marker/catalog rules above.
+Generate schema creation, ACL lockdown, and finalized marker installation for
+every new, resumed, and existing group in one connected cleanup component as one
+compound `Statement`, implemented as a generated `DO` block. PostgreSQL executes
+that statement transactionally, so failure cannot expose missing peer schemas or
+stale marker copies inside a component. Independent components may use separate
+statements. Subsequent move and isolation statements remain separately resumable
+through the marker/catalog rules above.
 
 ## Consistent Catalog Snapshot
 
@@ -882,6 +888,10 @@ strict marker/name/catalog/digest validation and supplies group identities;
 `pkg/schema` uses that same trust result through the diff orchestration path.
 This prevents a second, weaker marker parser while keeping the shared bytes
 reproducible. Newly predicted post-plan groups are not source hash material.
+This trust pass is target-independent: source-resident candidate members are
+treated as archival roots, marker-declared dependency ownership and component
+digests are checked against current catalogs, and incoming dependent target
+intent is considered only by subsequent migration planning.
 
 Generation timestamps and randomness, rendered SQL, statements and their order,
 hazards and messages, temporary database identities, logger/options state,

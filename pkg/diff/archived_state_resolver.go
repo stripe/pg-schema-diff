@@ -40,7 +40,13 @@ type archivedGroupResumeDescriptor struct {
 	RemainingPartitionDetach       bool
 	RemainingExplicitObjectMoves   []archivedObjectMoveDescriptor
 	RemainingDependencyObjectMoves []archivedObjectMoveDescriptor
+	RemainingACLRevokes            []archivedACLRevokeDescriptor
 	RemainingMarkerUpdates         []archivedMarkerUpdateDescriptor
+}
+
+type archivedACLRevokeDescriptor struct {
+	Kind   schema.CatalogACLRevokeKind
+	Record archivalMarkerACLRecordV1
 }
 
 type archivedMemberMoveDescriptor struct {
@@ -470,13 +476,20 @@ func resolveArchivedCandidateGroup(
 	); err != nil {
 		return structurallyValidArchivedCandidateGroup{}, err
 	}
+	remainingACLRevokes, err := resolveRemainingArchivedACLRevokes(inventory, payload)
+	if err != nil {
+		return structurallyValidArchivedCandidateGroup{}, err
+	}
+	resume.RemainingACLRevokes = remainingACLRevokes
 
 	state := archivedCandidateGroupStatePartialResumable
 	switch movedCount {
 	case 0:
 		state = archivedCandidateGroupStateEmptyInitialized
 	case totalMoveCount:
-		state = archivedCandidateGroupStateCompleteCandidate
+		if len(resume.RemainingACLRevokes) == 0 {
+			state = archivedCandidateGroupStateCompleteCandidate
+		}
 	}
 	if state != archivedCandidateGroupStateCompleteCandidate {
 		for _, schemaName := range declaredSchemaNames {
@@ -495,6 +508,91 @@ func resolveArchivedCandidateGroup(
 		GroupID: payload.GroupID, State: state, Marker: canonicalizeArchivalMarker(payload),
 		SchemaNames: slices.Clone(declaredSchemaNames), Resume: resume,
 	}, nil
+}
+
+func resolveRemainingArchivedACLRevokes(
+	inventory schema.CatalogInventory,
+	payload archivalMarkerV1,
+) ([]archivedACLRevokeDescriptor, error) {
+	addresses := archivedMarkerACLAddresses(payload)
+	plan, err := inventory.PlanACLRevokes(addresses)
+	if err != nil {
+		return nil, fmt.Errorf("planning remaining archival ACL isolation: %w", err)
+	}
+	result := make([]archivedACLRevokeDescriptor, 0, len(plan.Revokes))
+	for _, revoke := range plan.Revokes {
+		record, err := matchingOriginalArchivalACL(inventory, payload.OriginalACLs, revoke.Grant)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, archivedACLRevokeDescriptor{Kind: revoke.Kind, Record: record})
+	}
+	return result, nil
+}
+
+func archivedMarkerACLAddresses(payload archivalMarkerV1) []schema.CatalogDependencyObject {
+	byOID := make(map[uint32]schema.CatalogDependencyObject)
+	add := func(object archivalMarkerObjectIdentity) {
+		byOID[object.OID] = schema.CatalogDependencyObject{
+			ClassOID: pgClassCatalogOID, ObjectOID: object.OID,
+		}
+	}
+	for _, member := range payload.Members {
+		add(member.SourceTable)
+		for _, object := range member.AutomaticallyMovedObjects {
+			if object.Kind == archivalMarkerObjectKindOwnedSequence {
+				add(object)
+			}
+		}
+	}
+	for _, object := range payload.ExclusiveDependencyObjects {
+		if object.Kind == archivalMarkerObjectKindSequence {
+			add(object)
+		}
+	}
+	result := make([]schema.CatalogDependencyObject, 0, len(byOID))
+	for _, address := range byOID {
+		result = append(result, address)
+	}
+	slices.SortFunc(result, func(a, b schema.CatalogDependencyObject) int {
+		return cmp.Compare(a.ObjectOID, b.ObjectOID)
+	})
+	return result
+}
+
+func matchingOriginalArchivalACL(
+	inventory schema.CatalogInventory,
+	originals []archivalMarkerACLRecordV1,
+	grant schema.CatalogACLGrant,
+) (archivalMarkerACLRecordV1, error) {
+	current, err := archivalMarkerACLRecord(inventory, grant)
+	if err != nil {
+		return archivalMarkerACLRecordV1{}, err
+	}
+	var matches []archivalMarkerACLRecordV1
+	for _, original := range originals {
+		if original.ObjectClass != current.ObjectClass ||
+			original.Object.Kind != current.Object.Kind ||
+			original.Object.OID != current.Object.OID ||
+			original.Object.Name != current.Object.Name ||
+			original.ColumnName != current.ColumnName ||
+			original.OwnerName != current.OwnerName ||
+			original.GrantorName != current.GrantorName ||
+			original.GranteeName != current.GranteeName ||
+			original.GranteeIsPublic != current.GranteeIsPublic ||
+			original.Privilege != current.Privilege ||
+			current.IsGrantable && !original.IsGrantable {
+			continue
+		}
+		matches = append(matches, original)
+	}
+	if len(matches) != 1 {
+		return archivalMarkerACLRecordV1{}, fmt.Errorf(
+			"current ACL grant on object OID %d has %d matching original marker records",
+			grant.Object.ObjectOID, len(matches),
+		)
+	}
+	return matches[0], nil
 }
 
 func validateMemberCatalogObjects(

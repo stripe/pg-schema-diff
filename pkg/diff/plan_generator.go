@@ -161,7 +161,7 @@ func Generate(
 	if err != nil {
 		return Plan{}, fmt.Errorf("generating archival migration plan: %w", err)
 	}
-	currentHash, err := buildCandidatePlanSnapshotHash(archival.current, archival.cleanup)
+	currentHash, err := buildCandidatePlanSnapshotHash(archival.current, archival.sourceTrust)
 	if err != nil {
 		return Plan{}, fmt.Errorf("hashing current schema snapshot: %w", err)
 	}

@@ -15,6 +15,7 @@ type archivalGenerationResult struct {
 	target            schema.SchemaSnapshot
 	statements        []Statement
 	cleanup           globalCleanupPlanResult
+	sourceTrust       globalCleanupPlanResult
 	preflight         sourceSafetyPreflightResult
 	dependencyClosure archivedDependencyClosureResult
 	isolation         archivalIsolationPlan
@@ -45,10 +46,7 @@ func GetSchemaHash(
 	if err != nil {
 		return "", err
 	}
-	target := current
-	target.Schema = schema.ExcludeSchemaNames(target.Schema,
-		resolution.ProvisionalUntrustedSchemaNames)
-	_, _, cleanup, err := trustExistingArchivalGroups(current, target, resolution)
+	_, _, cleanup, err := trustExistingArchivalGroups(current, resolution)
 	if err != nil {
 		return "", fmt.Errorf("validating existing archival state: %w", err)
 	}
@@ -67,7 +65,7 @@ func orchestrateArchivalGeneration(
 			"resolving existing archival state: %w", err,
 		)
 	}
-	_, _, trustedExisting, err := trustExistingArchivalGroups(current, target, resolution)
+	_, _, trustedExisting, err := trustExistingArchivalGroups(current, resolution)
 	if err != nil {
 		return archivalGenerationResult{}, fmt.Errorf(
 			"validating existing archival state: %w", err,
@@ -172,8 +170,8 @@ func orchestrateArchivalGeneration(
 		)
 	}
 
-	dispositions, err := buildArchivalTableDispositions(schemaDiff.tableDiffs.deletes,
-		cleanup.FinalizedRegularGroups)
+	dispositions, err := buildArchivalTableDispositions(current.Inventory,
+		schemaDiff.tableDiffs.deletes, cleanup.FinalizedRegularGroups)
 	if err != nil {
 		return archivalGenerationResult{}, err
 	}
@@ -188,43 +186,84 @@ func orchestrateArchivalGeneration(
 			"generating integrated regular statements: %w", err,
 		)
 	}
-	statements = append(statements, cleanup.MarkerUpdateStatements...)
+	statements = append(slices.Clone(cleanup.ComponentInitializationStatements), statements...)
 	if err := validateGeneratedArchivalStatements(statements, dispositions); err != nil {
 		return archivalGenerationResult{}, err
 	}
 
 	return archivalGenerationResult{
 		current: current, target: target, statements: statements, cleanup: cleanup,
-		preflight: preflight, dependencyClosure: closure, isolation: isolation,
+		sourceTrust: trustedExisting, preflight: preflight,
+		dependencyClosure: closure, isolation: isolation,
 	}, nil
 }
 
 func trustExistingArchivalGroups(
 	current schema.SchemaSnapshot,
-	target schema.SchemaSnapshot,
 	resolution archivedStateResolution,
 ) (sourceSafetyPreflightResult, archivedDependencyClosureResult, globalCleanupPlanResult, error) {
+	target := sourceArchivalTrustTarget(current, resolution)
 	relationOIDs := archivedCandidateRelationOIDs(resolution.CandidateGroups)
 	preflight, err := runSourceSafetyPreflight(sourceSafetyPreflightRequest{
 		CurrentSnapshot: current, TargetSnapshot: target, ProposedTableRelationOIDs: relationOIDs,
+		SourceTrustOnly: true,
 	})
 	if err != nil {
 		return sourceSafetyPreflightResult{}, archivedDependencyClosureResult{}, globalCleanupPlanResult{}, err
 	}
 	closure, err := planArchivedDependencyClosure(archivedDependencyClosureRequest{
 		CurrentSnapshot: current, TargetSnapshot: target, CandidateGroups: resolution.CandidateGroups,
-		SourcePreflight: preflight,
+		SourcePreflight: preflight, SourceTrustOnly: true,
 	})
 	if err != nil {
 		return sourceSafetyPreflightResult{}, archivedDependencyClosureResult{}, globalCleanupPlanResult{}, err
 	}
+	trustIsolation := archivalIsolationPlan{}
+	for _, assignment := range closure.Assignments {
+		if compareMarkerObjects(assignment.Source, assignment.Destination) == 0 {
+			continue
+		}
+		actual, err := findCurrentCatalogObject(current.Inventory, assignment.Source)
+		if err != nil {
+			return sourceSafetyPreflightResult{}, archivedDependencyClosureResult{}, globalCleanupPlanResult{}, err
+		}
+		if actual.SchemaName == assignment.Source.SchemaName {
+			trustIsolation.DependencyMoves = append(trustIsolation.DependencyMoves,
+				archivalObjectMoveOperation(assignment))
+		}
+	}
 	cleanup, err := planGlobalCleanup(globalCleanupPlanRequest{
 		CurrentInventory: current.Inventory, DependencyClosure: closure,
+		Isolation: trustIsolation,
 	})
 	if err != nil {
 		return sourceSafetyPreflightResult{}, archivedDependencyClosureResult{}, globalCleanupPlanResult{}, err
 	}
 	return preflight, closure, cleanup, nil
+}
+
+func sourceArchivalTrustTarget(
+	current schema.SchemaSnapshot,
+	resolution archivedStateResolution,
+) schema.SchemaSnapshot {
+	target := current
+	target.Schema = schema.ExcludeSchemaNames(target.Schema,
+		resolution.ProvisionalUntrustedSchemaNames)
+	activeCandidateNames := make(map[string]struct{})
+	for _, candidate := range resolution.CandidateGroups {
+		for _, member := range candidate.Marker.Members {
+			relation := catalogRelationWithOID(current.Inventory, member.SourceTable.OID)
+			if relation == nil || relation.SchemaName != member.SourceTable.SchemaName {
+				continue
+			}
+			activeCandidateNames[markerTableName(member.SourceTable).GetName()] = struct{}{}
+		}
+	}
+	target.Schema.Tables = slices.DeleteFunc(slices.Clone(target.Schema.Tables), func(table schema.Table) bool {
+		_, candidate := activeCandidateNames[table.GetName()]
+		return candidate
+	})
+	return target
 }
 
 func archivedCandidateRelationOIDs(groups []structurallyValidArchivedCandidateGroup) []uint32 {
@@ -602,18 +641,19 @@ func applyArchivalIsolationMarkerMetadata(
 }
 
 func buildArchivalTableDispositions(
+	inventory schema.CatalogInventory,
 	deletedTables []schema.Table,
 	groups []preparedArchivalGroup,
 ) (tableDispositions, error) {
 	dispositions := make(tableDispositions)
 	for _, group := range groups {
 		for _, member := range group.members {
-			kind := tableDispositionKindCleanupOnly
-			if member.remainingMove != nil {
-				kind = tableDispositionKindArchivalMove
+			if member.remainingMove == nil {
+				continue
 			}
 			dispositions[markerTableName(member.marker.SourceTable).GetName()] = tableDisposition{
-				Kind: kind, GroupID: group.id,
+				Kind: tableDispositionKindArchivalMove, GroupID: group.id,
+				RelationOID: member.marker.SourceTable.OID,
 			}
 		}
 	}
@@ -625,6 +665,14 @@ func buildArchivalTableDispositions(
 		if disposition.Kind == tableDispositionKindPhysicalDelete ||
 			disposition.Kind == tableDispositionKindUnknown {
 			return nil, fmt.Errorf("deleted table %s has a destructive or unknown disposition", table.GetName())
+		}
+		relation, err := catalogRelationForModeledTable(inventory, table)
+		if err != nil {
+			return nil, err
+		}
+		if relation.OID != disposition.RelationOID {
+			return nil, fmt.Errorf("deleted table %s archival disposition binds OID %d instead of %d",
+				table.GetName(), disposition.RelationOID, relation.OID)
 		}
 	}
 	return dispositions, nil

@@ -138,11 +138,49 @@ func TestGetSchemaHashUsesVersionedSnapshotContract(t *testing.T) {
 	assert.Contains(t, actual, internalschema.SchemaSnapshotHashV1Prefix)
 }
 
+func TestGetSchemaHashMatchesGenerateForPartialGroupWithDeletedDependent(t *testing.T) {
+	factory := testdb.MustNewFactory(t)
+	currentDB := factory.CreateDatabase(t)
+	emptyTargetDB := factory.CreateDatabase(t)
+	retainingTargetDB := factory.CreateDatabase(t)
+	ddl := `
+		CREATE TABLE public.review_hash_archived (id bigint PRIMARY KEY, payload text);
+		CREATE VIEW public.review_hash_dependent AS
+			SELECT id, payload FROM public.review_hash_archived;
+	`
+	_, err := currentDB.ConnPool.Exec(t.Context(), ddl)
+	require.NoError(t, err)
+	_, err = retainingTargetDB.ConnPool.Exec(t.Context(), ddl)
+	require.NoError(t, err)
+
+	initial, err := diff.Generate(t.Context(), diff.DBSchemaSource(currentDB.ConnPool),
+		diff.DBSchemaSource(emptyTargetDB.ConnPool), diff.WithDoNotValidatePlan())
+	require.NoError(t, err)
+	require.NotEmpty(t, initial.Statements)
+	assert.Contains(t, initial.Statements[0].DDL, "CREATE SCHEMA")
+	_, err = currentDB.ConnPool.Exec(t.Context(), initial.Statements[0].ToSQL())
+	require.NoError(t, err)
+
+	resumed := requirePlanHashEventuallyMatches(
+		t,
+		func() (string, error) { return GetSchemaHash(t.Context(), currentDB.ConnPool) },
+		func() (diff.Plan, error) {
+			return diff.Generate(t.Context(), diff.DBSchemaSource(currentDB.ConnPool),
+				diff.DBSchemaSource(emptyTargetDB.ConnPool), diff.WithDoNotValidatePlan())
+		},
+	)
+	assert.Contains(t, planDDL(resumed.Statements), `DROP VIEW "public"."review_hash_dependent"`)
+
+	_, err = diff.Generate(t.Context(), diff.DBSchemaSource(currentDB.ConnPool),
+		diff.DBSchemaSource(retainingTargetDB.ConnPool), diff.WithDoNotValidatePlan())
+	require.ErrorContains(t, err, "persistent view")
+}
+
 func requirePlanHashEventuallyMatches(
 	t *testing.T,
 	getPublicHash func() (string, error),
 	generatePlan func() (diff.Plan, error),
-) {
+) diff.Plan {
 	t.Helper()
 	var before, after string
 	var plan diff.Plan
@@ -155,10 +193,19 @@ func requirePlanHashEventuallyMatches(
 		after, err = getPublicHash()
 		require.NoError(t, err)
 		if before == after && plan.CurrentSchemaHash == after {
-			return
+			return plan
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	assert.Equal(t, before, after, "source hash did not stabilize")
 	assert.Equal(t, after, plan.CurrentSchemaHash)
+	return plan
+}
+
+func planDDL(statements []diff.Statement) string {
+	var result string
+	for _, statement := range statements {
+		result += statement.DDL + "\n"
+	}
+	return result
 }

@@ -20,7 +20,6 @@ func TestTableDispositionDeleteBehavior(t *testing.T) {
 	}{
 		{name: "physical delete", kind: tableDispositionKindPhysicalDelete, wantDrop: true},
 		{name: "archival move", kind: tableDispositionKindArchivalMove},
-		{name: "cleanup only", kind: tableDispositionKindCleanupOnly},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -70,7 +69,7 @@ func TestResolveTableDispositionsRejectsInvalidArchivalCombinations(t *testing.T
 		{
 			name: "move without group", deletes: []schema.Table{table},
 			dispositions: tableDispositions{table.GetName(): {
-				Kind: tableDispositionKindArchivalMove, GroupID: group.id,
+				Kind: tableDispositionKindArchivalMove, GroupID: group.id, RelationOID: 10,
 			}},
 			errorText: "missing group",
 		},
@@ -82,13 +81,6 @@ func TestResolveTableDispositionsRejectsInvalidArchivalCombinations(t *testing.T
 			errorText: "conflicts with archival group",
 		},
 		{
-			name: "cleanup before move", deletes: []schema.Table{table},
-			dispositions: tableDispositions{table.GetName(): {
-				Kind: tableDispositionKindCleanupOnly, GroupID: group.id,
-			}}, groups: groups,
-			errorText: "still requires an ordinary table move",
-		},
-		{
 			name: "unknown disposition", deletes: []schema.Table{table},
 			dispositions: tableDispositions{table.GetName(): {
 				Kind: tableDispositionKindUnknown,
@@ -98,17 +90,17 @@ func TestResolveTableDispositionsRejectsInvalidArchivalCombinations(t *testing.T
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := resolveTableDispositions(tc.deletes, tc.dispositions, tc.groups)
+			_, err := resolveTableDispositions(tc.deletes, tc.dispositions, tc.groups,
+				request.CurrentInventory)
 			require.ErrorContains(t, err, tc.errorText)
 		})
 	}
 
 	group.members[0].remainingMove = nil
-	resolved, err := resolveTableDispositions(nil, tableDispositions{table.GetName(): {
-		Kind: tableDispositionKindCleanupOnly, GroupID: group.id,
-	}}, []preparedArchivalGroup{group})
+	resolved, err := resolveTableDispositions(nil, tableDispositions{},
+		[]preparedArchivalGroup{group}, request.CurrentInventory)
 	require.NoError(t, err)
-	assert.Equal(t, tableDispositionKindCleanupOnly, resolved[table.GetName()].Kind)
+	assert.Empty(t, resolved)
 }
 
 func TestReplacementAwareGraphSuppressesMovedTableChildDeletes(t *testing.T) {
@@ -133,6 +125,7 @@ func TestReplacementAwareGraphSuppressesMovedTableChildDeletes(t *testing.T) {
 		diff,
 		tableDispositions{oldSchema.Tables[0].GetName(): {
 			Kind: tableDispositionKindArchivalMove, GroupID: request.DependencyClosure.ValidatedGroupIDs[0],
+			RelationOID: 10,
 		}},
 		request,
 	)
@@ -196,6 +189,7 @@ func TestReplacementAwareGraphOrdersRecreationAndTargetKindsAfterMove(t *testing
 		diff,
 		tableDispositions{oldSchema.Tables[0].GetName(): {
 			Kind: tableDispositionKindArchivalMove, GroupID: request.DependencyClosure.ValidatedGroupIDs[0],
+			RelationOID: 10,
 		}},
 		request,
 	)
@@ -244,6 +238,7 @@ func TestReplacementAwareGraphRejectsUnrepresentedStage14ForeignKeyWork(t *testi
 		diff,
 		tableDispositions{oldSchema.Tables[0].GetName(): {
 			Kind: tableDispositionKindArchivalMove, GroupID: request.DependencyClosure.ValidatedGroupIDs[0],
+			RelationOID: 10,
 		}},
 		request,
 	)

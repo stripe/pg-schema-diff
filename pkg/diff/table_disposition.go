@@ -13,12 +13,12 @@ const (
 	tableDispositionKindUnknown tableDispositionKind = iota
 	tableDispositionKindPhysicalDelete
 	tableDispositionKindArchivalMove
-	tableDispositionKindCleanupOnly
 )
 
 type tableDisposition struct {
-	Kind    tableDispositionKind
-	GroupID archivalGroupID
+	Kind        tableDispositionKind
+	GroupID     archivalGroupID
+	RelationOID uint32
 }
 
 type tableDispositions map[string]tableDisposition
@@ -37,6 +37,7 @@ func resolveTableDispositions(
 	deletedTables []schema.Table,
 	configured tableDispositions,
 	archivalGroups []preparedArchivalGroup,
+	inventory schema.CatalogInventory,
 ) (tableDispositions, error) {
 	if configured == nil {
 		if len(archivalGroups) != 0 {
@@ -50,6 +51,9 @@ func resolveTableDispositions(
 	membersByTableName := make(map[string]preparedArchivalMember)
 	for _, group := range archivalGroups {
 		for _, member := range group.members {
+			if member.remainingMove == nil {
+				continue
+			}
 			tableName := markerTableName(member.marker.SourceTable).GetName()
 			if _, duplicate := groupsByTableName[tableName]; duplicate {
 				return nil, fmt.Errorf("multiple archival groups target table %s", tableName)
@@ -77,7 +81,7 @@ func resolveTableDispositions(
 		member := membersByTableName[tableName]
 		switch disposition.Kind {
 		case tableDispositionKindPhysicalDelete:
-			if disposition.GroupID != "" {
+			if disposition.GroupID != "" || disposition.RelationOID != 0 {
 				return nil, fmt.Errorf("physical-delete disposition for table %s must not name archival group %q",
 					tableName, disposition.GroupID)
 			}
@@ -98,12 +102,17 @@ func resolveTableDispositions(
 			if member.remainingMove == nil {
 				return nil, fmt.Errorf("archival-move disposition for table %s has no remaining table move", tableName)
 			}
-		case tableDispositionKindCleanupOnly:
-			if err := validateDispositionGroup(tableName, disposition, group, hasGroup); err != nil {
+			if disposition.RelationOID == 0 || disposition.RelationOID != member.marker.SourceTable.OID {
+				return nil, fmt.Errorf("archival-move disposition for table %s does not bind active relation OID %d",
+					tableName, member.marker.SourceTable.OID)
+			}
+			relation, err := catalogRelationForModeledTable(inventory, deletedByName[tableName])
+			if err != nil {
 				return nil, err
 			}
-			if member.remainingMove != nil {
-				return nil, fmt.Errorf("cleanup-only disposition for table %s still requires an ordinary table move", tableName)
+			if relation.OID != disposition.RelationOID {
+				return nil, fmt.Errorf("archival-move disposition for table %s binds relation OID %d instead of active OID %d",
+					tableName, disposition.RelationOID, relation.OID)
 			}
 		default:
 			return nil, fmt.Errorf("table %s has unknown disposition %d", tableName, disposition.Kind)
@@ -115,8 +124,7 @@ func resolveTableDispositions(
 		if !ok {
 			return nil, fmt.Errorf("archival group %q for table %s has no disposition", group.id, tableName)
 		}
-		if disposition.Kind != tableDispositionKindArchivalMove &&
-			disposition.Kind != tableDispositionKindCleanupOnly {
+		if disposition.Kind != tableDispositionKindArchivalMove {
 			return nil, fmt.Errorf("archival group %q for table %s has non-archival disposition %d",
 				group.id, tableName, disposition.Kind)
 		}
@@ -158,6 +166,5 @@ func tableIsLogicallyRemoved(dispositions tableDispositions, tableName string) b
 
 func tableIsPreserved(dispositions tableDispositions, tableName string) bool {
 	disposition, ok := dispositions[tableName]
-	return ok && (disposition.Kind == tableDispositionKindArchivalMove ||
-		disposition.Kind == tableDispositionKindCleanupOnly)
+	return ok && disposition.Kind == tableDispositionKindArchivalMove
 }

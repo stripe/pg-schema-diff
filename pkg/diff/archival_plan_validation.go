@@ -387,11 +387,11 @@ func validateOrdinaryArchivalTargetScope(
 		return err
 	}
 	allowed := make(map[string]struct{}, len(expected)+
-		len(request.Cleanup.MarkerUpdateStatements))
+		len(request.Cleanup.ComponentInitializationStatements))
 	for _, statement := range expected {
 		allowed[statement.DDL] = struct{}{}
 	}
-	for _, statement := range request.Cleanup.MarkerUpdateStatements {
+	for _, statement := range request.Cleanup.ComponentInitializationStatements {
 		allowed[statement.DDL] = struct{}{}
 	}
 	for idx, statement := range request.OrdinaryStatements {

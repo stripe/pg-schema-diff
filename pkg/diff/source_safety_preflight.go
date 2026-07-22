@@ -27,6 +27,7 @@ type sourceSafetyPreflightRequest struct {
 
 	ProposedTableRelationOIDs []uint32
 	ExpectedRetainedObjects   []sourceSafetyExpectedRetainedObject
+	SourceTrustOnly           bool
 }
 
 type sourceSafetyExpectedRetainedObject struct {
@@ -319,6 +320,9 @@ func runSourceSafetyPreflight(request sourceSafetyPreflightRequest) (sourceSafet
 	slices.SortFunc(result.ForeignKeys, compareSourceSafetyForeignKeys)
 
 	for _, dependency := range result.IncomingDependencies {
+		if request.SourceTrustOnly {
+			continue
+		}
 		if dependency.ManagedScope == sourceSafetyManagedScopeManaged &&
 			dependency.TargetIntent == sourceSafetyTargetIntentExplicitlyAbsent {
 			continue

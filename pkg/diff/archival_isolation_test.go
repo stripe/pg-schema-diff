@@ -183,6 +183,7 @@ func TestArchivalIsolationPreservesSelfForeignKeyWithoutOrdinaryDelete(t *testin
 		newSchemaSQLGenerator(&deterministicRandReader{}, &planOptions{}), diff,
 		tableDispositions{oldSchema.Tables[0].GetName(): {
 			Kind: tableDispositionKindArchivalMove, GroupID: request.DependencyClosure.ValidatedGroupIDs[0],
+			RelationOID: 10,
 		}}, request,
 	)
 	require.NoError(t, err)

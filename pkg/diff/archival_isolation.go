@@ -182,12 +182,20 @@ func buildArchivalIsolationPlan(
 		for _, member := range group.members {
 			statistics = append(statistics, member.marker.ExplicitlyMovedObjects...)
 		}
-		plan.Groups = append(plan.Groups, archivalIsolationGroupPlan{
+		groupPlan := archivalIsolationGroupPlan{
 			GroupID:               group.id,
 			Statistics:            canonicalMarkerObjects(statistics),
 			Dependencies:          canonicalMarkerObjects(nil),
 			SharedDependencyEdges: canonicalArchivedDependencyGroupEdges(nil),
-		})
+		}
+		if group.resume != nil {
+			groupPlan.OriginalACLs = slices.Clone(group.marker.OriginalACLs)
+			groupPlan.OriginalForeignKeys = slices.Clone(group.marker.OriginalForeignKeys)
+			groupPlan.OriginalPublications = slices.Clone(
+				group.marker.OriginalPublicationMemberships,
+			)
+		}
+		plan.Groups = append(plan.Groups, groupPlan)
 	}
 	for idx := range plan.Groups {
 		groupPlans[plan.Groups[idx].GroupID] = nil
@@ -491,6 +499,13 @@ func planArchivalACLIsolation(
 	if err != nil {
 		return fmt.Errorf("planning archival ACL isolation: %w", err)
 	}
+	remainingByGroup := make(map[archivalGroupID][]archivedACLRevokeDescriptor)
+	remainingIndexByGroup := make(map[archivalGroupID]int)
+	for _, group := range groups {
+		if group.resume != nil {
+			remainingByGroup[group.id] = group.resume.RemainingACLRevokes
+		}
+	}
 	for _, revoke := range revokePlan.Revokes {
 		object, found := selectedACLObject(selected, revoke.Grant.Object.ObjectOID)
 		if !found {
@@ -500,12 +515,35 @@ func planArchivalACLIsolation(
 		if err != nil {
 			return err
 		}
+		if remaining, resumed := remainingByGroup[object.groupID]; resumed {
+			idx := remainingIndexByGroup[object.groupID]
+			if idx >= len(remaining) {
+				return fmt.Errorf("stage 9 ACL resume descriptor for group %q omits a current revoke", object.groupID)
+			}
+			descriptor := remaining[idx]
+			original, err := matchingOriginalArchivalACL(inventory,
+				groupPlans[object.groupID].OriginalACLs, revoke.Grant)
+			if err != nil {
+				return err
+			}
+			if descriptor.Kind != revoke.Kind || !reflect.DeepEqual(descriptor.Record, original) {
+				return fmt.Errorf("stage 9 ACL resume descriptor for group %q does not match current revoke order", object.groupID)
+			}
+			record = original
+			remainingIndexByGroup[object.groupID]++
+		}
 		plan.ACLRevokes = append(plan.ACLRevokes, archivalACLRevokeOperation{
 			GroupID: object.groupID, Revoke: revoke, Record: record, Destination: object.destination,
 		})
-		if !containsMarkerACL(groupPlans[object.groupID].OriginalACLs, record) {
+		if _, resumed := remainingByGroup[object.groupID]; !resumed &&
+			!containsMarkerACL(groupPlans[object.groupID].OriginalACLs, record) {
 			groupPlans[object.groupID].OriginalACLs =
 				append(groupPlans[object.groupID].OriginalACLs, record)
+		}
+	}
+	for groupID, remaining := range remainingByGroup {
+		if remainingIndexByGroup[groupID] != len(remaining) {
+			return fmt.Errorf("stage 9 ACL resume descriptor for group %q contains stale revokes", groupID)
 		}
 	}
 	for _, group := range groupPlans {

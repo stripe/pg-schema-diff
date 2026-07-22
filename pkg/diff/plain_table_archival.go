@@ -11,11 +11,12 @@ import (
 )
 
 type plainTableArchivalRequest struct {
-	CurrentInventory  schema.CatalogInventory
-	TargetSchema      schema.Schema
-	Groups            []plainTableArchivalGroupRequest
-	SourcePreflight   sourceSafetyPreflightResult
-	DependencyClosure archivedDependencyClosureResult
+	CurrentInventory               schema.CatalogInventory
+	TargetSchema                   schema.Schema
+	Groups                         []plainTableArchivalGroupRequest
+	SourcePreflight                sourceSafetyPreflightResult
+	DependencyClosure              archivedDependencyClosureResult
+	ComponentInitializationManaged bool
 }
 
 type plainTableArchivalGroupRequest struct {
@@ -84,15 +85,16 @@ type archivalPartitionDetachOperation struct {
 }
 
 type preparedArchivalGroup struct {
-	id           archivalGroupID
-	marker       archivalMarkerV1
-	markerText   string
-	members      []preparedArchivalMember
-	rootMemberID string
-	cleanupRoot  archivalMarkerObjectIdentity
-	allocation   *archivalGroupNameAllocation
-	resume       *archivedGroupResumeDescriptor
-	detach       *archivalPartitionDetachOperation
+	id                   archivalGroupID
+	marker               archivalMarkerV1
+	markerText           string
+	members              []preparedArchivalMember
+	rootMemberID         string
+	cleanupRoot          archivalMarkerObjectIdentity
+	allocation           *archivalGroupNameAllocation
+	resume               *archivedGroupResumeDescriptor
+	detach               *archivalPartitionDetachOperation
+	componentInitialized bool
 }
 
 var migrationHazardPlainTableSetSchema = MigrationHazard{
@@ -150,6 +152,7 @@ func preparePlainTableArchivalGroups(
 		if err != nil {
 			return nil, fmt.Errorf("preparing archival group %d: %w", idx, err)
 		}
+		group.componentInitialized = request.ComponentInitializationManaged
 		if _, duplicate := seenGroups[group.id]; duplicate {
 			return nil, fmt.Errorf("archival group %q is duplicated", group.id)
 		}
@@ -166,7 +169,8 @@ func preparePlainTableArchivalGroups(
 	slices.SortFunc(groups, func(a, b preparedArchivalGroup) int {
 		return cmp.Compare(a.id, b.id)
 	})
-	if err := validatePlainTableArchivalPreflight(inventory, groups, request.SourcePreflight); err != nil {
+	if err := validatePlainTableArchivalPreflight(inventory, groups, request.SourcePreflight,
+		request.DependencyClosure); err != nil {
 		return nil, err
 	}
 	if err := validatePlainTableArchivalClosure(groups, request.DependencyClosure); err != nil {
@@ -463,8 +467,15 @@ func validatePlainTableArchivalPreflight(
 	inventory schema.CatalogInventory,
 	groups []preparedArchivalGroup,
 	preflight sourceSafetyPreflightResult,
+	closure archivedDependencyClosureResult,
 ) error {
 	expectedOIDs := plainTableArchivalRelationOIDs(groups)
+	for _, validated := range closure.DependencyValidatedCandidateGroups {
+		expectedOIDs = append(expectedOIDs,
+			orchestrationMarkerRelationOIDs(validated.Candidate.Marker)...)
+	}
+	slices.Sort(expectedOIDs)
+	expectedOIDs = slices.Compact(expectedOIDs)
 	validatedOIDs := slices.Clone(preflight.ValidatedTableRelationOIDs)
 	slices.Sort(validatedOIDs)
 	if !slices.Equal(expectedOIDs, validatedOIDs) {
@@ -832,32 +843,14 @@ func orderedRemainingArchivalMembers(group preparedArchivalGroup) []preparedArch
 }
 
 func renderPlainTableArchivalInitialization(group preparedArchivalGroup) []Statement {
-	if group.allocation == nil {
+	if group.allocation == nil || group.componentInitialized {
 		return nil
 	}
 	var body strings.Builder
 	body.WriteString("DECLARE\n    archival_role_name text;\nBEGIN\n")
 	for _, schemaName := range archivedMarkerSchemaNames(group.marker) {
-		escapedName := schema.EscapeIdentifier(schemaName)
-		fmt.Fprintf(&body, "    CREATE SCHEMA %s;\n", escapedName)
-		fmt.Fprintf(&body, "    REVOKE ALL PRIVILEGES ON SCHEMA %s FROM PUBLIC;\n", escapedName)
-		body.WriteString("    FOR archival_role_name IN\n")
-		body.WriteString("        SELECT pg_catalog.pg_get_userbyid(acl.grantee)\n")
-		body.WriteString("        FROM pg_catalog.pg_namespace AS n\n")
-		body.WriteString("        CROSS JOIN LATERAL pg_catalog.aclexplode(\n")
-		body.WriteString("            COALESCE(n.nspacl, pg_catalog.acldefault('n', n.nspowner))\n")
-		body.WriteString("        ) AS acl\n")
-		fmt.Fprintf(&body, "        WHERE n.nspname = %s\n", schema.EscapeLiteral(schemaName))
-		body.WriteString("          AND acl.grantee <> 0\n")
-		body.WriteString("          AND acl.grantee <> n.nspowner\n")
-		body.WriteString("        GROUP BY acl.grantee\n")
-		body.WriteString("        ORDER BY acl.grantee\n")
-		body.WriteString("    LOOP\n")
-		fmt.Fprintf(&body, "        EXECUTE pg_catalog.format(%s, %s, archival_role_name);\n",
-			schema.EscapeLiteral("REVOKE ALL PRIVILEGES ON SCHEMA %I FROM %I"),
-			schema.EscapeLiteral(schemaName))
-		body.WriteString("    END LOOP;\n")
-		fmt.Fprintf(&body, "    COMMENT ON SCHEMA %s IS %s;\n", escapedName,
+		appendArchivalSchemaCreation(&body, schemaName)
+		fmt.Fprintf(&body, "    COMMENT ON SCHEMA %s IS %s;\n", schema.EscapeIdentifier(schemaName),
 			escapeArchivalMarkerSQLLiteral(group.markerText))
 	}
 	body.WriteString("END")
@@ -892,7 +885,7 @@ func renderArchivalPartitionDetach(operation archivalPartitionDetachOperation) S
 }
 
 func renderPlainTableArchivalMarkerRefresh(group preparedArchivalGroup) []Statement {
-	if group.resume == nil {
+	if group.resume == nil || group.componentInitialized {
 		return nil
 	}
 	updates := slices.Clone(group.resume.RemainingMarkerUpdates)
@@ -908,6 +901,28 @@ func renderPlainTableArchivalMarkerRefresh(group preparedArchivalGroup) []Statem
 	}
 	body.WriteString("END")
 	return []Statement{{DDL: doBlock(body.String())}}
+}
+
+func appendArchivalSchemaCreation(body *strings.Builder, schemaName string) {
+	escapedName := schema.EscapeIdentifier(schemaName)
+	fmt.Fprintf(body, "    CREATE SCHEMA %s;\n", escapedName)
+	fmt.Fprintf(body, "    REVOKE ALL PRIVILEGES ON SCHEMA %s FROM PUBLIC;\n", escapedName)
+	body.WriteString("    FOR archival_role_name IN\n")
+	body.WriteString("        SELECT pg_catalog.pg_get_userbyid(acl.grantee)\n")
+	body.WriteString("        FROM pg_catalog.pg_namespace AS n\n")
+	body.WriteString("        CROSS JOIN LATERAL pg_catalog.aclexplode(\n")
+	body.WriteString("            COALESCE(n.nspacl, pg_catalog.acldefault('n', n.nspowner))\n")
+	body.WriteString("        ) AS acl\n")
+	fmt.Fprintf(body, "        WHERE n.nspname = %s\n", schema.EscapeLiteral(schemaName))
+	body.WriteString("          AND acl.grantee <> 0\n")
+	body.WriteString("          AND acl.grantee <> n.nspowner\n")
+	body.WriteString("        GROUP BY acl.grantee\n")
+	body.WriteString("        ORDER BY acl.grantee\n")
+	body.WriteString("    LOOP\n")
+	fmt.Fprintf(body, "        EXECUTE pg_catalog.format(%s, %s, archival_role_name);\n",
+		schema.EscapeLiteral("REVOKE ALL PRIVILEGES ON SCHEMA %I FROM %I"),
+		schema.EscapeLiteral(schemaName))
+	body.WriteString("    END LOOP;\n")
 }
 
 func renderPlainTableArchivalAssertion(

@@ -71,8 +71,10 @@ func validateReplacementAwareStage13Scope(
 				foreignKeyDiff.old.GetName())
 		}
 	}
-	if len(isolation.Groups) != len(groups) {
-		return fmt.Errorf("stage 14 isolation plan does not cover every archival group")
+	for _, group := range groups {
+		if _, ok := archivalIsolationGroupPlanByID(isolation.Groups, group.id); !ok {
+			return fmt.Errorf("stage 14 isolation plan does not cover archival group %q", group.id)
+		}
 	}
 	return nil
 }

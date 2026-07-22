@@ -121,7 +121,10 @@ func TestArchivalIsolationPostgresACLForeignKeyPublicationAndStatistics(t *testi
 		newSchemaSQLGenerator(&deterministicRandReader{}, &planOptions{}), diff,
 		tableDispositions{schema.SchemaQualifiedName{
 			SchemaName: "public", EscapedName: schema.EscapeIdentifier("stage14_accounts"),
-		}.GetName(): {Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID}},
+		}.GetName(): {
+			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID,
+			RelationOID: relation.OID,
+		}},
 		request,
 	)
 	require.NoError(t, err)
@@ -267,7 +270,7 @@ func TestArchivalIsolationPostgresMovesDependencyClosure(t *testing.T) {
 	statements, err := generateReplacementAwareSchemaSQL(
 		newSchemaSQLGenerator(&deterministicRandReader{}, &planOptions{}), diff,
 		tableDispositions{current.Schema.Tables[0].GetName(): {
-			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID,
+			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID, RelationOID: relation.OID,
 		}}, request,
 	)
 	require.NoError(t, err)

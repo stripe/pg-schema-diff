@@ -48,7 +48,7 @@ func TestReplacementAwareRegularGraphPostgresOrdinaryRemoval(t *testing.T) {
 		newSchemaSQLGenerator(&deterministicRandReader{}, &planOptions{}),
 		schemaDiff,
 		tableDispositions{current.Schema.Tables[0].GetName(): {
-			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID,
+			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID, RelationOID: original.OID,
 		}},
 		request,
 	)
@@ -143,7 +143,7 @@ func TestReplacementAwareRegularGraphPostgresMoveThenRecreate(t *testing.T) {
 		newSchemaSQLGenerator(&deterministicRandReader{}, &planOptions{}),
 		schemaDiff,
 		tableDispositions{current.Schema.Tables[0].GetName(): {
-			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID,
+			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID, RelationOID: original.OID,
 		}},
 		request,
 	)

@@ -268,6 +268,7 @@ func TestPartitionArchivalReplacementAwareGraphSuppressesChildDeletes(t *testing
 	for _, member := range marker.Members {
 		dispositions[markerTableName(member.SourceTable).GetName()] = tableDisposition{
 			Kind: tableDispositionKindArchivalMove, GroupID: marker.GroupID,
+			RelationOID: member.SourceTable.OID,
 		}
 	}
 

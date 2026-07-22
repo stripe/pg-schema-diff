@@ -91,7 +91,7 @@ func TestCandidatePlanSnapshotHashExcludesGenerationAndRenderingState(t *testing
 			DDL: "DROP TABLE rendered_first", SkipValidation: true,
 			Hazards: []MigrationHazard{{Type: MigrationHazardTypeDeletesData, Message: "first message"}},
 		}},
-		MarkerUpdateStatements: []Statement{{DDL: "COMMENT ON SCHEMA rendered_first"}},
+		ComponentInitializationStatements: []Statement{{DDL: "COMMENT ON SCHEMA rendered_first"}},
 	}
 	second := globalCleanupPlanResult{
 		CleanupStatements: []Statement{

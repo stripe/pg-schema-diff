@@ -547,7 +547,7 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	tablesInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Tables)
 	addedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.adds)
 	tableDispositions, err := resolveTableDispositions(
-		diff.tableDiffs.deletes, s.tableDispositions, s.archivalGroups,
+		diff.tableDiffs.deletes, s.tableDispositions, s.archivalGroups, s.archivalInventory,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("resolving table dispositions: %w", err)
@@ -952,8 +952,7 @@ func (t *tableSQLVertexGenerator) deleteStatements(table schema.Table) ([]Statem
 	if !ok {
 		return nil, fmt.Errorf("missing disposition for table %s", table.GetName())
 	}
-	if disposition.Kind == tableDispositionKindArchivalMove ||
-		disposition.Kind == tableDispositionKindCleanupOnly {
+	if disposition.Kind == tableDispositionKindArchivalMove {
 		return nil, nil
 	}
 	if disposition.Kind != tableDispositionKindPhysicalDelete {
