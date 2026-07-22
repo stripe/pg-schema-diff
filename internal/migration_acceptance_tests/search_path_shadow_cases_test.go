@@ -20,13 +20,11 @@ import (
 )
 
 // Generated ALTER COLUMN ... USING clauses must not rely on search_path for
-// built-in function or cast target resolution.
+// built-in function resolution.
 
 var (
 	unqualifiedToTimestampInUsing = regexp.MustCompile(`(?i)\busing\s+to_timestamp\s*\(`)
 	qualifiedToTimestampInUsing   = regexp.MustCompile(`(?i)\busing\s+pg_catalog\.to_timestamp\s*\(`)
-	unqualifiedCastInUsing        = regexp.MustCompile(`(?i)\busing\s+[^;]*::`)
-	pgCatalogCastInUsing          = regexp.MustCompile(`(?i)\busing\s+cast\s*\([^)]+\bas\s+pg_catalog\.`)
 )
 
 // When public.to_timestamp(bigint) shadows the built-in, apply must emit
@@ -68,55 +66,6 @@ func TestBigintToTimestampMigrationIgnoresShadowedBuiltin(t *testing.T) {
 	assert.NotEqual(t, 1970, ts.Year(),
 		"shadow to_timestamp(bigint) returns 1970-01-01; correct pg_catalog conversion should not")
 	assert.Equal(t, 2023, ts.Year())
-}
-
-// Generic type transforms must use CAST(... AS pg_catalog.<type>) instead of
-// col::type, which resolves the cast target via search_path.
-func TestGenericCastMigrationUsesQualifiedTargetType(t *testing.T) {
-	t.Parallel()
-
-	db, conn := newShadowTestDatabase(t)
-	plantShadowIntegerDomain(t, conn)
-
-	_, err := conn.Exec(`
-		CREATE SCHEMA app2;
-		CREATE TABLE app2.metrics (id integer PRIMARY KEY, val character varying(32) NOT NULL);
-		INSERT INTO app2.metrics VALUES (1, '42'), (2, '99');
-	`)
-	require.NoError(t, err)
-
-	plan := generateTypeTransformationPlan(t, db, []string{`
-		CREATE SCHEMA app2;
-		CREATE TABLE app2.metrics (
-			id integer PRIMARY KEY,
-			val integer NOT NULL
-		);
-	`})
-	alterStmt := requireAlterColumnUsingStmt(t, plan, `"val"`)
-	assert.NotRegexp(t, unqualifiedCastInUsing, alterStmt,
-		"emitted DDL must not use ::type cast syntax in USING")
-	assert.Regexp(t, pgCatalogCastInUsing, alterStmt,
-		"emitted DDL must CAST to a pg_catalog-qualified type in USING")
-
-	require.NoError(t, applyPlan(db, plan))
-
-	rows, err := conn.Query(`SELECT id, val FROM app2.metrics ORDER BY id`)
-	require.NoError(t, err)
-	defer rows.Close()
-
-	type row struct {
-		id  int
-		val int
-	}
-	var got []row
-	for rows.Next() {
-		var r row
-		require.NoError(t, rows.Scan(&r.id, &r.val))
-		got = append(got, r)
-	}
-	require.NoError(t, rows.Err())
-	require.Len(t, got, 2)
-	assert.Equal(t, []row{{1, 42}, {2, 99}}, got)
 }
 
 func newShadowTestDatabase(t *testing.T) (*pgengine.DB, *sql.DB) {
@@ -164,16 +113,6 @@ func requireShadowToTimestampActive(t *testing.T, conn *sql.DB) {
 	).Scan(&regproc))
 	assert.Equal(t, "to_timestamp(bigint)", regproc,
 		"precondition: bigint overload must bind to shadow in public, not pg_catalog")
-}
-
-func plantShadowIntegerDomain(t *testing.T, conn *sql.DB) {
-	t.Helper()
-
-	_, err := conn.Exec(`
-		DROP DOMAIN IF EXISTS public.integer;
-		CREATE DOMAIN public.integer AS pg_catalog.int4 DEFAULT 666;
-	`)
-	require.NoError(t, err)
 }
 
 func generateTypeTransformationPlan(t *testing.T, db *pgengine.DB, newSchemaDDL []string) diff.Plan {

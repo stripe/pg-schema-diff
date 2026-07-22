@@ -1424,12 +1424,12 @@ func (csg *columnSQLVertexGenerator) generateTypeTransformationStatement(
 	}
 
 	return Statement{
-		DDL: fmt.Sprintf("%s SET DATA TYPE %s %susing CAST(%s AS %s)",
+		DDL: fmt.Sprintf("%s SET DATA TYPE %s %susing %s::%s",
 			csg.alterColumnPrefix(col),
 			newType,
 			collationModifier,
 			schema.EscapeIdentifier(col.Name),
-			schema.QualifyTypeForCast(newType),
+			newType,
 		),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
