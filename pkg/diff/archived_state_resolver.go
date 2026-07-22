@@ -37,6 +37,7 @@ type structurallyValidArchivedCandidateGroup struct {
 type archivedGroupResumeDescriptor struct {
 	GroupID                        archivalGroupID
 	RemainingMemberMoves           []archivedMemberMoveDescriptor
+	RemainingPartitionDetach       bool
 	RemainingExplicitObjectMoves   []archivedObjectMoveDescriptor
 	RemainingDependencyObjectMoves []archivedObjectMoveDescriptor
 	RemainingMarkerUpdates         []archivedMarkerUpdateDescriptor
@@ -373,6 +374,7 @@ func resolveArchivedCandidateGroup(
 			return structurallyValidArchivedCandidateGroup{},
 				fmt.Errorf("member %q expected move: %w", member.MemberID, err)
 		}
+		move = filterLostParentClonedTriggers(move, payload, member)
 		if err := validateMemberCatalogObjects(inventory, member, move, memberMoved,
 			declaredSchemas, allowedSchemaObjects); err != nil {
 			return structurallyValidArchivedCandidateGroup{},
@@ -399,15 +401,16 @@ func resolveArchivedCandidateGroup(
 			case object.SchemaName:
 				movedCount++
 				allowedSchemaObjects[schemaObjectKey(actual.Kind, actual.OID)] = struct{}{}
-			case member.SourceTable.SchemaName:
+			default:
+				if _, wrongArchiveSchema := declaredSchemas[actual.SchemaName]; wrongArchiveSchema {
+					return structurallyValidArchivedCandidateGroup{}, fmt.Errorf(
+						"member %q explicit object OID %d is in wrong archival schema %q",
+						member.MemberID, object.OID, actual.SchemaName,
+					)
+				}
 				resume.RemainingExplicitObjectMoves = append(
 					resume.RemainingExplicitObjectMoves,
 					archivedObjectMoveDescriptor{MemberID: member.MemberID, Source: actual, Destination: object},
-				)
-			default:
-				return structurallyValidArchivedCandidateGroup{}, fmt.Errorf(
-					"member %q explicit object OID %d is in unexpected schema %q",
-					member.MemberID, object.OID, actual.SchemaName,
 				)
 			}
 		}
@@ -439,8 +442,28 @@ func resolveArchivedCandidateGroup(
 		}
 	}
 
-	if err := validateArchivedPartitionTopology(inventory, payload, memberRelationOIDs); err != nil {
+	parentAttachmentPresent, err := validateArchivedPartitionTopology(inventory, payload, memberRelationOIDs)
+	if err != nil {
 		return structurallyValidArchivedCandidateGroup{}, err
+	}
+	if len(payload.LostParentAttachments) == 1 {
+		if parentAttachmentPresent {
+			for _, trigger := range payload.LostParentAttachments[0].ClonedTriggers {
+				actual, err := findCurrentCatalogObject(inventory, trigger.ChildTrigger)
+				if err != nil {
+					return structurallyValidArchivedCandidateGroup{}, err
+				}
+				if _, declared := declaredSchemas[actual.SchemaName]; declared {
+					allowedSchemaObjects[schemaObjectKey(actual.Kind, actual.OID)] = struct{}{}
+				}
+			}
+		}
+		totalMoveCount++
+		if parentAttachmentPresent {
+			resume.RemainingPartitionDetach = true
+		} else {
+			movedCount++
+		}
 	}
 	if err := validateDeclaredArchivedSchemaContents(
 		inventory, declaredSchemas, allowedSchemaObjects, allowedInternalRelations,
@@ -846,7 +869,7 @@ func validateArchivedPartitionTopology(
 	inventory schema.CatalogInventory,
 	payload archivalMarkerV1,
 	memberRelationOIDs map[string]uint32,
-) error {
+) (bool, error) {
 	expected := make(map[string]struct{}, len(payload.PartitionEdges))
 	for _, edge := range payload.PartitionEdges {
 		expected[oidEdgeKey(memberRelationOIDs[edge.ParentMemberID],
@@ -864,12 +887,16 @@ func validateArchivedPartitionTopology(
 			continue
 		}
 		if !childMember || !parentMember {
-			return fmt.Errorf("partition topology has an inheritance edge outside the archival group (%d -> %d)",
-				edge.ParentRelationOID, edge.ChildRelationOID)
+			if !isExpectedLostParentEdge(payload, edge.ParentRelationOID, edge.ChildRelationOID,
+				memberRelationOIDs) {
+				return false, fmt.Errorf("partition topology has an inheritance edge outside the archival group (%d -> %d)",
+					edge.ParentRelationOID, edge.ChildRelationOID)
+			}
+			continue
 		}
 		key := oidEdgeKey(edge.ParentRelationOID, edge.ChildRelationOID)
 		if _, duplicate := actualInheritance[key]; duplicate {
-			return fmt.Errorf("partition topology has duplicate inheritance edge (%d -> %d)",
+			return false, fmt.Errorf("partition topology has duplicate inheritance edge (%d -> %d)",
 				edge.ParentRelationOID, edge.ChildRelationOID)
 		}
 		actualInheritance[key] = struct{}{}
@@ -882,23 +909,284 @@ func validateArchivedPartitionTopology(
 			continue
 		}
 		if !childMember || !parentMember {
-			return fmt.Errorf("partition topology has an attachment outside the archival group (%d -> %d)",
-				attachment.ParentRelationOID, attachment.RelationOID)
+			if !isExpectedLostParentEdge(payload, attachment.ParentRelationOID, attachment.RelationOID,
+				memberRelationOIDs) {
+				return false, fmt.Errorf("partition topology has an attachment outside the archival group (%d -> %d)",
+					attachment.ParentRelationOID, attachment.RelationOID)
+			}
+			continue
 		}
 		key := oidEdgeKey(attachment.ParentRelationOID, attachment.RelationOID)
 		if _, duplicate := actualAttachments[key]; duplicate {
-			return fmt.Errorf("partition topology has duplicate attachment (%d -> %d)",
+			return false, fmt.Errorf("partition topology has duplicate attachment (%d -> %d)",
 				attachment.ParentRelationOID, attachment.RelationOID)
 		}
 		actualAttachments[key] = struct{}{}
 	}
 	if err := validateExactOIDEdges("inheritance", expected, actualInheritance); err != nil {
-		return err
+		return false, err
 	}
 	if err := validateExactOIDEdges("partition attachment", expected, actualAttachments); err != nil {
-		return err
+		return false, err
+	}
+	for _, edge := range payload.PartitionEdges {
+		parentOID := memberRelationOIDs[edge.ParentMemberID]
+		childOID := memberRelationOIDs[edge.ChildMemberID]
+		if err := validateCurrentPartitionAttachmentMetadata(
+			inventory, parentOID, childOID, edge.BoundExpression,
+			edge.PartitionedIndexAttachments, edge.ClonedTriggers, false,
+		); err != nil {
+			return false, err
+		}
+	}
+	if len(payload.LostParentAttachments) == 0 {
+		if err := validateExactArchivedIndexTopology(inventory, payload, false); err != nil {
+			return false, err
+		}
+		if err := validateExactArchivedTriggerTopology(inventory, payload, false); err != nil {
+			return false, err
+		}
+		if err := validateArchivedPartitionMembershipFlags(inventory, payload,
+			memberRelationOIDs, false); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	lost := payload.LostParentAttachments[0]
+	rootOID := memberRelationOIDs[lost.RootMemberID]
+	parent, err := uniqueRelationByOID(inventory, lost.ParentTable.OID)
+	if err != nil {
+		return false, fmt.Errorf("lost parent table: %w", err)
+	}
+	if parent.SchemaName != lost.ParentTable.SchemaName || parent.Name != lost.ParentTable.Name ||
+		parent.Kind != schema.RelKindPartitionedTable {
+		return false, fmt.Errorf("lost parent table OID %d does not match its active partitioned-table identity",
+			lost.ParentTable.OID)
+	}
+	attached := isCatalogInheritanceEdge(inventory, lost.ParentTable.OID, rootOID)
+	if err := validateCurrentPartitionAttachmentMetadata(
+		inventory, lost.ParentTable.OID, rootOID, lost.BoundExpression,
+		lost.PartitionedIndexAttachments, lost.ClonedTriggers, !attached,
+	); err != nil {
+		return false, err
+	}
+	if err := validateExactArchivedIndexTopology(inventory, payload, attached); err != nil {
+		return false, err
+	}
+	if err := validateExactArchivedTriggerTopology(inventory, payload, attached); err != nil {
+		return false, err
+	}
+	if err := validateArchivedPartitionMembershipFlags(inventory, payload, memberRelationOIDs, attached); err != nil {
+		return false, err
+	}
+	return attached, nil
+}
+
+func validateArchivedPartitionMembershipFlags(
+	inventory schema.CatalogInventory,
+	payload archivalMarkerV1,
+	memberRelationOIDs map[string]uint32,
+	lostParentAttached bool,
+) error {
+	partitionMembers := make(map[string]struct{}, len(payload.PartitionEdges))
+	for _, edge := range payload.PartitionEdges {
+		partitionMembers[edge.ChildMemberID] = struct{}{}
+	}
+	if lostParentAttached {
+		partitionMembers[payload.LostParentAttachments[0].RootMemberID] = struct{}{}
+	}
+	for memberID, relationOID := range memberRelationOIDs {
+		relation, err := uniqueRelationByOID(inventory, relationOID)
+		if err != nil {
+			return err
+		}
+		_, expectedPartition := partitionMembers[memberID]
+		if relation.IsPartition != expectedPartition {
+			return fmt.Errorf("partition member %q OID %d has relispartition=%t; expected %t",
+				memberID, relationOID, relation.IsPartition, expectedPartition)
+		}
 	}
 	return nil
+}
+
+func validateExactArchivedIndexTopology(
+	inventory schema.CatalogInventory,
+	payload archivalMarkerV1,
+	lostParentAttached bool,
+) error {
+	groupIndexOIDs := make(map[uint32]struct{})
+	for _, member := range payload.Members {
+		for _, object := range member.AutomaticallyMovedObjects {
+			if object.Kind == archivalMarkerObjectKindIndex {
+				groupIndexOIDs[object.OID] = struct{}{}
+			}
+		}
+	}
+	expected := make(map[string]struct{})
+	for _, edge := range payload.PartitionEdges {
+		for _, attachment := range edge.PartitionedIndexAttachments {
+			expected[oidEdgeKey(attachment.ParentIndex.OID, attachment.ChildIndex.OID)] = struct{}{}
+		}
+	}
+	if lostParentAttached && len(payload.LostParentAttachments) == 1 {
+		for _, attachment := range payload.LostParentAttachments[0].PartitionedIndexAttachments {
+			expected[oidEdgeKey(attachment.ParentIndex.OID, attachment.ChildIndex.OID)] = struct{}{}
+		}
+	}
+	actual := make(map[string]struct{})
+	for _, edge := range inventory.InheritanceEdges {
+		_, childMemberIndex := groupIndexOIDs[edge.ChildRelationOID]
+		_, parentMemberIndex := groupIndexOIDs[edge.ParentRelationOID]
+		if childMemberIndex || parentMemberIndex {
+			actual[oidEdgeKey(edge.ParentRelationOID, edge.ChildRelationOID)] = struct{}{}
+		}
+	}
+	return validateExactOIDEdges("partitioned index attachment", expected, actual)
+}
+
+func validateExactArchivedTriggerTopology(
+	inventory schema.CatalogInventory,
+	payload archivalMarkerV1,
+	lostParentAttached bool,
+) error {
+	relevantTriggerOIDs := make(map[uint32]struct{})
+	for _, member := range payload.Members {
+		for _, object := range member.AttachedObjects {
+			if object.Kind == archivalMarkerObjectKindTrigger {
+				relevantTriggerOIDs[object.OID] = struct{}{}
+			}
+		}
+	}
+	expected := make(map[string]struct{})
+	for _, edge := range payload.PartitionEdges {
+		for _, trigger := range edge.ClonedTriggers {
+			expected[oidEdgeKey(trigger.ParentTrigger.OID, trigger.ChildTrigger.OID)] = struct{}{}
+		}
+	}
+	if lostParentAttached && len(payload.LostParentAttachments) == 1 {
+		for _, trigger := range payload.LostParentAttachments[0].ClonedTriggers {
+			relevantTriggerOIDs[trigger.ChildTrigger.OID] = struct{}{}
+			expected[oidEdgeKey(trigger.ParentTrigger.OID, trigger.ChildTrigger.OID)] = struct{}{}
+		}
+	}
+	actual := make(map[string]struct{})
+	for _, trigger := range inventory.Triggers {
+		if _, relevant := relevantTriggerOIDs[trigger.OID]; !relevant || trigger.ParentTriggerOID == 0 {
+			continue
+		}
+		actual[oidEdgeKey(trigger.ParentTriggerOID, trigger.OID)] = struct{}{}
+	}
+	return validateExactOIDEdges("cloned trigger", expected, actual)
+}
+
+func isExpectedLostParentEdge(
+	payload archivalMarkerV1,
+	parentOID uint32,
+	childOID uint32,
+	members map[string]uint32,
+) bool {
+	return len(payload.LostParentAttachments) == 1 &&
+		payload.LostParentAttachments[0].ParentTable.OID == parentOID &&
+		members[payload.LostParentAttachments[0].RootMemberID] == childOID
+}
+
+func isCatalogInheritanceEdge(inventory schema.CatalogInventory, parentOID, childOID uint32) bool {
+	return slices.ContainsFunc(inventory.InheritanceEdges, func(
+		edge schema.CatalogInheritanceEdge,
+	) bool {
+		return edge.ParentRelationOID == parentOID && edge.ChildRelationOID == childOID
+	})
+}
+
+func validateCurrentPartitionAttachmentMetadata(
+	inventory schema.CatalogInventory,
+	parentOID uint32,
+	childOID uint32,
+	bound string,
+	indexes []archivalMarkerPartitionedIndexAttachmentV1,
+	triggers []archivalMarkerClonedTriggerV1,
+	detached bool,
+) error {
+	attachments := 0
+	for _, attachment := range inventory.PartitionAttachments {
+		if attachment.ParentRelationOID == parentOID && attachment.RelationOID == childOID {
+			attachments++
+			if detached || attachment.BoundExpression != bound {
+				return fmt.Errorf("partition attachment %d -> %d has unexpected bound %q",
+					parentOID, childOID, attachment.BoundExpression)
+			}
+		}
+	}
+	if (!detached && attachments != 1) || (detached && attachments != 0) {
+		return fmt.Errorf("partition attachment %d -> %d has unexpected catalog count %d",
+			parentOID, childOID, attachments)
+	}
+	for _, index := range indexes {
+		parentIndex, parentCount := catalogIndexByOID(inventory, index.ParentIndex.OID)
+		childIndex, childCount := catalogIndexByOID(inventory, index.ChildIndex.OID)
+		if parentCount != 1 || childCount != 1 || parentIndex.Name != index.ParentIndex.Name ||
+			childIndex.Name != index.ChildIndex.Name || parentIndex.RelationOID != parentOID ||
+			childIndex.RelationOID != childOID {
+			return fmt.Errorf("partitioned index attachment %d -> %d has mismatched endpoint identities",
+				index.ParentIndex.OID, index.ChildIndex.OID)
+		}
+		attached := isCatalogInheritanceEdge(inventory, index.ParentIndex.OID, index.ChildIndex.OID)
+		if attached == detached {
+			return fmt.Errorf("partitioned index attachment %d -> %d has unexpected detached state",
+				index.ParentIndex.OID, index.ChildIndex.OID)
+		}
+	}
+	for _, expected := range triggers {
+		found := false
+		for _, trigger := range inventory.Triggers {
+			if trigger.OID != expected.ChildTrigger.OID {
+				continue
+			}
+			found = true
+			if detached {
+				return fmt.Errorf("detached cloned trigger OID %d still exists", trigger.OID)
+			}
+			parentTrigger, parentCount := catalogTriggerByOIDAndCount(inventory, expected.ParentTrigger.OID)
+			expectedParent := expected.ParentTrigger.OID
+			if parentCount != 1 || parentTrigger.Name != expected.ParentTrigger.Name ||
+				trigger.Name != expected.ChildTrigger.Name ||
+				trigger.ParentTriggerOID != expectedParent ||
+				trigger.FunctionOID != expected.FunctionOID ||
+				trigger.Type != expected.Type || trigger.EnabledMode != expected.EnabledMode ||
+				trigger.IsInternal != expected.IsInternal ||
+				trigger.ConstraintOID != expected.ConstraintOID {
+				return fmt.Errorf("cloned trigger OID %d metadata changed", trigger.OID)
+			}
+		}
+		if !found && !detached {
+			return fmt.Errorf("cloned trigger OID %d is missing", expected.ChildTrigger.OID)
+		}
+	}
+	return nil
+}
+
+func catalogIndexByOID(inventory schema.CatalogInventory, oid uint32) (schema.CatalogIndex, int) {
+	var result schema.CatalogIndex
+	count := 0
+	for _, index := range inventory.Indexes {
+		if index.OID == oid {
+			result = index
+			count++
+		}
+	}
+	return result, count
+}
+
+func catalogTriggerByOIDAndCount(inventory schema.CatalogInventory, oid uint32) (schema.CatalogTrigger, int) {
+	var result schema.CatalogTrigger
+	count := 0
+	for _, trigger := range inventory.Triggers {
+		if trigger.OID == oid {
+			result = trigger
+			count++
+		}
+	}
+	return result, count
 }
 
 func validateExactOIDEdges(label string, expected, actual map[string]struct{}) error {

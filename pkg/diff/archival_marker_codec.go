@@ -70,8 +70,36 @@ type archivalMarkerMemberV1 struct {
 }
 
 type archivalMarkerPartitionEdgeV1 struct {
-	ParentMemberID string `json:"parent_member_id"`
-	ChildMemberID  string `json:"child_member_id"`
+	ParentMemberID              string                                       `json:"parent_member_id"`
+	ChildMemberID               string                                       `json:"child_member_id"`
+	BoundExpression             string                                       `json:"bound_expression"`
+	PartitionedIndexAttachments []archivalMarkerPartitionedIndexAttachmentV1 `json:"partitioned_index_attachments"`
+	ClonedTriggers              []archivalMarkerClonedTriggerV1              `json:"cloned_triggers"`
+}
+
+type archivalMarkerPartitionedIndexAttachmentV1 struct {
+	ParentIndex archivalMarkerObjectIdentity `json:"parent_index"`
+	ChildIndex  archivalMarkerObjectIdentity `json:"child_index"`
+}
+
+type archivalMarkerClonedTriggerV1 struct {
+	ParentTrigger archivalMarkerObjectIdentity `json:"parent_trigger"`
+	ChildTrigger  archivalMarkerObjectIdentity `json:"child_trigger"`
+	FunctionOID   uint32                       `json:"function_oid"`
+	Type          int16                        `json:"type"`
+	EnabledMode   string                       `json:"enabled_mode"`
+	IsInternal    bool                         `json:"is_internal"`
+	ConstraintOID uint32                       `json:"constraint_oid"`
+	Definition    string                       `json:"definition"`
+	Comment       string                       `json:"comment"`
+}
+
+type archivalMarkerLostParentAttachmentV1 struct {
+	RootMemberID                string                                       `json:"root_member_id"`
+	ParentTable                 archivalMarkerObjectIdentity                 `json:"parent_table"`
+	BoundExpression             string                                       `json:"bound_expression"`
+	PartitionedIndexAttachments []archivalMarkerPartitionedIndexAttachmentV1 `json:"partitioned_index_attachments"`
+	ClonedTriggers              []archivalMarkerClonedTriggerV1              `json:"cloned_triggers"`
 }
 
 type archivalMarkerSharedGroupEdgeV1 struct {
@@ -122,6 +150,7 @@ type archivalMarkerV1 struct {
 	GroupID                          archivalGroupID                         `json:"group_id"`
 	Members                          []archivalMarkerMemberV1                `json:"members"`
 	PartitionEdges                   []archivalMarkerPartitionEdgeV1         `json:"partition_edges"`
+	LostParentAttachments            []archivalMarkerLostParentAttachmentV1  `json:"lost_parent_attachments"`
 	ExclusiveDependencySchemas       []archivalMarkerSchemaIdentity          `json:"exclusive_dependency_schemas"`
 	ExclusiveDependencyObjects       []archivalMarkerObjectIdentity          `json:"exclusive_dependency_objects"`
 	SharedCleanupComponentGroupEdges []archivalMarkerSharedGroupEdgeV1       `json:"shared_cleanup_component_group_edges"`
@@ -261,8 +290,10 @@ func validateArchivalMarker(payload archivalMarkerV1) error {
 	}
 
 	memberIDs := make(map[string]struct{}, len(payload.Members))
+	membersByID := make(map[string]archivalMarkerMemberV1, len(payload.Members))
 	memberSchemas := make(map[string]struct{}, len(payload.Members))
 	sourceTables := make(map[string]struct{}, len(payload.Members))
+	sourceTableOIDs := make(map[uint32]struct{}, len(payload.Members))
 	for memberIdx, member := range payload.Members {
 		if err := validateArchivalMarkerMember(member); err != nil {
 			return fmt.Errorf("member %d: %w", memberIdx, err)
@@ -271,6 +302,7 @@ func validateArchivalMarker(payload archivalMarkerV1) error {
 			return fmt.Errorf("duplicate member ID %q", member.MemberID)
 		}
 		memberIDs[member.MemberID] = struct{}{}
+		membersByID[member.MemberID] = member
 		if _, duplicate := memberSchemas[member.CleanupTable.SchemaName]; duplicate {
 			return fmt.Errorf("duplicate member cleanup schema %q", member.CleanupTable.SchemaName)
 		}
@@ -281,8 +313,20 @@ func validateArchivalMarker(payload archivalMarkerV1) error {
 				member.SourceTable.SchemaName, member.SourceTable.Name)
 		}
 		sourceTables[sourceTableKey] = struct{}{}
+		if _, duplicate := sourceTableOIDs[member.SourceTable.OID]; duplicate {
+			return fmt.Errorf("duplicate member source table OID %d", member.SourceTable.OID)
+		}
+		sourceTableOIDs[member.SourceTable.OID] = struct{}{}
 	}
 	if err := validateArchivalMarkerTopology(memberIDs, payload.PartitionEdges); err != nil {
+		return err
+	}
+	if err := validateArchivalMarkerPartitionEndpoints(membersByID, payload.PartitionEdges); err != nil {
+		return err
+	}
+	if err := validateArchivalMarkerLostParentAttachments(
+		membersByID, payload.PartitionEdges, payload.LostParentAttachments,
+	); err != nil {
 		return err
 	}
 
@@ -414,6 +458,14 @@ func validateArchivalMarkerTopology(
 	children := make(map[string][]string, len(edges))
 	seen := make(map[string]struct{}, len(edges))
 	for _, edge := range edges {
+		if err := validateArchivalCodecString("partition bound", edge.BoundExpression); err != nil {
+			return err
+		}
+		if err := validateArchivalMarkerPartitionMetadata(
+			edge.PartitionedIndexAttachments, edge.ClonedTriggers,
+		); err != nil {
+			return fmt.Errorf("partition edge %q -> %q: %w", edge.ParentMemberID, edge.ChildMemberID, err)
+		}
 		if _, ok := members[edge.ParentMemberID]; !ok {
 			return fmt.Errorf("partition edge references missing parent member %q", edge.ParentMemberID)
 		}
@@ -473,6 +525,168 @@ func validateArchivalMarkerTopology(
 	}
 	if len(visited) != len(members) {
 		return fmt.Errorf("partition topology is disconnected or cyclic")
+	}
+	return nil
+}
+
+func validateArchivalMarkerPartitionEndpoints(
+	members map[string]archivalMarkerMemberV1,
+	edges []archivalMarkerPartitionEdgeV1,
+) error {
+	for _, edge := range edges {
+		parent := members[edge.ParentMemberID]
+		child := members[edge.ChildMemberID]
+		for _, attachment := range edge.PartitionedIndexAttachments {
+			if !containsMarkerObject(parent.AutomaticallyMovedObjects, attachment.ParentIndex) {
+				return fmt.Errorf("partition edge %q -> %q parent index OID %d does not belong to its parent member",
+					edge.ParentMemberID, edge.ChildMemberID, attachment.ParentIndex.OID)
+			}
+			if !containsMarkerObject(child.AutomaticallyMovedObjects, attachment.ChildIndex) {
+				return fmt.Errorf("partition edge %q -> %q child index OID %d does not belong to its child member",
+					edge.ParentMemberID, edge.ChildMemberID, attachment.ChildIndex.OID)
+			}
+		}
+		for _, trigger := range edge.ClonedTriggers {
+			if !containsMarkerObject(parent.AttachedObjects, trigger.ParentTrigger) {
+				return fmt.Errorf("partition edge %q -> %q parent trigger OID %d does not belong to its parent member",
+					edge.ParentMemberID, edge.ChildMemberID, trigger.ParentTrigger.OID)
+			}
+			if !containsMarkerObject(child.AttachedObjects, trigger.ChildTrigger) {
+				return fmt.Errorf("partition edge %q -> %q child trigger OID %d does not belong to its child member",
+					edge.ParentMemberID, edge.ChildMemberID, trigger.ChildTrigger.OID)
+			}
+		}
+	}
+	return nil
+}
+
+func validateArchivalMarkerLostParentAttachments(
+	members map[string]archivalMarkerMemberV1,
+	edges []archivalMarkerPartitionEdgeV1,
+	attachments []archivalMarkerLostParentAttachmentV1,
+) error {
+	if len(attachments) > 1 {
+		return fmt.Errorf("at most one lost parent attachment is supported, got %d", len(attachments))
+	}
+	if len(attachments) == 0 {
+		return nil
+	}
+	attachment := attachments[0]
+	root, ok := members[attachment.RootMemberID]
+	if !ok {
+		return fmt.Errorf("lost parent attachment references missing root member %q", attachment.RootMemberID)
+	}
+	for _, edge := range edges {
+		if edge.ChildMemberID == attachment.RootMemberID {
+			return fmt.Errorf("lost parent attachment member %q is not the partition topology root",
+				attachment.RootMemberID)
+		}
+	}
+	if err := validateMarkerObjectKind(attachment.ParentTable, archivalMarkerObjectKindTable); err != nil {
+		return fmt.Errorf("lost parent attachment parent table: %w", err)
+	}
+	for _, member := range members {
+		if member.SourceTable.OID == attachment.ParentTable.OID {
+			return fmt.Errorf("lost parent attachment parent table OID %d is an archival group member",
+				attachment.ParentTable.OID)
+		}
+	}
+	if err := validateArchivalCodecString("lost parent partition bound",
+		attachment.BoundExpression); err != nil {
+		return err
+	}
+	if err := validateArchivalMarkerPartitionMetadata(
+		attachment.PartitionedIndexAttachments, attachment.ClonedTriggers,
+	); err != nil {
+		return fmt.Errorf("lost parent attachment: %w", err)
+	}
+	for _, index := range attachment.PartitionedIndexAttachments {
+		if !containsMarkerObject(root.AutomaticallyMovedObjects, index.ChildIndex) {
+			return fmt.Errorf("lost parent attachment child index OID %d does not belong to root member %q",
+				index.ChildIndex.OID, attachment.RootMemberID)
+		}
+	}
+	lostTriggerOIDs := make(map[uint32]struct{}, len(attachment.ClonedTriggers))
+	for _, trigger := range attachment.ClonedTriggers {
+		lostTriggerOIDs[trigger.ChildTrigger.OID] = struct{}{}
+		for _, member := range members {
+			if containsMarkerObject(member.AttachedObjects, trigger.ChildTrigger) {
+				return fmt.Errorf("lost parent cloned trigger OID %d remains in member %q final attached objects",
+					trigger.ChildTrigger.OID, member.MemberID)
+			}
+		}
+	}
+	for _, trigger := range attachment.ClonedTriggers {
+		if _, transitive := lostTriggerOIDs[trigger.ParentTrigger.OID]; transitive {
+			continue
+		}
+		for _, member := range members {
+			if containsMarkerObject(member.AttachedObjects, trigger.ParentTrigger) {
+				return fmt.Errorf("lost parent cloned trigger OID %d has an in-group parent trigger OID %d outside the lost lineage",
+					trigger.ChildTrigger.OID, trigger.ParentTrigger.OID)
+			}
+		}
+	}
+	return nil
+}
+
+func containsMarkerObject(
+	objects []archivalMarkerObjectIdentity,
+	expected archivalMarkerObjectIdentity,
+) bool {
+	return slices.ContainsFunc(objects, func(object archivalMarkerObjectIdentity) bool {
+		return compareMarkerObjects(object, expected) == 0
+	})
+}
+
+func validateArchivalMarkerPartitionMetadata(
+	indexes []archivalMarkerPartitionedIndexAttachmentV1,
+	triggers []archivalMarkerClonedTriggerV1,
+) error {
+	seenIndexes := make(map[uint32]struct{}, len(indexes))
+	for _, attachment := range indexes {
+		if err := validateMarkerObjectKind(attachment.ParentIndex,
+			archivalMarkerObjectKindIndex); err != nil {
+			return fmt.Errorf("parent partitioned index: %w", err)
+		}
+		if err := validateMarkerObjectKind(attachment.ChildIndex,
+			archivalMarkerObjectKindIndex); err != nil {
+			return fmt.Errorf("child partitioned index: %w", err)
+		}
+		if attachment.ParentIndex.OID == attachment.ChildIndex.OID {
+			return fmt.Errorf("partitioned index attachment cannot be a self-edge for OID %d", attachment.ParentIndex.OID)
+		}
+		if _, duplicate := seenIndexes[attachment.ChildIndex.OID]; duplicate {
+			return fmt.Errorf("duplicate child partitioned index OID %d", attachment.ChildIndex.OID)
+		}
+		seenIndexes[attachment.ChildIndex.OID] = struct{}{}
+	}
+	seenTriggers := make(map[uint32]struct{}, len(triggers))
+	for _, trigger := range triggers {
+		if err := validateMarkerObjectKind(trigger.ParentTrigger,
+			archivalMarkerObjectKindTrigger); err != nil {
+			return fmt.Errorf("parent cloned trigger: %w", err)
+		}
+		if err := validateMarkerObjectKind(trigger.ChildTrigger,
+			archivalMarkerObjectKindTrigger); err != nil {
+			return fmt.Errorf("child cloned trigger: %w", err)
+		}
+		if trigger.ParentTrigger.OID == trigger.ChildTrigger.OID {
+			return fmt.Errorf("cloned trigger cannot reference itself at OID %d", trigger.ParentTrigger.OID)
+		}
+		if trigger.FunctionOID == 0 {
+			return fmt.Errorf("cloned trigger function OID is required")
+		}
+		if err := validateArchivalCodecString("cloned trigger enabled mode", trigger.EnabledMode); err != nil {
+			return err
+		}
+		if err := validateArchivalCodecString("cloned trigger definition", trigger.Definition); err != nil {
+			return err
+		}
+		if _, duplicate := seenTriggers[trigger.ChildTrigger.OID]; duplicate {
+			return fmt.Errorf("duplicate child cloned trigger OID %d", trigger.ChildTrigger.OID)
+		}
+		seenTriggers[trigger.ChildTrigger.OID] = struct{}{}
 	}
 	return nil
 }
@@ -751,9 +965,26 @@ func canonicalizeArchivalMarker(payload archivalMarkerV1) archivalMarkerV1 {
 		return cmp.Compare(a.MemberID, b.MemberID)
 	})
 	payload.PartitionEdges = cloneOrEmpty(payload.PartitionEdges)
+	for idx := range payload.PartitionEdges {
+		payload.PartitionEdges[idx] = canonicalizeArchivalPartitionEdge(payload.PartitionEdges[idx])
+	}
 	slices.SortFunc(payload.PartitionEdges, func(a, b archivalMarkerPartitionEdgeV1) int {
 		return cmp.Or(cmp.Compare(a.ParentMemberID, b.ParentMemberID),
 			cmp.Compare(a.ChildMemberID, b.ChildMemberID))
+	})
+	payload.LostParentAttachments = cloneOrEmpty(payload.LostParentAttachments)
+	for idx := range payload.LostParentAttachments {
+		attachment := &payload.LostParentAttachments[idx]
+		attachment.ParentTable = cloneMarkerObject(attachment.ParentTable)
+		attachment.PartitionedIndexAttachments = canonicalizeArchivalPartitionedIndexAttachments(
+			attachment.PartitionedIndexAttachments,
+		)
+		attachment.ClonedTriggers = canonicalizeArchivalClonedTriggers(attachment.ClonedTriggers)
+	}
+	slices.SortFunc(payload.LostParentAttachments, func(
+		a, b archivalMarkerLostParentAttachmentV1,
+	) int {
+		return cmp.Compare(a.RootMemberID, b.RootMemberID)
 	})
 	payload.ExclusiveDependencySchemas = cloneOrEmpty(payload.ExclusiveDependencySchemas)
 	slices.SortFunc(payload.ExclusiveDependencySchemas, func(a, b archivalMarkerSchemaIdentity) int {
@@ -796,6 +1027,46 @@ func canonicalizeArchivalMarker(payload archivalMarkerV1) archivalMarkerV1 {
 			return cmp.Or(cmp.Compare(a.PublicationName, b.PublicationName), compareMarkerObjects(a.Table, b.Table))
 		})
 	return payload
+}
+
+func canonicalizeArchivalPartitionEdge(
+	edge archivalMarkerPartitionEdgeV1,
+) archivalMarkerPartitionEdgeV1 {
+	edge.PartitionedIndexAttachments = canonicalizeArchivalPartitionedIndexAttachments(
+		edge.PartitionedIndexAttachments,
+	)
+	edge.ClonedTriggers = canonicalizeArchivalClonedTriggers(edge.ClonedTriggers)
+	return edge
+}
+
+func canonicalizeArchivalPartitionedIndexAttachments(
+	attachments []archivalMarkerPartitionedIndexAttachmentV1,
+) []archivalMarkerPartitionedIndexAttachmentV1 {
+	result := cloneOrEmpty(attachments)
+	for idx := range result {
+		result[idx].ParentIndex = cloneMarkerObject(result[idx].ParentIndex)
+		result[idx].ChildIndex = cloneMarkerObject(result[idx].ChildIndex)
+	}
+	slices.SortFunc(result, func(a, b archivalMarkerPartitionedIndexAttachmentV1) int {
+		return cmp.Or(compareMarkerObjects(a.ParentIndex, b.ParentIndex),
+			compareMarkerObjects(a.ChildIndex, b.ChildIndex))
+	})
+	return result
+}
+
+func canonicalizeArchivalClonedTriggers(
+	triggers []archivalMarkerClonedTriggerV1,
+) []archivalMarkerClonedTriggerV1 {
+	result := cloneOrEmpty(triggers)
+	for idx := range result {
+		result[idx].ParentTrigger = cloneMarkerObject(result[idx].ParentTrigger)
+		result[idx].ChildTrigger = cloneMarkerObject(result[idx].ChildTrigger)
+	}
+	slices.SortFunc(result, func(a, b archivalMarkerClonedTriggerV1) int {
+		return cmp.Or(compareMarkerObjects(a.ParentTrigger, b.ParentTrigger),
+			compareMarkerObjects(a.ChildTrigger, b.ChildTrigger))
+	})
+	return result
 }
 
 func cloneMarkerMembers(members []archivalMarkerMemberV1) []archivalMarkerMemberV1 {

@@ -53,12 +53,13 @@ func TestResolveTableDispositionsRejectsInvalidArchivalCombinations(t *testing.T
 	groups, err := preparePlainTableArchivalGroups(request)
 	require.NoError(t, err)
 	group := groups[0]
+	group.members = append([]preparedArchivalMember{}, group.members...)
 
 	for _, tc := range []struct {
 		name         string
 		deletes      []schema.Table
 		dispositions tableDispositions
-		groups       []preparedPlainTableArchivalGroup
+		groups       []preparedArchivalGroup
 		errorText    string
 	}{
 		{
@@ -102,10 +103,10 @@ func TestResolveTableDispositionsRejectsInvalidArchivalCombinations(t *testing.T
 		})
 	}
 
-	group.remainingMove = nil
+	group.members[0].remainingMove = nil
 	resolved, err := resolveTableDispositions(nil, tableDispositions{table.GetName(): {
 		Kind: tableDispositionKindCleanupOnly, GroupID: group.id,
-	}}, []preparedPlainTableArchivalGroup{group})
+	}}, []preparedArchivalGroup{group})
 	require.NoError(t, err)
 	assert.Equal(t, tableDispositionKindCleanupOnly, resolved[table.GetName()].Kind)
 }

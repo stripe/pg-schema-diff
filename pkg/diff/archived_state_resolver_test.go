@@ -396,6 +396,42 @@ func TestResolveArchivedStateRecursivePartitionGroupAndTopology(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "must contain 2 edges")
 	})
+
+	t.Run("omitted cloned trigger lineage", func(t *testing.T) {
+		invalid := newArchivedPartitionResolverFixture(t)
+		root := markerMemberByID(invalid.marker, "member-root")
+		branch := markerMemberByID(invalid.marker, "member-branch")
+		rootTrigger := markerObject(300, archivalMarkerObjectKindTrigger,
+			root.CleanupTable.SchemaName, "events_trigger")
+		branchTrigger := markerObject(301, archivalMarkerObjectKindTrigger,
+			branch.CleanupTable.SchemaName, "events_trigger")
+		for idx := range invalid.marker.Members {
+			switch invalid.marker.Members[idx].MemberID {
+			case "member-root":
+				invalid.marker.Members[idx].AttachedObjects = []archivalMarkerObjectIdentity{
+					rootTrigger,
+				}
+			case "member-branch":
+				invalid.marker.Members[idx].AttachedObjects = []archivalMarkerObjectIdentity{
+					branchTrigger,
+				}
+			}
+		}
+		invalid.snapshot.Inventory.Triggers = []schema.CatalogTrigger{
+			{
+				OID: 300, RelationOID: 100, Name: "events_trigger", FunctionOID: 500,
+				Type: 7, EnabledMode: "O", Definition: "root trigger",
+			},
+			{
+				OID: 301, RelationOID: 110, Name: "events_trigger", FunctionOID: 500,
+				Type: 7, EnabledMode: "O", ParentTriggerOID: 300, Definition: "branch clone",
+			},
+		}
+		setFixtureMarkers(t, &invalid)
+
+		_, err := resolveArchivedState(resolverTestPrefix, invalid.snapshot, schema.SchemaSnapshot{})
+		require.ErrorContains(t, err, "unexpected cloned trigger edge")
+	})
 }
 
 func TestResolveArchivedStateDependencySchemasAreStructuralOnly(t *testing.T) {
@@ -661,8 +697,14 @@ func newArchivedPartitionResolverFixture(t *testing.T) archivedResolverFixture {
 	marker := archivalMarkerV1{
 		Version: archivalMarkerVersion, GroupID: resolverTestGroupID,
 		PartitionEdges: []archivalMarkerPartitionEdgeV1{
-			{ParentMemberID: "member-root", ChildMemberID: "member-branch"},
-			{ParentMemberID: "member-branch", ChildMemberID: "member-leaf"},
+			{
+				ParentMemberID: "member-root", ChildMemberID: "member-branch",
+				BoundExpression: "FOR VALUES FROM (0) TO (100)",
+			},
+			{
+				ParentMemberID: "member-branch", ChildMemberID: "member-leaf",
+				BoundExpression: "FOR VALUES FROM (0) TO (10)",
+			},
 		},
 		CleanupDigest: cleanupOperationDigest("sha256:" + strings.Repeat("0", 64)),
 	}

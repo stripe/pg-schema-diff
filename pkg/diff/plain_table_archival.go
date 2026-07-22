@@ -22,6 +22,12 @@ type plainTableArchivalGroupRequest struct {
 	Allocation      *archivalGroupNameAllocation
 	FinalizedMarker string
 	Resume          *archivedGroupResumeDescriptor
+	DetachedSubtree *archivalDetachedSubtreeRequest
+}
+
+type archivalDetachedSubtreeRequest struct {
+	RootRelationOID   uint32
+	ParentRelationOID uint32
 }
 
 type plainTableArchivalVertexKind string
@@ -30,17 +36,23 @@ const (
 	plainTableArchivalVertexKindGroupInitialization plainTableArchivalVertexKind = "group_initialization"
 	plainTableArchivalVertexKindTableMove           plainTableArchivalVertexKind = "table_move"
 	plainTableArchivalVertexKindResumeTableMove     plainTableArchivalVertexKind = "resume_table_move"
+	plainTableArchivalVertexKindPartitionDetach     plainTableArchivalVertexKind = "partition_detach"
 	plainTableArchivalVertexKindMarkerRefresh       plainTableArchivalVertexKind = "marker_refresh"
 	plainTableArchivalVertexKindCatalogAssertion    plainTableArchivalVertexKind = "catalog_assertion"
 )
 
 type plainTableArchivalVertexID struct {
-	kind    plainTableArchivalVertexKind
-	groupID archivalGroupID
+	kind      plainTableArchivalVertexKind
+	groupID   archivalGroupID
+	memberKey string
 }
 
 func (id plainTableArchivalVertexID) String() string {
-	return fmt.Sprintf("archival:%02d:%s:%s", plainTableArchivalVertexPhase(id.kind), id.groupID, id.kind)
+	base := fmt.Sprintf("archival:%02d:%s:%s", plainTableArchivalVertexPhase(id.kind), id.groupID, id.kind)
+	if id.memberKey != "" {
+		return base + ":" + id.memberKey
+	}
+	return base
 }
 
 func plainTableArchivalVertexPhase(kind plainTableArchivalVertexKind) int {
@@ -49,7 +61,8 @@ func plainTableArchivalVertexPhase(kind plainTableArchivalVertexKind) int {
 		return 1
 	case plainTableArchivalVertexKindMarkerRefresh:
 		return 2
-	case plainTableArchivalVertexKindTableMove, plainTableArchivalVertexKindResumeTableMove:
+	case plainTableArchivalVertexKindTableMove, plainTableArchivalVertexKindResumeTableMove,
+		plainTableArchivalVertexKindPartitionDetach:
 		return 4
 	case plainTableArchivalVertexKindCatalogAssertion:
 		return 8
@@ -58,20 +71,45 @@ func plainTableArchivalVertexPhase(kind plainTableArchivalVertexKind) int {
 	}
 }
 
-type preparedPlainTableArchivalGroup struct {
-	id            archivalGroupID
-	marker        archivalMarkerV1
-	markerText    string
-	member        archivalMarkerMemberV1
-	allocation    *archivalGroupNameAllocation
-	resume        *archivedGroupResumeDescriptor
+type preparedArchivalMember struct {
+	marker        archivalMarkerMemberV1
+	depth         int
+	relationKind  schema.RelKind
 	remainingMove *archivedMemberMoveDescriptor
+}
+
+type archivalPartitionDetachOperation struct {
+	root   archivalMarkerMemberV1
+	parent archivalMarkerObjectIdentity
+}
+
+type preparedArchivalGroup struct {
+	id           archivalGroupID
+	marker       archivalMarkerV1
+	markerText   string
+	members      []preparedArchivalMember
+	rootMemberID string
+	cleanupRoot  archivalMarkerObjectIdentity
+	allocation   *archivalGroupNameAllocation
+	resume       *archivedGroupResumeDescriptor
+	detach       *archivalPartitionDetachOperation
 }
 
 var migrationHazardPlainTableSetSchema = MigrationHazard{
 	Type: MigrationHazardTypeAcquiresAccessExclusiveLock,
 	Message: "Moving a table to another schema acquires an ACCESS EXCLUSIVE lock on the table. " +
 		"The catalog-only move should be brief, but all table access is blocked while the lock is held.",
+}
+
+var migrationHazardArchivalPartitionDetach = []MigrationHazard{
+	{
+		Type:    MigrationHazardTypeAcquiresAccessExclusiveLock,
+		Message: "Detaching an archived partition acquires ACCESS EXCLUSIVE locks on the active parent and retained subtree root.",
+	},
+	{
+		Type:    MigrationHazardTypeCorrectness,
+		Message: "Detaching the retained subtree removes it from the active parent's partition routing and partitioned indexes.",
+	},
 }
 
 var migrationHazardArchivalSchemaLockdown = MigrationHazard{
@@ -99,31 +137,33 @@ func generatePlainTableArchivalStatements(request plainTableArchivalRequest) ([]
 
 func preparePlainTableArchivalGroups(
 	request plainTableArchivalRequest,
-) ([]preparedPlainTableArchivalGroup, error) {
+) ([]preparedArchivalGroup, error) {
 	if len(request.Groups) == 0 {
 		return nil, nil
 	}
 	inventory := request.CurrentInventory.Normalize()
-	groups := make([]preparedPlainTableArchivalGroup, 0, len(request.Groups))
+	groups := make([]preparedArchivalGroup, 0, len(request.Groups))
 	seenGroups := make(map[archivalGroupID]struct{}, len(request.Groups))
 	seenRelations := make(map[uint32]struct{}, len(request.Groups))
 	for idx, groupRequest := range request.Groups {
 		group, err := preparePlainTableArchivalGroup(inventory, request.DependencyClosure, groupRequest)
 		if err != nil {
-			return nil, fmt.Errorf("preparing plain-table archival group %d: %w", idx, err)
+			return nil, fmt.Errorf("preparing archival group %d: %w", idx, err)
 		}
 		if _, duplicate := seenGroups[group.id]; duplicate {
-			return nil, fmt.Errorf("plain-table archival group %q is duplicated", group.id)
+			return nil, fmt.Errorf("archival group %q is duplicated", group.id)
 		}
 		seenGroups[group.id] = struct{}{}
-		if _, duplicate := seenRelations[group.member.SourceTable.OID]; duplicate {
-			return nil, fmt.Errorf("plain-table relation OID %d belongs to more than one group",
-				group.member.SourceTable.OID)
+		for _, member := range group.members {
+			if _, duplicate := seenRelations[member.marker.SourceTable.OID]; duplicate {
+				return nil, fmt.Errorf("archival relation OID %d belongs to more than one group",
+					member.marker.SourceTable.OID)
+			}
+			seenRelations[member.marker.SourceTable.OID] = struct{}{}
 		}
-		seenRelations[group.member.SourceTable.OID] = struct{}{}
 		groups = append(groups, group)
 	}
-	slices.SortFunc(groups, func(a, b preparedPlainTableArchivalGroup) int {
+	slices.SortFunc(groups, func(a, b preparedArchivalGroup) int {
 		return cmp.Compare(a.id, b.id)
 	})
 	if err := validatePlainTableArchivalPreflight(inventory, groups, request.SourcePreflight); err != nil {
@@ -139,70 +179,96 @@ func preparePlainTableArchivalGroup(
 	inventory schema.CatalogInventory,
 	closure archivedDependencyClosureResult,
 	request plainTableArchivalGroupRequest,
-) (preparedPlainTableArchivalGroup, error) {
+) (preparedArchivalGroup, error) {
 	marker, err := parseArchivalMarker(request.FinalizedMarker)
 	if err != nil {
-		return preparedPlainTableArchivalGroup{},
+		return preparedArchivalGroup{},
 			fmt.Errorf("parsing finalized marker: %w", err)
 	}
 	canonicalMarker, err := marshalArchivalMarker(marker)
 	if err != nil {
-		return preparedPlainTableArchivalGroup{},
+		return preparedArchivalGroup{},
 			fmt.Errorf("canonicalizing finalized marker: %w", err)
 	}
 	if request.FinalizedMarker != canonicalMarker {
-		return preparedPlainTableArchivalGroup{},
+		return preparedArchivalGroup{},
 			fmt.Errorf("finalized marker for group %q is not canonical", marker.GroupID)
 	}
 	if (request.Allocation == nil) == (request.Resume == nil) {
-		return preparedPlainTableArchivalGroup{}, fmt.Errorf(
+		return preparedArchivalGroup{}, fmt.Errorf(
 			"group %q must contain exactly one of a Stage 7 allocation or Stage 9 resume descriptor", marker.GroupID,
 		)
 	}
-	if err := validateStage12PlainMarker(marker); err != nil {
-		return preparedPlainTableArchivalGroup{}, fmt.Errorf(
+	if err := validateStage15ArchivalMarker(marker, request.DetachedSubtree); err != nil {
+		return preparedArchivalGroup{}, fmt.Errorf(
 			"validating finalized marker for group %q: %w",
 			marker.GroupID, err,
 		)
 	}
-	group := preparedPlainTableArchivalGroup{
-		id: marker.GroupID, marker: marker, markerText: canonicalMarker, member: marker.Members[0],
+	group := preparedArchivalGroup{
+		id: marker.GroupID, marker: marker, markerText: canonicalMarker,
 		allocation: request.Allocation, resume: request.Resume,
 	}
+	if err := populatePreparedArchivalMembers(&group); err != nil {
+		return preparedArchivalGroup{}, err
+	}
+	for idx := range group.members {
+		relation, err := uniqueRelationByOID(inventory,
+			group.members[idx].marker.SourceTable.OID)
+		if err != nil {
+			return preparedArchivalGroup{}, err
+		}
+		group.members[idx].relationKind = relation.Kind
+	}
+	root := preparedArchivalMemberByID(group.members, group.rootMemberID)
+	group.cleanupRoot = root.marker.CleanupTable
 	if request.Allocation != nil {
-		if err := validateNewPlainTableArchivalGroup(inventory, group); err != nil {
-			return preparedPlainTableArchivalGroup{}, err
+		if err := validateNewArchivalGroup(inventory, group, request.DetachedSubtree); err != nil {
+			return preparedArchivalGroup{}, err
 		}
-		move := archivedMemberMoveDescriptor{
-			MemberID: group.member.MemberID, RelationOID: group.member.SourceTable.OID,
-			SourceTable: group.member.SourceTable, DestinationTable: group.member.CleanupTable,
+		for idx := range group.members {
+			member := &group.members[idx]
+			move := archivedMemberMoveDescriptor{
+				MemberID: member.marker.MemberID, RelationOID: member.marker.SourceTable.OID,
+				SourceTable:      member.marker.SourceTable,
+				DestinationTable: member.marker.CleanupTable,
+			}
+			member.remainingMove = &move
 		}
-		group.remainingMove = &move
+		if request.DetachedSubtree != nil {
+			group.detach = &archivalPartitionDetachOperation{
+				root: root.marker, parent: marker.LostParentAttachments[0].ParentTable,
+			}
+		}
 		return group, nil
 	}
-	if err := validateResumedPlainTableArchivalGroup(inventory, closure, &group); err != nil {
-		return preparedPlainTableArchivalGroup{}, err
+	if err := validateResumedArchivalGroup(inventory, closure, request.DetachedSubtree, &group); err != nil {
+		return preparedArchivalGroup{}, err
 	}
 	return group, nil
 }
 
-func validateStage12PlainMarker(marker archivalMarkerV1) error {
-	if len(marker.Members) != 1 {
-		return fmt.Errorf("plain-table group must declare exactly one member, got %d", len(marker.Members))
-	}
-	if len(marker.PartitionEdges) != 0 {
-		return fmt.Errorf("plain-table group must not declare partition edges")
-	}
+func validateStage15ArchivalMarker(
+	marker archivalMarkerV1,
+	detachedSubtree *archivalDetachedSubtreeRequest,
+) error {
 	if len(marker.ExclusiveDependencySchemas) != 1 {
-		return fmt.Errorf("plain-table group must declare exactly one dependency schema, got %d",
+		return fmt.Errorf("archival group must declare exactly one dependency schema, got %d",
 			len(marker.ExclusiveDependencySchemas))
+	}
+	if detachedSubtree == nil && len(marker.LostParentAttachments) != 0 {
+		return fmt.Errorf("complete archival group must not declare a lost parent attachment")
+	}
+	if detachedSubtree != nil && len(marker.LostParentAttachments) != 1 {
+		return fmt.Errorf("detached subtree archival group must declare exactly one lost parent attachment")
 	}
 	return nil
 }
 
-func validateNewPlainTableArchivalGroup(
+func validateNewArchivalGroup(
 	inventory schema.CatalogInventory,
-	group preparedPlainTableArchivalGroup,
+	group preparedArchivalGroup,
+	detachedSubtree *archivalDetachedSubtreeRequest,
 ) error {
 	allocation := *group.allocation
 	if allocation.GroupID != group.id {
@@ -215,41 +281,52 @@ func validateNewPlainTableArchivalGroup(
 	if allocation.Timestamp != timestamp || allocation.Nonce != nonce {
 		return fmt.Errorf("stage 7 allocation timestamp or nonce does not match group %q", group.id)
 	}
-	if len(allocation.Members) != 1 {
-		return fmt.Errorf("stage 7 allocation for group %q must contain one member, got %d",
-			group.id, len(allocation.Members))
+	if len(allocation.Members) != len(group.members) {
+		return fmt.Errorf("stage 7 allocation for group %q contains %d members; marker declares %d",
+			group.id, len(allocation.Members), len(group.members))
 	}
-	allocated := allocation.Members[0]
-	if allocated.RelationOID != group.member.SourceTable.OID ||
-		allocated.SourceSchemaName != group.member.SourceTable.SchemaName ||
-		allocated.SourceTableName != group.member.SourceTable.Name ||
-		allocated.CleanupSchemaName != group.member.CleanupTable.SchemaName {
-		return fmt.Errorf("stage 7 member allocation does not match finalized marker for group %q", group.id)
+	allocatedByOID := make(map[uint32]archivalPhysicalMemberNameAllocation, len(allocation.Members))
+	for _, allocated := range allocation.Members {
+		if _, duplicate := allocatedByOID[allocated.RelationOID]; duplicate {
+			return fmt.Errorf("stage 7 allocation for group %q duplicates relation OID %d",
+				group.id, allocated.RelationOID)
+		}
+		allocatedByOID[allocated.RelationOID] = allocated
 	}
-	if allocated.EscapedCleanupSchemaName !=
-		schema.EscapeIdentifier(allocated.CleanupSchemaName) {
-		return fmt.Errorf("stage 7 cleanup schema quoting does not match group %q", group.id)
+	for _, preparedMember := range group.members {
+		member := preparedMember.marker
+		allocated, ok := allocatedByOID[member.SourceTable.OID]
+		if !ok || allocated.SourceSchemaName != member.SourceTable.SchemaName ||
+			allocated.SourceTableName != member.SourceTable.Name ||
+			allocated.CleanupSchemaName != member.CleanupTable.SchemaName {
+			return fmt.Errorf("stage 7 member allocation does not match finalized marker for group %q", group.id)
+		}
+		if allocated.EscapedCleanupSchemaName !=
+			schema.EscapeIdentifier(allocated.CleanupSchemaName) {
+			return fmt.Errorf("stage 7 cleanup schema quoting does not match group %q", group.id)
+		}
 	}
 	dependencySchema := group.marker.ExclusiveDependencySchemas[0].Name
 	if allocation.DependencySchemaName != dependencySchema ||
 		allocation.EscapedDependencySchemaName != schema.EscapeIdentifier(dependencySchema) {
 		return fmt.Errorf("stage 7 dependency schema allocation does not match finalized marker for group %q", group.id)
 	}
-	return validatePlainTableMemberAgainstInventory(inventory, group.member, false)
+	return validateArchivalGroupAgainstInventory(inventory, group, detachedSubtree, nil)
 }
 
-func validateResumedPlainTableArchivalGroup(
+func validateResumedArchivalGroup(
 	inventory schema.CatalogInventory,
 	closure archivedDependencyClosureResult,
-	group *preparedPlainTableArchivalGroup,
+	detachedSubtree *archivalDetachedSubtreeRequest,
+	group *preparedArchivalGroup,
 ) error {
 	resume := *group.resume
 	if resume.GroupID != group.id {
 		return fmt.Errorf("stage 9 resume group %q does not match marker group %q", resume.GroupID, group.id)
 	}
-	if len(resume.RemainingMemberMoves) > 1 {
-		return fmt.Errorf("stage 9 resume group %q contains %d table moves; one plain table is required",
-			group.id, len(resume.RemainingMemberMoves))
+	if len(resume.RemainingMemberMoves) > len(group.members) {
+		return fmt.Errorf("stage 9 resume group %q contains %d table moves for %d members",
+			group.id, len(resume.RemainingMemberMoves), len(group.members))
 	}
 	candidate, err := dependencyValidatedCandidateForGroup(closure, group.id)
 	if err != nil {
@@ -277,24 +354,58 @@ func validateResumedPlainTableArchivalGroup(
 	if err := validateResumeMarkerUpdates(inventory, resume, expectedSchemas, oldMarker); err != nil {
 		return err
 	}
-	relation, err := uniqueRelationByOID(inventory, group.member.SourceTable.OID)
-	if err != nil {
-		return err
-	}
-	moved := relation.SchemaName == group.member.CleanupTable.SchemaName
-	if len(resume.RemainingMemberMoves) == 1 {
-		move := resume.RemainingMemberMoves[0]
-		if !sameArchivedMemberMove(move, group.member) {
-			return fmt.Errorf("stage 9 table move for group %q does not match the finalized marker", group.id)
+	remainingByOID := make(map[uint32]archivedMemberMoveDescriptor, len(resume.RemainingMemberMoves))
+	for _, move := range resume.RemainingMemberMoves {
+		if _, duplicate := remainingByOID[move.RelationOID]; duplicate {
+			return fmt.Errorf("stage 9 group %q duplicates table move OID %d", group.id, move.RelationOID)
 		}
-		if moved {
-			return fmt.Errorf("stage 9 group %q requests a move for a table already in its cleanup schema", group.id)
-		}
-		group.remainingMove = &move
-	} else if !moved {
-		return fmt.Errorf("stage 9 group %q omits the remaining source-table move", group.id)
+		remainingByOID[move.RelationOID] = move
 	}
-	return validatePlainTableMemberAgainstInventory(inventory, group.member, moved)
+	movedByOID := make(map[uint32]bool, len(group.members))
+	for idx := range group.members {
+		member := &group.members[idx]
+		relation, err := uniqueRelationByOID(inventory, member.marker.SourceTable.OID)
+		if err != nil {
+			return err
+		}
+		moved := relation.SchemaName == member.marker.CleanupTable.SchemaName
+		movedByOID[member.marker.SourceTable.OID] = moved
+		move, remaining := remainingByOID[member.marker.SourceTable.OID]
+		if remaining {
+			if !sameArchivedMemberMove(move, member.marker) {
+				return fmt.Errorf("stage 9 table move for group %q does not match finalized member %q",
+					group.id, member.marker.MemberID)
+			}
+			if moved {
+				return fmt.Errorf("stage 9 group %q requests a move for member %q already in its cleanup schema",
+					group.id, member.marker.MemberID)
+			}
+			moveCopy := move
+			member.remainingMove = &moveCopy
+		} else if !moved {
+			return fmt.Errorf("stage 9 group %q omits remaining move for member %q",
+				group.id, member.marker.MemberID)
+		}
+	}
+	for _, edge := range group.marker.PartitionEdges {
+		parent := preparedArchivalMemberByID(group.members, edge.ParentMemberID)
+		child := preparedArchivalMemberByID(group.members, edge.ChildMemberID)
+		if movedByOID[parent.marker.SourceTable.OID] &&
+			!movedByOID[child.marker.SourceTable.OID] {
+			return fmt.Errorf("stage 9 group %q moved parent member %q before descendant %q",
+				group.id, parent.marker.MemberID, child.marker.MemberID)
+		}
+	}
+	if resume.RemainingPartitionDetach {
+		if detachedSubtree == nil {
+			return fmt.Errorf("stage 9 group %q requests partition detach without detached-subtree intent", group.id)
+		}
+		root := preparedArchivalMemberByID(group.members, group.rootMemberID)
+		group.detach = &archivalPartitionDetachOperation{
+			root: root.marker, parent: group.marker.LostParentAttachments[0].ParentTable,
+		}
+	}
+	return validateArchivalGroupAgainstInventory(inventory, *group, detachedSubtree, movedByOID)
 }
 
 func dependencyValidatedCandidateForGroup(
@@ -348,60 +459,43 @@ func sameArchivedMemberMove(move archivedMemberMoveDescriptor, member archivalMa
 		compareMarkerObjects(move.DestinationTable, member.CleanupTable) == 0
 }
 
-func validatePlainTableMemberAgainstInventory(
-	inventory schema.CatalogInventory,
-	member archivalMarkerMemberV1,
-	moved bool,
-) error {
-	relation, err := uniqueRelationByOID(inventory, member.SourceTable.OID)
-	if err != nil {
-		return err
-	}
-	kind, tableLike := inventory.ClassifyTable(relation.OID)
-	if !tableLike || kind != schema.CatalogTableKindOrdinary {
-		return fmt.Errorf("relation OID %d (%s.%s) has unsupported plain-table classification %q",
-			relation.OID, relation.SchemaName, relation.Name, kind)
-	}
-	expectedSchema := member.SourceTable.SchemaName
-	if moved {
-		expectedSchema = member.CleanupTable.SchemaName
-	}
-	if relation.SchemaName != expectedSchema || relation.Name != member.SourceTable.Name {
-		return fmt.Errorf("relation OID %d is %s.%s instead of expected %s.%s",
-			relation.OID, relation.SchemaName, relation.Name, expectedSchema, member.SourceTable.Name)
-	}
-	return nil
-}
-
 func validatePlainTableArchivalPreflight(
 	inventory schema.CatalogInventory,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 	preflight sourceSafetyPreflightResult,
 ) error {
 	expectedOIDs := plainTableArchivalRelationOIDs(groups)
 	validatedOIDs := slices.Clone(preflight.ValidatedTableRelationOIDs)
 	slices.Sort(validatedOIDs)
 	if !slices.Equal(expectedOIDs, validatedOIDs) {
-		return fmt.Errorf("stage 10 preflight did not validate exactly the requested plain-table OIDs")
+		return fmt.Errorf("stage 10 preflight did not validate exactly the requested archival relation OIDs")
 	}
 	if err := validateStage12PlatformInventory(inventory, groups); err != nil {
 		return err
 	}
+	groupByRelationOID := archivalGroupByRelationOID(groups)
 	for _, group := range groups {
-		move, err := inventory.ExpectedTableMove(group.member.SourceTable.OID)
-		if err != nil {
-			return err
+		declaredSchemas := make(map[string]struct{}, len(group.members))
+		for _, member := range group.members {
+			declaredSchemas[member.marker.CleanupTable.SchemaName] = struct{}{}
 		}
-		move = filterPlainTableIsolationObjects(move, preflight)
-		relation, err := uniqueRelationByOID(inventory, group.member.SourceTable.OID)
-		if err != nil {
-			return err
-		}
-		moved := relation.SchemaName == group.member.CleanupTable.SchemaName
-		declaredSchemas := map[string]struct{}{group.member.CleanupTable.SchemaName: {}}
-		if err := validateMemberCatalogObjects(inventory, group.member, move, moved,
-			declaredSchemas, make(map[string]struct{})); err != nil {
-			return fmt.Errorf("validating Stage 14 table-local isolation for group %q: %w", group.id, err)
+		for _, member := range group.members {
+			move, err := inventory.ExpectedTableMove(member.marker.SourceTable.OID)
+			if err != nil {
+				return err
+			}
+			move = filterPlainTableIsolationObjects(move, preflight, groupByRelationOID)
+			move = filterLostParentClonedTriggers(move, group.marker, member.marker)
+			relation, err := uniqueRelationByOID(inventory, member.marker.SourceTable.OID)
+			if err != nil {
+				return err
+			}
+			moved := relation.SchemaName == member.marker.CleanupTable.SchemaName
+			if err := validateMemberCatalogObjects(inventory, member.marker, move, moved,
+				declaredSchemas, make(map[string]struct{})); err != nil {
+				return fmt.Errorf("validating Stage 14 table-local isolation for group %q member %q: %w",
+					group.id, member.marker.MemberID, err)
+			}
 		}
 	}
 	return nil
@@ -410,11 +504,14 @@ func validatePlainTableArchivalPreflight(
 func filterPlainTableIsolationObjects(
 	move schema.CatalogExpectedTableMove,
 	preflight sourceSafetyPreflightResult,
+	groupByRelationOID map[uint32]preparedArchivalGroup,
 ) schema.CatalogExpectedTableMove {
 	constraints := make(map[uint32]struct{})
 	triggers := make(map[uint32]struct{})
 	for _, foreignKey := range preflight.ForeignKeys {
-		if foreignKey.Direction == sourceSafetyForeignKeyDirectionSelf {
+		owning, owningArchived := groupByRelationOID[foreignKey.ForeignKey.OwningRelationOID]
+		referenced, referencedArchived := groupByRelationOID[foreignKey.ForeignKey.ReferencedRelationOID]
+		if owningArchived && referencedArchived && owning.id == referenced.id {
 			continue
 		}
 		constraints[foreignKey.ForeignKey.OID] = struct{}{}
@@ -437,22 +534,22 @@ func filterPlainTableIsolationObjects(
 
 func validateStage12PlatformInventory(
 	inventory schema.CatalogInventory,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 ) error {
 	for _, trigger := range inventory.EventTriggers {
 		if trigger.EnabledMode != "D" {
-			return fmt.Errorf("enabled event trigger %q is not supported by the plain-table move engine", trigger.Name)
+			return fmt.Errorf("enabled event trigger %q is not supported by the archival move engine", trigger.Name)
 		}
 	}
 	for _, publication := range inventory.Publications {
 		if publication.PublishesAllTables {
-			return fmt.Errorf("FOR ALL TABLES publication %q is not supported by the plain-table move engine",
+			return fmt.Errorf("FOR ALL TABLES publication %q is not supported by the archival move engine",
 				publication.Name)
 		}
 	}
 	for _, member := range inventory.ExtensionMembers {
 		if stage12ExtensionMemberIsRetained(member.Object, groups) {
-			return fmt.Errorf("extension member %s is not supported by the plain-table move engine",
+			return fmt.Errorf("extension member %s is not supported by the archival move engine",
 				sourceSafetyCatalogObjectDescription(member.Object))
 		}
 	}
@@ -461,32 +558,34 @@ func validateStage12PlatformInventory(
 
 func stage12ExtensionMemberIsRetained(
 	member schema.CatalogDependencyObject,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 ) bool {
 	for _, group := range groups {
-		for _, object := range slices.Concat(
-			group.member.AutomaticallyMovedObjects,
-			group.member.AttachedObjects,
-			group.member.InternalToastObjects,
-		) {
-			classOID := uint32(0)
-			switch object.Kind {
-			case archivalMarkerObjectKindTable, archivalMarkerObjectKindIndex,
-				archivalMarkerObjectKindOwnedSequence, archivalMarkerObjectKindToastRelation:
-				classOID = pgClassCatalogOID
-			case archivalMarkerObjectKindRowType, archivalMarkerObjectKindArrayType:
-				classOID = pgTypeCatalogOID
-			case archivalMarkerObjectKindConstraint:
-				classOID = pgConstraintCatalogOID
-			case archivalMarkerObjectKindTrigger:
-				classOID = pgTriggerCatalogOID
-			case archivalMarkerObjectKindRule:
-				classOID = pgRewriteCatalogOID
-			case archivalMarkerObjectKindPolicy:
-				classOID = pgPolicyCatalogOID
-			}
-			if member.ClassOID == classOID && member.ObjectOID == object.OID {
-				return true
+		for _, preparedMember := range group.members {
+			for _, object := range slices.Concat(
+				preparedMember.marker.AutomaticallyMovedObjects,
+				preparedMember.marker.AttachedObjects,
+				preparedMember.marker.InternalToastObjects,
+			) {
+				classOID := uint32(0)
+				switch object.Kind {
+				case archivalMarkerObjectKindTable, archivalMarkerObjectKindIndex,
+					archivalMarkerObjectKindOwnedSequence, archivalMarkerObjectKindToastRelation:
+					classOID = pgClassCatalogOID
+				case archivalMarkerObjectKindRowType, archivalMarkerObjectKindArrayType:
+					classOID = pgTypeCatalogOID
+				case archivalMarkerObjectKindConstraint:
+					classOID = pgConstraintCatalogOID
+				case archivalMarkerObjectKindTrigger:
+					classOID = pgTriggerCatalogOID
+				case archivalMarkerObjectKindRule:
+					classOID = pgRewriteCatalogOID
+				case archivalMarkerObjectKindPolicy:
+					classOID = pgPolicyCatalogOID
+				}
+				if member.ClassOID == classOID && member.ObjectOID == object.OID {
+					return true
+				}
 			}
 		}
 	}
@@ -494,7 +593,7 @@ func stage12ExtensionMemberIsRetained(
 }
 
 func validatePlainTableArchivalClosure(
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 	closure archivedDependencyClosureResult,
 ) error {
 	expected := make([]archivalGroupID, 0, len(groups))
@@ -548,10 +647,12 @@ func validatePlainTableArchivalClosure(
 	return nil
 }
 
-func plainTableArchivalRelationOIDs(groups []preparedPlainTableArchivalGroup) []uint32 {
-	oids := make([]uint32, 0, len(groups))
+func plainTableArchivalRelationOIDs(groups []preparedArchivalGroup) []uint32 {
+	var oids []uint32
 	for _, group := range groups {
-		oids = append(oids, group.member.SourceTable.OID)
+		for _, member := range group.members {
+			oids = append(oids, member.marker.SourceTable.OID)
+		}
 	}
 	slices.Sort(oids)
 	return oids
@@ -567,7 +668,7 @@ func (id plainTableArchivalPhaseBarrierID) String() string {
 
 func buildPlainTableArchivalGraph(
 	inventory schema.CatalogInventory,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 	isolation archivalIsolationPlan,
 ) (*sqlGraph, error) {
 	graph := newSqlGraph()
@@ -578,14 +679,9 @@ func buildPlainTableArchivalGraph(
 		if !ok {
 			return nil, fmt.Errorf("isolation plan is missing group %q", group.id)
 		}
-		moveKind := plainTableArchivalVertexKindTableMove
-		if group.resume != nil {
-			moveKind = plainTableArchivalVertexKindResumeTableMove
-		}
 		vertices := []sqlVertex{
 			plainTableArchivalVertex(group.id, plainTableArchivalVertexKindGroupInitialization,
 				renderPlainTableArchivalInitialization(*group)),
-			plainTableArchivalVertex(group.id, moveKind, renderPlainTableArchivalMove(*group)),
 			plainTableArchivalVertex(group.id, plainTableArchivalVertexKindMarkerRefresh,
 				renderPlainTableArchivalMarkerRefresh(*group)),
 			plainTableArchivalVertex(group.id, plainTableArchivalVertexKindCatalogAssertion,
@@ -596,6 +692,45 @@ func buildPlainTableArchivalGraph(
 			id := vertex.id.(plainTableArchivalVertexID)
 			phase := plainTableArchivalVertexPhase(id.kind)
 			phaseIDs[phase] = append(phaseIDs[phase], id)
+		}
+		moveKind := plainTableArchivalVertexKindTableMove
+		if group.resume != nil {
+			moveKind = plainTableArchivalVertexKindResumeTableMove
+		}
+		moveIDs := make(map[string]plainTableArchivalVertexID)
+		for _, member := range orderedRemainingArchivalMembers(*group) {
+			id := archivalMemberMoveVertexID(*group, member, moveKind)
+			graph.AddVertex(sqlVertex{id: id, statements: renderArchivalMemberMove(member)})
+			phaseIDs[plainTableArchivalVertexPhase(moveKind)] = append(
+				phaseIDs[plainTableArchivalVertexPhase(moveKind)], id,
+			)
+			moveIDs[member.marker.MemberID] = id
+		}
+		for _, edge := range group.marker.PartitionEdges {
+			childID, childMoves := moveIDs[edge.ChildMemberID]
+			parentID, parentMoves := moveIDs[edge.ParentMemberID]
+			if childMoves && parentMoves {
+				if err := graph.AddEdge(childID.String(), parentID.String()); err != nil {
+					return nil, fmt.Errorf("ordering archival descendant before parent: %w", err)
+				}
+			}
+		}
+		if group.detach != nil {
+			detachID := plainTableArchivalVertexID{
+				kind: plainTableArchivalVertexKindPartitionDetach, groupID: group.id,
+			}
+			graph.AddVertex(sqlVertex{
+				id:         detachID,
+				statements: []Statement{renderArchivalPartitionDetach(*group.detach)},
+			})
+			phaseIDs[plainTableArchivalVertexPhase(detachID.kind)] = append(
+				phaseIDs[plainTableArchivalVertexPhase(detachID.kind)], detachID,
+			)
+			for _, moveID := range moveIDs {
+				if err := graph.AddEdge(moveID.String(), detachID.String()); err != nil {
+					return nil, fmt.Errorf("ordering archival move before partition detach: %w", err)
+				}
+			}
 		}
 	}
 	isolationVertices, err := archivalIsolationVertices(inventory, isolation)
@@ -642,7 +777,34 @@ func plainTableArchivalVertex(
 	return sqlVertex{id: plainTableArchivalVertexID{kind: kind, groupID: groupID}, statements: statements}
 }
 
-func renderPlainTableArchivalInitialization(group preparedPlainTableArchivalGroup) []Statement {
+func archivalMemberMoveVertexID(
+	group preparedArchivalGroup,
+	member preparedArchivalMember,
+	kind plainTableArchivalVertexKind,
+) plainTableArchivalVertexID {
+	memberKey := ""
+	if len(group.members) > 1 {
+		memberKey = fmt.Sprintf("%06d:%s.%s", 999999-member.depth,
+			member.marker.SourceTable.SchemaName, member.marker.SourceTable.Name)
+	}
+	return plainTableArchivalVertexID{kind: kind, groupID: group.id, memberKey: memberKey}
+}
+
+func orderedRemainingArchivalMembers(group preparedArchivalGroup) []preparedArchivalMember {
+	var members []preparedArchivalMember
+	for _, member := range group.members {
+		if member.remainingMove != nil {
+			members = append(members, member)
+		}
+	}
+	slices.SortFunc(members, func(a, b preparedArchivalMember) int {
+		return cmp.Or(cmp.Compare(b.depth, a.depth),
+			compareMarkerObjects(a.marker.SourceTable, b.marker.SourceTable))
+	})
+	return members
+}
+
+func renderPlainTableArchivalInitialization(group preparedArchivalGroup) []Statement {
 	if group.allocation == nil {
 		return nil
 	}
@@ -677,11 +839,11 @@ func renderPlainTableArchivalInitialization(group preparedPlainTableArchivalGrou
 	}}
 }
 
-func renderPlainTableArchivalMove(group preparedPlainTableArchivalGroup) []Statement {
-	if group.remainingMove == nil {
+func renderArchivalMemberMove(member preparedArchivalMember) []Statement {
+	move := member.remainingMove
+	if move == nil {
 		return nil
 	}
-	move := group.remainingMove
 	return []Statement{{
 		DDL: fmt.Sprintf("ALTER TABLE %s.%s SET SCHEMA %s",
 			schema.EscapeIdentifier(move.SourceTable.SchemaName),
@@ -691,7 +853,18 @@ func renderPlainTableArchivalMove(group preparedPlainTableArchivalGroup) []State
 	}}
 }
 
-func renderPlainTableArchivalMarkerRefresh(group preparedPlainTableArchivalGroup) []Statement {
+func renderArchivalPartitionDetach(operation archivalPartitionDetachOperation) Statement {
+	return Statement{
+		DDL: fmt.Sprintf("ALTER TABLE %s.%s DETACH PARTITION %s.%s",
+			schema.EscapeIdentifier(operation.parent.SchemaName),
+			schema.EscapeIdentifier(operation.parent.Name),
+			schema.EscapeIdentifier(operation.root.CleanupTable.SchemaName),
+			schema.EscapeIdentifier(operation.root.CleanupTable.Name)),
+		Hazards: slices.Clone(migrationHazardArchivalPartitionDetach),
+	}
+}
+
+func renderPlainTableArchivalMarkerRefresh(group preparedArchivalGroup) []Statement {
 	if group.resume == nil {
 		return nil
 	}
@@ -711,7 +884,7 @@ func renderPlainTableArchivalMarkerRefresh(group preparedPlainTableArchivalGroup
 }
 
 func renderPlainTableArchivalAssertion(
-	group preparedPlainTableArchivalGroup,
+	group preparedArchivalGroup,
 	isolation archivalIsolationGroupPlan,
 	completeIsolation archivalIsolationPlan,
 ) string {
@@ -725,7 +898,10 @@ func renderPlainTableArchivalAssertion(
 		),
 			fmt.Sprintf("archival marker mismatch for group %s schema %s", group.id, schemaName))
 	}
-	appendPlainTableMemberAssertions(&body, group)
+	for _, member := range group.members {
+		appendPlainTableMemberAssertions(&body, group, member)
+	}
+	appendArchivalPartitionAssertions(&body, group)
 	appendPlainTableDependencySchemaAssertions(&body, group)
 	appendArchivalIsolationAssertions(&body, group, isolation)
 	appendPlainTablePreservedForeignKeyAssertions(&body, group.id, completeIsolation)
@@ -733,12 +909,18 @@ func renderPlainTableArchivalAssertion(
 	return doBlock(body.String())
 }
 
-func appendPlainTableMemberAssertions(body *strings.Builder, group preparedPlainTableArchivalGroup) {
-	member := group.member
+func appendPlainTableMemberAssertions(
+	body *strings.Builder,
+	group preparedArchivalGroup,
+	preparedMember preparedArchivalMember,
+) {
+	member := preparedMember.marker
 	tableOID := member.CleanupTable.OID
 	for _, object := range slices.Concat(member.AutomaticallyMovedObjects, member.AttachedObjects,
 		member.InternalToastObjects) {
-		predicate, ok := plainTableMarkerObjectAssertion(object, tableOID)
+		predicate, ok := plainTableMarkerObjectAssertion(
+			object, tableOID, preparedMember.relationKind, member.MemberID != group.rootMemberID,
+		)
 		if !ok {
 			continue
 		}
@@ -782,7 +964,7 @@ func appendPlainTableMemberAssertions(body *strings.Builder, group preparedPlain
 			schema.EscapeLiteral(member.CleanupTable.SchemaName)),
 		markerObjectOIDs(member.ExplicitlyMovedObjects, archivalMarkerObjectKindExtendedStatistic))
 	for _, object := range member.ExplicitlyMovedObjects {
-		predicate, ok := plainTableMarkerObjectAssertion(object, tableOID)
+		predicate, ok := plainTableMarkerObjectAssertion(object, tableOID, "", false)
 		if ok {
 			appendPlainTableAssertion(body, predicate, fmt.Sprintf(
 				"archival %s identity mismatch for group %s OID %d", object.Kind, group.id, object.OID,
@@ -800,7 +982,7 @@ func appendPlainTableMemberAssertions(body *strings.Builder, group preparedPlain
 	}
 }
 
-func appendPlainTableDependencySchemaAssertions(body *strings.Builder, group preparedPlainTableArchivalGroup) {
+func appendPlainTableDependencySchemaAssertions(body *strings.Builder, group preparedArchivalGroup) {
 	schemaName := group.marker.ExclusiveDependencySchemas[0].Name
 	for _, object := range group.marker.ExclusiveDependencyObjects {
 		appendPlainTableAssertion(body, archivalDependencyObjectAssertion(object), fmt.Sprintf(
@@ -810,14 +992,20 @@ func appendPlainTableDependencySchemaAssertions(body *strings.Builder, group pre
 	}
 }
 
-func plainTableMarkerObjectAssertion(object archivalMarkerObjectIdentity, tableOID uint32) (string, bool) {
+func plainTableMarkerObjectAssertion(
+	object archivalMarkerObjectIdentity,
+	tableOID uint32,
+	relationKind schema.RelKind,
+	isPartition bool,
+) (string, bool) {
 	schemaLiteral := schema.EscapeLiteral(object.SchemaName)
 	nameLiteral := schema.EscapeLiteral(object.Name)
 	switch object.Kind {
 	case archivalMarkerObjectKindTable:
 		return fmt.Sprintf("EXISTS (SELECT 1 FROM pg_catalog.pg_class AS c JOIN pg_catalog.pg_namespace AS n "+
 			"ON n.oid = c.relnamespace WHERE c.oid = %d AND n.nspname = %s AND c.relname = %s "+
-			"AND c.relkind = 'r' AND NOT c.relispartition)", object.OID, schemaLiteral, nameLiteral), true
+			"AND c.relkind = %s AND c.relispartition = %t)", object.OID, schemaLiteral, nameLiteral,
+			schema.EscapeLiteral(string(relationKind)), isPartition), true
 	case archivalMarkerObjectKindRowType:
 		return fmt.Sprintf("EXISTS (SELECT 1 FROM pg_catalog.pg_type AS t JOIN pg_catalog.pg_namespace AS n "+
 			"ON n.oid = t.typnamespace WHERE t.oid = %d AND n.nspname = %s AND t.typname = %s "+

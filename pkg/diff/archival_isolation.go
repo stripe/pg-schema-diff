@@ -138,24 +138,36 @@ func planArchivalIsolation(
 	target schema.Schema,
 	preflight sourceSafetyPreflightResult,
 	closure archivedDependencyClosureResult,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 ) (archivalIsolationPlan, error) {
 	if len(groups) == 0 {
 		return archivalIsolationPlan{}, nil
 	}
 	inventory = inventory.Normalize()
 	target = target.Normalize()
-	groupByRelationOID := make(map[uint32]preparedPlainTableArchivalGroup, len(groups))
+	groupByRelationOID := make(map[uint32]preparedArchivalGroup, len(groups))
 	for _, group := range groups {
-		groupByRelationOID[group.member.SourceTable.OID] = group
+		for _, member := range group.members {
+			if _, duplicate := groupByRelationOID[member.marker.SourceTable.OID]; duplicate {
+				return archivalIsolationPlan{}, fmt.Errorf(
+					"relation OID %d belongs to multiple archival groups",
+					member.marker.SourceTable.OID,
+				)
+			}
+			groupByRelationOID[member.marker.SourceTable.OID] = group
+		}
 	}
 
 	plan := archivalIsolationPlan{}
 	groupPlans := make(map[archivalGroupID]*archivalIsolationGroupPlan, len(groups))
 	for _, group := range groups {
+		var statistics []archivalMarkerObjectIdentity
+		for _, member := range group.members {
+			statistics = append(statistics, member.marker.ExplicitlyMovedObjects...)
+		}
 		plan.Groups = append(plan.Groups, archivalIsolationGroupPlan{
 			GroupID:               group.id,
-			Statistics:            canonicalMarkerObjects(group.member.ExplicitlyMovedObjects),
+			Statistics:            canonicalMarkerObjects(statistics),
 			Dependencies:          canonicalMarkerObjects(nil),
 			SharedDependencyEdges: canonicalArchivedDependencyGroupEdges(nil),
 		})
@@ -207,12 +219,14 @@ func planArchivalIsolation(
 func completeResumedArchivalIncomingForeignKeys(
 	inventory schema.CatalogInventory,
 	target schema.Schema,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 	plan *archivalIsolationPlan,
 ) error {
-	archivedOIDs := make(map[uint32]struct{}, len(groups))
+	archivedOIDs := make(map[uint32]struct{})
 	for _, group := range groups {
-		archivedOIDs[group.member.SourceTable.OID] = struct{}{}
+		for _, member := range group.members {
+			archivedOIDs[member.marker.SourceTable.OID] = struct{}{}
+		}
 	}
 	for _, group := range groups {
 		if group.resume == nil {
@@ -253,7 +267,7 @@ func completeResumedArchivalIncomingForeignKeys(
 func planArchivalDependencyIsolation(
 	inventory schema.CatalogInventory,
 	closure archivedDependencyClosureResult,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 	groupPlans map[archivalGroupID]*archivalIsolationGroupPlan,
 	plan *archivalIsolationPlan,
 ) error {
@@ -321,12 +335,19 @@ func planArchivalDependencyIsolation(
 					})
 				}
 			}
-			for _, object := range group.member.ExplicitlyMovedObjects {
-				source := cloneMarkerObject(object)
-				source.SchemaName = group.member.SourceTable.SchemaName
-				plan.StatisticMoves = append(plan.StatisticMoves, archivalObjectMoveOperation{
-					GroupID: group.id, Source: source, Destination: object,
-				})
+			for _, member := range group.members {
+				for _, object := range member.marker.ExplicitlyMovedObjects {
+					source, count := currentCatalogObjectsWithOID(
+						inventory, archivalMarkerObjectKindExtendedStatistic, object.OID,
+					)
+					if count != 1 {
+						return fmt.Errorf("extended statistic OID %d has %d current catalog identities",
+							object.OID, count)
+					}
+					plan.StatisticMoves = append(plan.StatisticMoves, archivalObjectMoveOperation{
+						GroupID: group.id, Source: source, Destination: object,
+					})
+				}
 			}
 			continue
 		}
@@ -354,30 +375,34 @@ func planArchivalDependencyIsolation(
 
 func planArchivalACLIsolation(
 	inventory schema.CatalogInventory,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 	closure archivedDependencyClosureResult,
 	groupPlans map[archivalGroupID]*archivalIsolationGroupPlan,
 	plan *archivalIsolationPlan,
 ) error {
 	var selected []archivalSelectedACLObject
 	for _, group := range groups {
-		selected = append(selected, archivalSelectedACLObject{
-			address: schema.CatalogDependencyObject{
-				ClassOID:  pgClassCatalogOID,
-				ObjectOID: group.member.SourceTable.OID,
-			},
-			groupID: group.id, destination: group.member.CleanupTable,
-		})
-		for _, object := range group.member.AutomaticallyMovedObjects {
-			if object.Kind != archivalMarkerObjectKindOwnedSequence {
-				continue
-			}
-			destination := cloneMarkerObject(object)
-			destination.Kind = archivalMarkerObjectKindSequence
+		for _, member := range group.members {
 			selected = append(selected, archivalSelectedACLObject{
-				address: schema.CatalogDependencyObject{ClassOID: pgClassCatalogOID, ObjectOID: object.OID},
-				groupID: group.id, destination: destination,
+				address: schema.CatalogDependencyObject{
+					ClassOID:  pgClassCatalogOID,
+					ObjectOID: member.marker.SourceTable.OID,
+				},
+				groupID: group.id, destination: member.marker.CleanupTable,
 			})
+			for _, object := range member.marker.AutomaticallyMovedObjects {
+				if object.Kind != archivalMarkerObjectKindOwnedSequence {
+					continue
+				}
+				destination := cloneMarkerObject(object)
+				destination.Kind = archivalMarkerObjectKindSequence
+				selected = append(selected, archivalSelectedACLObject{
+					address: schema.CatalogDependencyObject{
+						ClassOID: pgClassCatalogOID, ObjectOID: object.OID,
+					},
+					groupID: group.id, destination: destination,
+				})
+			}
 		}
 	}
 	for _, assignment := range closure.Assignments {
@@ -425,7 +450,7 @@ func planArchivalACLIsolation(
 func planArchivalForeignKeyIsolation(
 	preflight sourceSafetyPreflightResult,
 	target schema.Schema,
-	groupByRelationOID map[uint32]preparedPlainTableArchivalGroup,
+	groupByRelationOID map[uint32]preparedArchivalGroup,
 	groupPlans map[archivalGroupID]*archivalIsolationGroupPlan,
 	plan *archivalIsolationPlan,
 ) error {
@@ -484,7 +509,7 @@ func planArchivalForeignKeyIsolation(
 
 func planArchivalPublicationIsolation(
 	preflight sourceSafetyPreflightResult,
-	groupByRelationOID map[uint32]preparedPlainTableArchivalGroup,
+	groupByRelationOID map[uint32]preparedArchivalGroup,
 	groupPlans map[archivalGroupID]*archivalIsolationGroupPlan,
 	plan *archivalIsolationPlan,
 ) error {
@@ -509,11 +534,12 @@ func planArchivalPublicationIsolation(
 			return fmt.Errorf("schema publication metadata is incomplete")
 		}
 		matched := false
-		for _, group := range groupByRelationOID {
-			if group.member.SourceTable.SchemaName == membership.SchemaName {
+		for relationOID, group := range groupByRelationOID {
+			member, ok := archivalMemberByRelationOID(group, relationOID)
+			if ok && member.SourceTable.SchemaName == membership.SchemaName {
 				matched = true
 				entry := archivalSchemaPublication{
-					PublicationName: membership.PublicationName, TableOID: group.member.SourceTable.OID,
+					PublicationName: membership.PublicationName, TableOID: member.SourceTable.OID,
 				}
 				if !slices.Contains(groupPlans[group.id].SchemaPublications, entry) {
 					groupPlans[group.id].SchemaPublications =
@@ -563,7 +589,7 @@ func planArchivalIncomingDependencyDeletes(
 }
 
 func validateArchivalIsolationMarkers(
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 	plans []archivalIsolationGroupPlan,
 ) error {
 	for _, group := range groups {
@@ -600,7 +626,11 @@ func validateArchivalIsolationMarkers(
 		if !slices.Equal(marker.SharedCleanupComponentGroupEdges, expectedEdges) {
 			return fmt.Errorf("finalized marker for group %q has shared dependency edges that do not match Stage 11 assignments", group.id)
 		}
-		if !reflect.DeepEqual(marker.Members[0].ExplicitlyMovedObjects, groupPlan.Statistics) {
+		var markerStatistics []archivalMarkerObjectIdentity
+		for _, member := range marker.Members {
+			markerStatistics = append(markerStatistics, member.ExplicitlyMovedObjects...)
+		}
+		if !reflect.DeepEqual(canonicalMarkerObjects(markerStatistics), groupPlan.Statistics) {
 			return fmt.Errorf("finalized marker for group %q has extended-statistics metadata that does not match the table inventory", group.id)
 		}
 		if group.resume != nil {
@@ -814,7 +844,7 @@ func archivalIsolationVertices(
 
 func appendArchivalIsolationAssertions(
 	body *strings.Builder,
-	group preparedPlainTableArchivalGroup,
+	group preparedArchivalGroup,
 	plan archivalIsolationGroupPlan,
 ) {
 	for _, schemaName := range archivedMarkerSchemaNames(group.marker) {
@@ -1103,9 +1133,9 @@ func selectedACLObject(
 }
 
 func boundaryForeignKeyGroupIDs(
-	owning preparedPlainTableArchivalGroup,
+	owning preparedArchivalGroup,
 	owningArchived bool,
-	referenced preparedPlainTableArchivalGroup,
+	referenced preparedArchivalGroup,
 	referencedArchived bool,
 ) []archivalGroupID {
 	var result []archivalGroupID
@@ -1119,7 +1149,7 @@ func boundaryForeignKeyGroupIDs(
 	return result
 }
 
-func groupDependencySchema(groups []preparedPlainTableArchivalGroup, groupID archivalGroupID) string {
+func groupDependencySchema(groups []preparedArchivalGroup, groupID archivalGroupID) string {
 	for _, group := range groups {
 		if group.id == groupID {
 			return group.marker.ExclusiveDependencySchemas[0].Name

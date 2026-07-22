@@ -525,6 +525,27 @@ func TestBuildCompletePartitionTreeRejectsUnsupportedInheritance(t *testing.T) {
 			rootOID:  1,
 			contains: "has 2 inheritance parents",
 		},
+		{
+			name: "cyclic topology",
+			inventory: schema.CatalogInventory{
+				Relations: []schema.CatalogRelation{
+					{
+						OID: 1, SchemaName: "public", Name: "root", Kind: schema.RelKindPartitionedTable,
+						IsPartition: true,
+					},
+					{
+						OID: 2, SchemaName: "public", Name: "child", Kind: schema.RelKindPartitionedTable,
+						IsPartition: true,
+					},
+				},
+				InheritanceEdges: []schema.CatalogInheritanceEdge{
+					{ChildRelationOID: 2, ParentRelationOID: 1, SequenceNumber: 1},
+					{ChildRelationOID: 1, ParentRelationOID: 2, SequenceNumber: 1},
+				},
+			},
+			rootOID:  1,
+			contains: "contains an inheritance cycle",
+		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			request, err := buildCompletePartitionTreeArchivalNameAllocationRequest(

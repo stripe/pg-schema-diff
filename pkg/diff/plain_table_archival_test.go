@@ -65,7 +65,7 @@ func TestPlainTableArchivalInitializationQuotesIdentifiersAndMarker(t *testing.T
 	t.Parallel()
 
 	allocation := &archivalGroupNameAllocation{}
-	statements := renderPlainTableArchivalInitialization(preparedPlainTableArchivalGroup{
+	statements := renderPlainTableArchivalInitialization(preparedArchivalGroup{
 		id: "group", markerText: "marker's finalized payload", allocation: allocation,
 		marker: archivalMarkerV1{
 			Members: []archivalMarkerMemberV1{{CleanupTable: archivalMarkerObjectIdentity{
@@ -170,9 +170,6 @@ func TestPlainTableArchivalFailsClosedForLaterStageCases(t *testing.T) {
 		name   string
 		mutate func(*plainTableArchivalRequest)
 	}{
-		{name: "partitioned table", mutate: func(r *plainTableArchivalRequest) {
-			r.CurrentInventory.Relations[0].Kind = schema.RelKindPartitionedTable
-		}},
 		{name: "declarative partition", mutate: func(r *plainTableArchivalRequest) {
 			r.CurrentInventory.Relations[0].IsPartition = true
 		}},
@@ -282,6 +279,20 @@ func TestPlainTableArchivalFailsClosedForLaterStageCases(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+func TestPlainTableArchivalSupportsLeaflessPartitionedRoot(t *testing.T) {
+	t.Parallel()
+
+	request := plainTableArchivalUnitRequest(
+		t, "20260721T091011123456Z_ABCDEFGH", 10, "source", "accounts",
+	)
+	request.CurrentInventory.Relations[0].Kind = schema.RelKindPartitionedTable
+
+	statements, err := generatePlainTableArchivalStatements(request)
+	require.NoError(t, err)
+	assert.Contains(t, replacementAwareDDL(statements),
+		`ALTER TABLE "source"."accounts" SET SCHEMA`)
 }
 
 func TestPlainTableArchivalStageValidationProofs(t *testing.T) {

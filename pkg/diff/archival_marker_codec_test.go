@@ -16,7 +16,7 @@ func TestArchivalMarkerExactEnvelopeRoundTrip(t *testing.T) {
 	marker, err := marshalArchivalMarker(payload)
 	require.NoError(t, err)
 
-	const expected = "pg-schema-diff:schema-partial-archival:v1:eyJ2ZXJzaW9uIjoxLCJncm91cF9pZCI6Imdyb3VwLTEiLCJtZW1iZXJzIjpbeyJtZW1iZXJfaWQiOiJtZW1iZXItMSIsInNvdXJjZV90YWJsZSI6eyJraW5kIjoidGFibGUiLCJvaWQiOjEwMCwic2NoZW1hX25hbWUiOiJwdWJsaWMiLCJuYW1lIjoiYWNjb3VudHMiLCJpZGVudGl0eV9hcmd1bWVudHMiOltdfSwiY2xlYW51cF90YWJsZSI6eyJraW5kIjoidGFibGUiLCJvaWQiOjEwMCwic2NoZW1hX25hbWUiOiJhcmNoaXZlX2FjY291bnRzIiwibmFtZSI6ImFjY291bnRzIiwiaWRlbnRpdHlfYXJndW1lbnRzIjpbXX0sImF1dG9tYXRpY2FsbHlfbW92ZWRfb2JqZWN0cyI6W3sia2luZCI6InRhYmxlIiwib2lkIjoxMDAsInNjaGVtYV9uYW1lIjoiYXJjaGl2ZV9hY2NvdW50cyIsIm5hbWUiOiJhY2NvdW50cyIsImlkZW50aXR5X2FyZ3VtZW50cyI6W119XSwiYXR0YWNoZWRfb2JqZWN0cyI6W10sImV4cGxpY2l0bHlfbW92ZWRfb2JqZWN0cyI6W10sImludGVybmFsX3RvYXN0X29iamVjdHMiOltdfV0sInBhcnRpdGlvbl9lZGdlcyI6W10sImV4Y2x1c2l2ZV9kZXBlbmRlbmN5X3NjaGVtYXMiOltdLCJleGNsdXNpdmVfZGVwZW5kZW5jeV9vYmplY3RzIjpbXSwic2hhcmVkX2NsZWFudXBfY29tcG9uZW50X2dyb3VwX2VkZ2VzIjpbXSwib3JpZ2luYWxfYWNscyI6W10sIm9yaWdpbmFsX2ZvcmVpZ25fa2V5cyI6W10sIm9yaWdpbmFsX3B1YmxpY2F0aW9uX21lbWJlcnNoaXBzIjpbXSwiY2xlYW51cF9kaWdlc3QiOiJzaGEyNTY6MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCJ9"
+	const expected = "pg-schema-diff:schema-partial-archival:v1:eyJ2ZXJzaW9uIjoxLCJncm91cF9pZCI6Imdyb3VwLTEiLCJtZW1iZXJzIjpbeyJtZW1iZXJfaWQiOiJtZW1iZXItMSIsInNvdXJjZV90YWJsZSI6eyJraW5kIjoidGFibGUiLCJvaWQiOjEwMCwic2NoZW1hX25hbWUiOiJwdWJsaWMiLCJuYW1lIjoiYWNjb3VudHMiLCJpZGVudGl0eV9hcmd1bWVudHMiOltdfSwiY2xlYW51cF90YWJsZSI6eyJraW5kIjoidGFibGUiLCJvaWQiOjEwMCwic2NoZW1hX25hbWUiOiJhcmNoaXZlX2FjY291bnRzIiwibmFtZSI6ImFjY291bnRzIiwiaWRlbnRpdHlfYXJndW1lbnRzIjpbXX0sImF1dG9tYXRpY2FsbHlfbW92ZWRfb2JqZWN0cyI6W3sia2luZCI6InRhYmxlIiwib2lkIjoxMDAsInNjaGVtYV9uYW1lIjoiYXJjaGl2ZV9hY2NvdW50cyIsIm5hbWUiOiJhY2NvdW50cyIsImlkZW50aXR5X2FyZ3VtZW50cyI6W119XSwiYXR0YWNoZWRfb2JqZWN0cyI6W10sImV4cGxpY2l0bHlfbW92ZWRfb2JqZWN0cyI6W10sImludGVybmFsX3RvYXN0X29iamVjdHMiOltdfV0sInBhcnRpdGlvbl9lZGdlcyI6W10sImxvc3RfcGFyZW50X2F0dGFjaG1lbnRzIjpbXSwiZXhjbHVzaXZlX2RlcGVuZGVuY3lfc2NoZW1hcyI6W10sImV4Y2x1c2l2ZV9kZXBlbmRlbmN5X29iamVjdHMiOltdLCJzaGFyZWRfY2xlYW51cF9jb21wb25lbnRfZ3JvdXBfZWRnZXMiOltdLCJvcmlnaW5hbF9hY2xzIjpbXSwib3JpZ2luYWxfZm9yZWlnbl9rZXlzIjpbXSwib3JpZ2luYWxfcHVibGljYXRpb25fbWVtYmVyc2hpcHMiOltdLCJjbGVhbnVwX2RpZ2VzdCI6InNoYTI1NjowMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwIn0"
 	assert.Equal(t, expected, marker)
 	assert.NotContains(t, strings.TrimPrefix(marker, archivalMarkerEnvelopeV1), "=")
 
@@ -35,6 +35,9 @@ func TestArchivalMarkerStrictParsing(t *testing.T) {
 	withUnknownField := strings.TrimSuffix(string(payloadJSON), "}") + `,"unknown":true}`
 	withPayloadVersion := strings.Replace(string(payloadJSON), `"version":1`, `"version":2`, 1)
 	withoutMemberID := strings.Replace(string(payloadJSON), `"member_id":"member-1",`, "", 1)
+	withoutLostParentAttachments := strings.Replace(
+		string(payloadJSON), `"lost_parent_attachments":[],`, "", 1,
+	)
 	withNullField := strings.Replace(string(payloadJSON), `"version":1`, `"version":null`, 1)
 
 	for _, testCase := range []struct {
@@ -62,6 +65,10 @@ func TestArchivalMarkerStrictParsing(t *testing.T) {
 		},
 		{name: "unknown JSON field", marker: markerForJSON(withUnknownField), contains: "unknown field"},
 		{name: "missing required JSON field", marker: markerForJSON(withoutMemberID), contains: "required JSON field"},
+		{
+			name: "missing required lost-parent array", marker: markerForJSON(withoutLostParentAttachments),
+			contains: "lost_parent_attachments is missing",
+		},
 		{name: "null required JSON field", marker: markerForJSON(withNullField), contains: "must not be null"},
 		{
 			name: "unsupported payload version", marker: markerForJSON(withPayloadVersion),
@@ -73,6 +80,26 @@ func TestArchivalMarkerStrictParsing(t *testing.T) {
 			_, err := parseArchivalMarker(testCase.marker)
 			require.Error(t, err)
 			assert.ErrorContains(t, err, testCase.contains)
+		})
+	}
+}
+
+func TestArchivalMarkerPartitionFieldsAreRequired(t *testing.T) {
+	payload, err := json.Marshal(canonicalizeArchivalMarker(representativeArchivalMarker(t)))
+	require.NoError(t, err)
+
+	for _, field := range []string{
+		"bound_expression", "partitioned_index_attachments", "cloned_triggers",
+	} {
+		t.Run(field, func(t *testing.T) {
+			var raw map[string]any
+			require.NoError(t, json.Unmarshal(payload, &raw))
+			edges := raw["partition_edges"].([]any)
+			delete(edges[0].(map[string]any), field)
+			encoded, err := json.Marshal(raw)
+			require.NoError(t, err)
+			_, err = parseArchivalMarker(markerForJSON(string(encoded)))
+			require.ErrorContains(t, err, "."+field+" is missing")
 		})
 	}
 }
@@ -137,6 +164,11 @@ func TestArchivalMarkerValidation(t *testing.T) {
 						marker.Members[1].AutomaticallyMovedObjects[idx].SchemaName = newSchema
 					}
 				}
+				for idx := range marker.Members[1].AttachedObjects {
+					if marker.Members[1].AttachedObjects[idx].SchemaName == oldSchema {
+						marker.Members[1].AttachedObjects[idx].SchemaName = newSchema
+					}
+				}
 			},
 			contains: "duplicate member cleanup schema",
 		},
@@ -191,16 +223,24 @@ func TestArchivalMarkerValidation(t *testing.T) {
 			name: "topology cycle",
 			mutate: func(marker *archivalMarkerV1) {
 				third := marker.Members[1]
-				third.AutomaticallyMovedObjects = canonicalMarkerObjects(third.AutomaticallyMovedObjects)
 				third.MemberID = "member-third"
+				third.SourceTable.OID = 250
 				third.SourceTable.Name = "orders_2026"
+				third.CleanupTable.OID = 250
 				third.CleanupTable.SchemaName = "archive_orders_2026"
 				third.CleanupTable.Name = "orders_2026"
-				third.AutomaticallyMovedObjects[0] = third.CleanupTable
+				third.AutomaticallyMovedObjects = []archivalMarkerObjectIdentity{third.CleanupTable}
+				third.AttachedObjects = nil
 				marker.Members = append(marker.Members, third)
 				marker.PartitionEdges = []archivalMarkerPartitionEdgeV1{
-					{ParentMemberID: "member-child", ChildMemberID: "member-third"},
-					{ParentMemberID: "member-third", ChildMemberID: "member-child"},
+					{
+						ParentMemberID: "member-child", ChildMemberID: "member-third",
+						BoundExpression: "FOR VALUES IN (2026)",
+					},
+					{
+						ParentMemberID: "member-third", ChildMemberID: "member-child",
+						BoundExpression: "FOR VALUES IN (2025)",
+					},
 				}
 			},
 			contains: "cyclic",
@@ -278,6 +318,10 @@ func TestArchivalMarkerCanonicalOrdering(t *testing.T) {
 		slices.Reverse(markerB.Members[idx].AutomaticallyMovedObjects)
 		slices.Reverse(markerB.Members[idx].AttachedObjects)
 	}
+	for idx := range markerB.PartitionEdges {
+		slices.Reverse(markerB.PartitionEdges[idx].PartitionedIndexAttachments)
+		slices.Reverse(markerB.PartitionEdges[idx].ClonedTriggers)
+	}
 
 	encodedA, err := marshalArchivalMarker(markerA)
 	require.NoError(t, err)
@@ -313,6 +357,75 @@ func TestArchivalMarkerRepresentativePayload(t *testing.T) {
 	assert.NotEmpty(t, parsed.OriginalPublicationMemberships)
 }
 
+func TestArchivalMarkerDetachedSubtreeMetadataContract(t *testing.T) {
+	marker := representativeArchivalMarker(t)
+	marker.LostParentAttachments = []archivalMarkerLostParentAttachmentV1{{
+		RootMemberID: "member-root",
+		ParentTable: markerObject(90, archivalMarkerObjectKindTable,
+			"active", "orders_by_year"),
+		BoundExpression: "FOR VALUES IN (2025)",
+		PartitionedIndexAttachments: []archivalMarkerPartitionedIndexAttachmentV1{{
+			ParentIndex: markerObject(91, archivalMarkerObjectKindIndex,
+				"active", "orders_by_year_idx"),
+			ChildIndex: markerObject(101, archivalMarkerObjectKindIndex,
+				"archive_orders", "orders_pkey"),
+		}},
+		ClonedTriggers: []archivalMarkerClonedTriggerV1{{
+			ParentTrigger: markerObject(92, archivalMarkerObjectKindTrigger,
+				"active", "orders_audit"),
+			ChildTrigger: markerObject(110, archivalMarkerObjectKindTrigger,
+				"archive_orders", "active_orders_audit"),
+			FunctionOID: 500, Type: 7, EnabledMode: "O",
+			Definition: "CREATE TRIGGER orders_audit BEFORE INSERT ON public.orders",
+		}},
+	}}
+	encoded, err := marshalArchivalMarker(marker)
+	require.NoError(t, err)
+	parsed, err := parseArchivalMarker(encoded)
+	require.NoError(t, err)
+	assert.Equal(t, canonicalizeArchivalMarker(marker), parsed)
+
+	for _, tc := range []struct {
+		name     string
+		mutate   func(*archivalMarkerV1)
+		contains string
+	}{
+		{
+			name: "multiple lost parents", mutate: func(value *archivalMarkerV1) {
+				value.LostParentAttachments = append(value.LostParentAttachments,
+					value.LostParentAttachments[0])
+			}, contains: "at most one lost parent",
+		},
+		{
+			name: "missing lost root", mutate: func(value *archivalMarkerV1) {
+				value.LostParentAttachments[0].RootMemberID = "missing"
+			}, contains: "missing root member",
+		},
+		{
+			name: "lost root is a child", mutate: func(value *archivalMarkerV1) {
+				value.LostParentAttachments[0].RootMemberID = "member-child"
+			}, contains: "not the partition topology root",
+		},
+		{
+			name: "wrong index kind", mutate: func(value *archivalMarkerV1) {
+				value.LostParentAttachments[0].PartitionedIndexAttachments[0].ChildIndex.Kind = archivalMarkerObjectKindTable
+			}, contains: "expected object kind \"index\"",
+		},
+		{
+			name: "missing trigger function", mutate: func(value *archivalMarkerV1) {
+				value.LostParentAttachments[0].ClonedTriggers[0].FunctionOID = 0
+			}, contains: "function OID is required",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			invalid := canonicalizeArchivalMarker(marker)
+			tc.mutate(&invalid)
+			_, err := marshalArchivalMarker(invalid)
+			require.ErrorContains(t, err, tc.contains)
+		})
+	}
+}
+
 func minimalArchivalMarker() archivalMarkerV1 {
 	cleanupTable := markerObject(100, archivalMarkerObjectKindTable, "archive_accounts", "accounts")
 	return archivalMarkerV1{
@@ -337,6 +450,14 @@ func representativeArchivalMarker(t *testing.T) archivalMarkerV1 {
 
 	rootTable := markerObject(100, archivalMarkerObjectKindTable, "archive_orders", "orders")
 	childTable := markerObject(200, archivalMarkerObjectKindTable, "archive_orders_2025", "orders_2025")
+	rootIndexA := markerObject(101, archivalMarkerObjectKindIndex, "archive_orders", "orders_pkey")
+	rootIndexB := markerObject(108, archivalMarkerObjectKindIndex, "archive_orders", "orders_total_idx")
+	childIndexA := markerObject(201, archivalMarkerObjectKindIndex, "archive_orders_2025", "orders_2025_pkey")
+	childIndexB := markerObject(202, archivalMarkerObjectKindIndex, "archive_orders_2025", "orders_2025_total_idx")
+	rootTriggerA := markerObject(104, archivalMarkerObjectKindTrigger, "archive_orders", "orders_audit")
+	rootTriggerB := markerObject(109, archivalMarkerObjectKindTrigger, "archive_orders", "orders_notify")
+	childTriggerA := markerObject(204, archivalMarkerObjectKindTrigger, "archive_orders_2025", "orders_audit")
+	childTriggerB := markerObject(205, archivalMarkerObjectKindTrigger, "archive_orders_2025", "orders_notify")
 	return archivalMarkerV1{
 		Version: archivalMarkerVersion,
 		GroupID: "group-a",
@@ -346,13 +467,15 @@ func representativeArchivalMarker(t *testing.T) archivalMarkerV1 {
 				SourceTable:  markerObject(100, archivalMarkerObjectKindTable, "public", "orders"),
 				CleanupTable: rootTable,
 				AutomaticallyMovedObjects: []archivalMarkerObjectIdentity{
-					markerObject(101, archivalMarkerObjectKindIndex, "archive_orders", "orders_pkey"),
+					rootIndexA,
+					rootIndexB,
 					markerObject(102, archivalMarkerObjectKindArrayType, "archive_orders", "_orders"),
 					rootTable,
 					markerObject(103, archivalMarkerObjectKindRowType, "archive_orders", "orders"),
 				},
 				AttachedObjects: []archivalMarkerObjectIdentity{
-					markerObject(104, archivalMarkerObjectKindTrigger, "archive_orders", "orders_audit"),
+					rootTriggerA,
+					rootTriggerB,
 					markerObject(105, archivalMarkerObjectKindPolicy, "archive_orders", "tenant_policy"),
 				},
 				ExplicitlyMovedObjects: []archivalMarkerObjectIdentity{
@@ -366,11 +489,29 @@ func representativeArchivalMarker(t *testing.T) archivalMarkerV1 {
 				MemberID:                  "member-child",
 				SourceTable:               markerObject(200, archivalMarkerObjectKindTable, "history", "orders_2025"),
 				CleanupTable:              childTable,
-				AutomaticallyMovedObjects: []archivalMarkerObjectIdentity{childTable},
+				AutomaticallyMovedObjects: []archivalMarkerObjectIdentity{childTable, childIndexA, childIndexB},
+				AttachedObjects:           []archivalMarkerObjectIdentity{childTriggerA, childTriggerB},
 			},
 		},
 		PartitionEdges: []archivalMarkerPartitionEdgeV1{
-			{ParentMemberID: "member-root", ChildMemberID: "member-child"},
+			{
+				ParentMemberID: "member-root", ChildMemberID: "member-child",
+				BoundExpression: "FOR VALUES IN (2025)",
+				PartitionedIndexAttachments: []archivalMarkerPartitionedIndexAttachmentV1{
+					{ParentIndex: rootIndexB, ChildIndex: childIndexB},
+					{ParentIndex: rootIndexA, ChildIndex: childIndexA},
+				},
+				ClonedTriggers: []archivalMarkerClonedTriggerV1{
+					{
+						ParentTrigger: rootTriggerB, ChildTrigger: childTriggerB,
+						FunctionOID: 501, Type: 7, EnabledMode: "O", Definition: "trigger-b",
+					},
+					{
+						ParentTrigger: rootTriggerA, ChildTrigger: childTriggerA,
+						FunctionOID: 500, Type: 7, EnabledMode: "O", Definition: "trigger-a",
+					},
+				},
+			},
 		},
 		ExclusiveDependencySchemas: []archivalMarkerSchemaIdentity{
 			{Name: "archive_dependencies_b"},

@@ -171,10 +171,11 @@ func buildPostgresArchivalMarker(
 		childID, childFound := memberIDByOID[edge.ChildRelationOID]
 		if parentFound && childFound {
 			marker.PartitionEdges = append(marker.PartitionEdges, archivalMarkerPartitionEdgeV1{
-				ParentMemberID: parentID, ChildMemberID: childID,
+				ParentMemberID: parentID, ChildMemberID: childID, BoundExpression: "pending",
 			})
 		}
 	}
+	require.NoError(t, populateArchivalMarkerPartitionMetadata(inventory, &marker))
 	_, err := marshalArchivalMarker(marker)
 	require.NoError(t, err)
 	return marker

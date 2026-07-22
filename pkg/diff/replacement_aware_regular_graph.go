@@ -41,7 +41,7 @@ func generateReplacementAwareSchemaSQL(
 	}
 	configured := *generator
 	configured.tableDispositions = dispositions
-	configured.plainTableArchivalGroups = groups
+	configured.archivalGroups = groups
 	configured.archivalInventory = archivalRequest.CurrentInventory
 	configured.archivalIsolation = isolation
 	return configured.Alter(diff)
@@ -50,7 +50,7 @@ func generateReplacementAwareSchemaSQL(
 func validateReplacementAwareStage13Scope(
 	diff schemaDiff,
 	dispositions tableDispositions,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 	isolation archivalIsolationPlan,
 ) error {
 	if len(groups) == 0 {
@@ -81,7 +81,7 @@ func integrateReplacementAwareRegularGraph(
 	regularGraph *sqlGraph,
 	diff schemaDiff,
 	inventory schema.CatalogInventory,
-	groups []preparedPlainTableArchivalGroup,
+	groups []preparedArchivalGroup,
 	isolation archivalIsolationPlan,
 	dispositions tableDispositions,
 	enumStatements sqlGroupedByEffect[schema.Enum, enumDiff],

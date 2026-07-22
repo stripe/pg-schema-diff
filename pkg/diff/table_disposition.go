@@ -36,7 +36,7 @@ func physicalTableDispositions(tables []schema.Table) tableDispositions {
 func resolveTableDispositions(
 	deletedTables []schema.Table,
 	configured tableDispositions,
-	archivalGroups []preparedPlainTableArchivalGroup,
+	archivalGroups []preparedArchivalGroup,
 ) (tableDispositions, error) {
 	if configured == nil {
 		if len(archivalGroups) != 0 {
@@ -46,13 +46,17 @@ func resolveTableDispositions(
 	}
 
 	deletedByName := buildSchemaObjByNameMap(deletedTables)
-	groupsByTableName := make(map[string]preparedPlainTableArchivalGroup, len(archivalGroups))
+	groupsByTableName := make(map[string]preparedArchivalGroup)
+	membersByTableName := make(map[string]preparedArchivalMember)
 	for _, group := range archivalGroups {
-		tableName := markerTableName(group.member.SourceTable).GetName()
-		if _, duplicate := groupsByTableName[tableName]; duplicate {
-			return nil, fmt.Errorf("multiple archival groups target table %s", tableName)
+		for _, member := range group.members {
+			tableName := markerTableName(member.marker.SourceTable).GetName()
+			if _, duplicate := groupsByTableName[tableName]; duplicate {
+				return nil, fmt.Errorf("multiple archival groups target table %s", tableName)
+			}
+			groupsByTableName[tableName] = group
+			membersByTableName[tableName] = member
 		}
-		groupsByTableName[tableName] = group
 	}
 
 	for tableName := range deletedByName {
@@ -70,6 +74,7 @@ func resolveTableDispositions(
 		disposition := configured[tableName]
 		_, deleted := deletedByName[tableName]
 		group, hasGroup := groupsByTableName[tableName]
+		member := membersByTableName[tableName]
 		switch disposition.Kind {
 		case tableDispositionKindPhysicalDelete:
 			if disposition.GroupID != "" {
@@ -90,14 +95,14 @@ func resolveTableDispositions(
 			if err := validateDispositionGroup(tableName, disposition, group, hasGroup); err != nil {
 				return nil, err
 			}
-			if group.remainingMove == nil {
+			if member.remainingMove == nil {
 				return nil, fmt.Errorf("archival-move disposition for table %s has no remaining table move", tableName)
 			}
 		case tableDispositionKindCleanupOnly:
 			if err := validateDispositionGroup(tableName, disposition, group, hasGroup); err != nil {
 				return nil, err
 			}
-			if group.remainingMove != nil {
+			if member.remainingMove != nil {
 				return nil, fmt.Errorf("cleanup-only disposition for table %s still requires an ordinary table move", tableName)
 			}
 		default:
@@ -122,7 +127,7 @@ func resolveTableDispositions(
 func validateDispositionGroup(
 	tableName string,
 	disposition tableDisposition,
-	group preparedPlainTableArchivalGroup,
+	group preparedArchivalGroup,
 	hasGroup bool,
 ) error {
 	if disposition.GroupID == "" {

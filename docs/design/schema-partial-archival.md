@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-14 complete
+Status: Proposed; delivery Stages 0-15 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first fourteen delivery stages are complete. Public `Generate` does not yet
+The first fifteen delivery stages are complete. Public `Generate` does not yet
 retain tables or generate cleanup statements; ordinary table deletion still has
 the behavior described above. Public `Generate` independently rejects extension
 drops or version/schema updates when the changed extension owns an unfiltered
@@ -148,16 +148,23 @@ The implemented foundation includes:
 - An independent public extension safety check that rejects extension drops or
   version/schema updates owning hidden table-like relations, including when plan
   validation is disabled and no modeled table diff exists.
-- A dormant plain-table move graph that atomically initializes and locks down
-  marked cleanup groups, moves ordinary tables with strong-lock hazards, resumes
-  Stage 9 partial state using recorded names, refreshes supplied finalized
-  markers, and asserts exact post-move catalog identities. It rejects work owned
-  by later stages and remains disconnected from public `Generate`.
+- A dormant archival move graph that atomically initializes and locks down marked
+  cleanup groups, moves ordinary tables or complete recursive declarative
+  partition trees, resumes partial multi-member state using recorded names,
+  refreshes supplied finalized markers, and asserts exact post-move catalog
+  identities. Descendants move deepest-first with lexical tie-breaking and each
+  group exposes one cleanup-root intent. The graph remains disconnected from
+  public `Generate`.
 - A dormant replacement-aware regular graph with explicit physical-delete,
   archival-move, and cleanup-only table dispositions. It preserves moved
   table-local children, orders target relation/type namespace reuse after moves,
   supports retain-then-create table recreation, and keeps final marker/catalog
   assertions after integrated regular work without changing public generation.
+- Dormant retained-parent subtree handling that initializes every member schema,
+  moves the subtree while attached, detaches its cleanup-schema root afterward,
+  and records the removed routing metadata. Stage 14 ACL, FK, publication,
+  extended-statistics, and dependency isolation applies to every physical member;
+  same-group FKs remain attached and cross-boundary FKs are removed.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -323,13 +330,29 @@ The payload contains:
 - Marker version and group ID.
 - Source and cleanup schema-qualified table names.
 - Group member schema names.
-- Partition parent/child topology.
+- Partition parent/child topology. Every internal edge records its bound,
+  partitioned-index parent/child identity pairs, and cloned-trigger lineage that
+  must remain attached.
+- A required `lost_parent_attachments` array. It is empty for ordinary tables and
+  complete trees and contains exactly one record for a retained-parent subtree.
+  That record contains the subtree root member ID, active parent table identity,
+  removed bound, partitioned-index parent/child identity pairs, and the complete
+  transitive set of cloned triggers PostgreSQL removes during detach. Each cloned
+  trigger record contains parent/child trigger identities, function OID, trigger
+  type, enabled mode, internal flag, constraint OID, definition, and comment.
+  Trigger clones listed there are omitted from members' final attached-object sets.
 - Expected moved table-local object identities.
 - Exclusive dependency schemas and objects.
 - Shared cleanup-component edges to other marked groups.
 - Original ACL/FK and explicit publication-membership metadata changed for
   isolation.
 - A digest of the generated cleanup statement sequence.
+
+The Stage 15 v1 contract requires `lost_parent_attachments` at the payload level
+and bound/index/clone arrays on every partition edge, including when those arrays
+are empty. The strict decoder rejects earlier development payloads that omit the
+fields. This does not invalidate publicly generated retained state because the
+archival engine remains dormant and no public path has emitted v1 markers.
 
 Use SQL-literal escaping for marker contents. In the completed design, a schema is
 treated as retained state only when its marker, name, and catalog contents agree.
@@ -379,6 +402,9 @@ Progress is derived from marker intent plus current catalogs. On every
 - A group with only some expected members moved is resumable only when every
   observed member matches the recorded topology; generate remaining moves and
   marker updates.
+- A retained-parent subtree with every member moved but its boundary still
+  attached is partial resumable state; its resume descriptor contains the one
+  remaining detach operation.
 - A fully populated valid group is filtered from managed diffing and contributes
   cleanup vertices.
 - A malformed marker, unexpected object, conflicting source object, or topology
@@ -793,7 +819,7 @@ stage's scope.
 | 12 | Dormant plain-table move engine | Complete | 7, 9, 10, 11 |
 | 13 | Replacement-aware regular graph | Complete | 12 |
 | 14 | Isolation and dependency rewiring | Complete | 6, 10, 11, 13 |
-| 15 | Declarative partition retention | Pending | 3, 14 |
+| 15 | Declarative partition retention | Complete | 3, 14 |
 | 16 | Global cleanup graph | Pending | 1, 8, 11, 15 |
 | 17 | Two-phase plan validation | Pending | 4, 6, 10, 16 |
 | 18 | Versioned snapshot hash | Pending | 2, 4, 5, 6, 9, 10, 11, 16 |
@@ -1258,7 +1284,7 @@ Acceptance gate:
 
 ### Stage 15: Declarative partition retention
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 3 and 14.
 

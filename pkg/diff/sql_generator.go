@@ -528,12 +528,12 @@ func buildIndexDiff(deps indexDiffConfig, old, new schema.Index) (diff indexDiff
 }
 
 type schemaSQLGenerator struct {
-	randReader               io.Reader
-	planOptions              *planOptions
-	tableDispositions        tableDispositions
-	plainTableArchivalGroups []preparedPlainTableArchivalGroup
-	archivalInventory        schema.CatalogInventory
-	archivalIsolation        archivalIsolationPlan
+	randReader        io.Reader
+	planOptions       *planOptions
+	tableDispositions tableDispositions
+	archivalGroups    []preparedArchivalGroup
+	archivalInventory schema.CatalogInventory
+	archivalIsolation archivalIsolationPlan
 }
 
 func newSchemaSQLGenerator(randReader io.Reader, planOpts *planOptions) *schemaSQLGenerator {
@@ -547,16 +547,16 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	tablesInNewSchemaByName := buildSchemaObjByNameMap(diff.new.Tables)
 	addedTablesByName := buildSchemaObjByNameMap(diff.tableDiffs.adds)
 	tableDispositions, err := resolveTableDispositions(
-		diff.tableDiffs.deletes, s.tableDispositions, s.plainTableArchivalGroups,
+		diff.tableDiffs.deletes, s.tableDispositions, s.archivalGroups,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("resolving table dispositions: %w", err)
 	}
 	if err := validateReplacementAwareStage13Scope(diff, tableDispositions,
-		s.plainTableArchivalGroups, s.archivalIsolation); err != nil {
+		s.archivalGroups, s.archivalIsolation); err != nil {
 		return nil, err
 	}
-	if len(s.plainTableArchivalGroups) != 0 {
+	if len(s.archivalGroups) != 0 {
 		diff = rewriteSchemaDiffForArchivalIsolation(diff, s.archivalIsolation)
 	}
 
@@ -698,9 +698,9 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 
 	legacySuffix := append(enumStatements.Deletes, extensionStatements.Deletes...)
 	legacySuffix = append(legacySuffix, namedSchemaStatements.Deletes...)
-	if len(s.plainTableArchivalGroups) != 0 {
+	if len(s.archivalGroups) != 0 {
 		sqlGraph, err = integrateReplacementAwareRegularGraph(
-			sqlGraph, diff, s.archivalInventory, s.plainTableArchivalGroups, s.archivalIsolation,
+			sqlGraph, diff, s.archivalInventory, s.archivalGroups, s.archivalIsolation,
 			tableDispositions, enumStatements, legacySuffix,
 		)
 		if err != nil {
@@ -723,12 +723,12 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	statements = append(statements, namedSchemaStatements.Alters...)
 	statements = append(statements, extensionStatements.Adds...)
 	statements = append(statements, extensionStatements.Alters...)
-	if len(s.plainTableArchivalGroups) == 0 {
+	if len(s.archivalGroups) == 0 {
 		statements = append(statements, enumStatements.Adds...)
 		statements = append(statements, enumStatements.Alters...)
 	}
 	statements = append(statements, graphStatements...)
-	if len(s.plainTableArchivalGroups) == 0 {
+	if len(s.archivalGroups) == 0 {
 		statements = append(statements, legacySuffix...)
 	}
 	return statements, nil

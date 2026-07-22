@@ -239,7 +239,7 @@ func validateArchivalGroupTopology(
 				group.root.SchemaName, group.root.Name)
 		}
 		return nil
-	case schema.CatalogTableKindPartitioned:
+	case schema.CatalogTableKindPartitioned, schema.CatalogTableKindDeclarativePartition:
 		expected, err := buildCompletePartitionTreeArchivalNameAllocationRequest(inventory, group.root.OID)
 		if err != nil {
 			return err
@@ -278,7 +278,8 @@ func buildCompletePartitionTreeArchivalNameAllocationRequest(
 		)
 	}
 	rootKind, tableLike := inventory.ClassifyTable(rootRelationOID)
-	if !tableLike || rootKind != schema.CatalogTableKindPartitioned {
+	if !tableLike || (rootKind != schema.CatalogTableKindPartitioned &&
+		rootKind != schema.CatalogTableKindDeclarativePartition) {
 		return archivalGroupNameAllocationRequest{}, fmt.Errorf(
 			"partition tree root relation OID %d (%s.%s) has unsupported classification %q",
 			root.OID, root.SchemaName, root.Name, rootKind,
