@@ -11,7 +11,9 @@ type triggerDiff struct {
 	oldAndNew[schema.Trigger]
 }
 
-type triggerSQLVertexGenerator struct{}
+type triggerSQLVertexGenerator struct {
+	tableDispositions tableDispositions
+}
 
 func (t *triggerSQLVertexGenerator) Add(trigger schema.Trigger) (partialSQLGraph, error) {
 	return buildPartialSQLGraph(
@@ -38,6 +40,9 @@ func (t *triggerSQLVertexGenerator) Delete(trigger schema.Trigger) (partialSQLGr
 }
 
 func (t *triggerSQLVertexGenerator) deleteStatements(trigger schema.Trigger) []Statement {
+	if tableIsPreserved(t.tableDispositions, trigger.OwningTable.GetName()) {
+		return nil
+	}
 	return []Statement{{
 		DDL: fmt.Sprintf("DROP TRIGGER %s ON %s", trigger.EscapedName,
 			trigger.OwningTable.GetFQEscapedName()),

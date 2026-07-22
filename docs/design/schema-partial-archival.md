@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-12 complete
+Status: Proposed; delivery Stages 0-13 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first thirteen delivery stages are complete. Public `Generate` does not yet
+The first fourteen delivery stages are complete. Public `Generate` does not yet
 retain tables or generate cleanup statements; ordinary table deletion still has
 the behavior described above. Public `Generate` independently rejects extension
 drops or version/schema updates when the changed extension owns an unfiltered
@@ -153,6 +153,11 @@ The implemented foundation includes:
   Stage 9 partial state using recorded names, refreshes supplied finalized
   markers, and asserts exact post-move catalog identities. It rejects work owned
   by later stages and remains disconnected from public `Generate`.
+- A dormant replacement-aware regular graph with explicit physical-delete,
+  archival-move, and cleanup-only table dispositions. It preserves moved
+  table-local children, orders target relation/type namespace reuse after moves,
+  supports retain-then-create table recreation, and keeps final marker/catalog
+  assertions after integrated regular work without changing public generation.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -786,7 +791,7 @@ stage's scope.
 | 10 | Source safety preflight | Complete | 5, 9 |
 | 11 | Archived dependency closure | Complete | 5, 9, 10 |
 | 12 | Dormant plain-table move engine | Complete | 7, 9, 10, 11 |
-| 13 | Replacement-aware regular graph | Pending | 12 |
+| 13 | Replacement-aware regular graph | Complete | 12 |
 | 14 | Isolation and dependency rewiring | Pending | 6, 10, 11, 13 |
 | 15 | Declarative partition retention | Pending | 3, 14 |
 | 16 | Global cleanup graph | Pending | 1, 8, 11, 15 |
@@ -1187,7 +1192,7 @@ Acceptance gate:
 
 ### Stage 13: Replacement-aware regular graph
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stage 12.
 

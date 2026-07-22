@@ -16,7 +16,7 @@ type viewDiff struct {
 }
 
 func buildViewDiff(
-	deletedTablesByName map[string]schema.Table,
+	removedTablesByName map[string]schema.Table,
 	tableDiffsByName map[string]tableDiff,
 	old, new schema.View,
 ) (viewDiff, bool, error) {
@@ -39,7 +39,7 @@ func buildViewDiff(
 	// - For some table X, it is currently not possible to create a SQL statement outside the table sql generator
 	// that comes before a column Y's delete statement but after a column Z's add statement.
 	for _, t := range old.TableDependencies {
-		if _, ok := deletedTablesByName[t.GetName()]; ok {
+		if _, ok := removedTablesByName[t.GetName()]; ok {
 			// Recreate if a dependent table was deleted (or recreated).
 			return viewDiff{}, true, nil
 		}

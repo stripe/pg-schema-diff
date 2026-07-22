@@ -336,7 +336,13 @@ func TestGenerateKeepsSourceSafetyPreflightDormant(t *testing.T) {
 	plan, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
 	require.NoError(t, err)
 	require.Len(t, plan.Statements, 1)
-	assert.Equal(t, `DROP TABLE "public"."archived"`, plan.Statements[0].DDL)
+	assert.Equal(t, Statement{
+		DDL: `DROP TABLE "public"."archived"`,
+		Hazards: []MigrationHazard{{
+			Type:    MigrationHazardTypeDeletesData,
+			Message: "Deletes all rows in the table (and the table itself)",
+		}},
+	}, plan.Statements[0])
 }
 
 func TestGenerateKeepsArchivedDependencyClosureDormant(t *testing.T) {
@@ -376,4 +382,44 @@ func TestGenerateKeepsArchivedDependencyClosureDormant(t *testing.T) {
 	assert.Equal(t, `DROP TABLE "public"."archived"`, plan.Statements[0].DDL)
 	assert.Empty(t, plan.CleanupStatements)
 	assert.Equal(t, "legacy-hash", plan.CurrentSchemaHash)
+}
+
+func TestGenerateKeepsLegacyTableRecreationPhysical(t *testing.T) {
+	t.Parallel()
+
+	expectedDeps := schemaSourcePlanDeps{
+		logger: slog.Default(), getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+	}
+	tableName := schema.SchemaQualifiedName{SchemaName: "public", EscapedName: `"recreated"`}
+	current := fakeSchemaSource{
+		t: t, expectedDeps: expectedDeps,
+		snapshot: schema.SchemaSnapshot{Schema: schema.Schema{Tables: []schema.Table{{
+			SchemaQualifiedName: tableName,
+			Columns:             []schema.Column{{Name: "id", Type: "bigint"}},
+			ReplicaIdentity:     schema.ReplicaIdentityDefault,
+		}}}},
+	}
+	target := fakeSchemaSource{
+		t: t, expectedDeps: expectedDeps,
+		snapshot: schema.SchemaSnapshot{Schema: schema.Schema{Tables: []schema.Table{{
+			SchemaQualifiedName: tableName,
+			Columns:             []schema.Column{{Name: "id", Type: "bigint"}},
+			PartitionKeyDef:     "HASH (id)",
+			ReplicaIdentity:     schema.ReplicaIdentityDefault,
+		}}}},
+	}
+
+	plan, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
+	require.NoError(t, err)
+	assert.Equal(t, []Statement{
+		{
+			DDL: `DROP TABLE "public"."recreated"`,
+			Hazards: []MigrationHazard{{
+				Type:    MigrationHazardTypeDeletesData,
+				Message: "Deletes all rows in the table (and the table itself)",
+			}},
+		},
+		{DDL: "CREATE TABLE \"public\".\"recreated\" (\n\t\"id\" bigint NOT NULL\n) PARTITION BY HASH (id)"},
+	}, plan.Statements)
+	assert.Empty(t, plan.CleanupStatements)
 }
