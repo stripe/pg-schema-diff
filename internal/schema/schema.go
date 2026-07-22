@@ -68,9 +68,10 @@ type Schema struct {
 // SchemaSnapshot is the normalized modeled schema and its existing schema hash
 // from one catalog snapshot. Callers treat snapshots as immutable.
 type SchemaSnapshot struct {
-	Schema    Schema
-	Hash      string
-	Inventory CatalogInventory
+	Schema           Schema
+	UnfilteredSchema Schema
+	Hash             string
+	Inventory        CatalogInventory
 }
 
 // Normalize sorts schema objects while preserving the physical order of table columns.
@@ -624,22 +625,29 @@ func GetSchemaSnapshot(ctx context.Context, db *pgxpool.Pool, opts ...GetSchemaO
 }
 
 func getSchemaSnapshot(ctx context.Context, db dbsqlc.DBTX, nameFilter nameFilter) (SchemaSnapshot, error) {
-	fetchedSchema, err := (&schemaFetcher{nameFilter: nameFilter}).getSchema(ctx, db)
+	unfilteredSchema, err := (&schemaFetcher{nameFilter: func(SchemaQualifiedName) bool {
+		return true
+	}}).getSchema(ctx, db)
 	if err != nil {
 		return SchemaSnapshot{}, err
 	}
+	fetchedSchema := filterSchema(*unfilteredSchema, nameFilter)
 	inventory, err := fetchCatalogInventory(ctx, db)
 	if err != nil {
 		return SchemaSnapshot{}, fmt.Errorf("fetching catalog inventory: %w", err)
 	}
 
 	normalizedSchema := fetchedSchema.Normalize()
+	normalizedUnfilteredSchema := unfilteredSchema.Normalize()
 	hash, err := normalizedSchema.Hash()
 	if err != nil {
 		return SchemaSnapshot{}, fmt.Errorf("hashing schema: %w", err)
 	}
 
-	return SchemaSnapshot{Schema: normalizedSchema, Hash: hash, Inventory: inventory}, nil
+	return SchemaSnapshot{
+		Schema: normalizedSchema, UnfilteredSchema: normalizedUnfilteredSchema,
+		Hash: hash, Inventory: inventory,
+	}, nil
 }
 
 func getSchemaNameFilter(opts ...GetSchemaOpt) (nameFilter, error) {
@@ -776,6 +784,11 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (*Schema,
 		return nil, err
 	}
 
+	filtered := filterSchema(result, s.nameFilter)
+	return &filtered, nil
+}
+
+func filterSchema(result Schema, nameFilter nameFilter) Schema {
 	result.NamedSchemas = filterSliceByName(
 		result.NamedSchemas,
 		func(s NamedSchema) SchemaQualifiedName {
@@ -784,21 +797,21 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (*Schema,
 				EscapedName: EscapeIdentifier(s.Name),
 			}
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.Extensions = filterSliceByName(
 		result.Extensions,
 		func(e Extension) SchemaQualifiedName {
 			return e.SchemaQualifiedName
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.Enums = filterSliceByName(
 		result.Enums,
 		func(enum Enum) SchemaQualifiedName {
 			return enum.SchemaQualifiedName
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 
 	var filteredTables []Table
@@ -811,7 +824,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (*Schema,
 					EscapedName: EscapeIdentifier(cc.Name),
 				}
 			},
-			s.nameFilter,
+			nameFilter,
 		)
 		table.Policies = filterSliceByName(
 			table.Policies,
@@ -821,14 +834,14 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (*Schema,
 					EscapedName: p.EscapedName,
 				}
 			},
-			s.nameFilter,
+			nameFilter,
 		)
 		table.Privileges = filterSliceByName(
 			table.Privileges,
 			func(TablePrivilege) SchemaQualifiedName {
 				return table.SchemaQualifiedName
 			},
-			s.nameFilter,
+			nameFilter,
 		)
 		filteredTables = append(filteredTables, table)
 	}
@@ -837,14 +850,14 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (*Schema,
 		func(t Table) SchemaQualifiedName {
 			return t.SchemaQualifiedName
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.Indexes = filterSliceByName(
 		result.Indexes,
 		func(idx Index) SchemaQualifiedName {
 			return idx.GetSchemaQualifiedName()
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.ForeignKeyConstraints = filterSliceByName(
 		result.ForeignKeyConstraints,
@@ -854,7 +867,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (*Schema,
 				EscapedName: fkCon.EscapedName,
 			}
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.Sequences = filterSliceByName(
 		result.Sequences,
@@ -864,21 +877,21 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (*Schema,
 				EscapedName: seq.EscapedName,
 			}
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.Functions = filterSliceByName(
 		result.Functions,
 		func(function Function) SchemaQualifiedName {
 			return function.SchemaQualifiedName
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.Procedures = filterSliceByName(
 		result.Procedures,
 		func(procedure Procedure) SchemaQualifiedName {
 			return procedure.SchemaQualifiedName
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.Triggers = filterSliceByName(
 		result.Triggers,
@@ -888,24 +901,24 @@ func (s *schemaFetcher) getSchema(ctx context.Context, db dbsqlc.DBTX) (*Schema,
 				EscapedName: trigger.EscapedName,
 			}
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.Views = filterSliceByName(
 		result.Views,
 		func(view View) SchemaQualifiedName {
 			return view.SchemaQualifiedName
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 	result.MaterializedViews = filterSliceByName(
 		result.MaterializedViews,
 		func(materializedView MaterializedView) SchemaQualifiedName {
 			return materializedView.SchemaQualifiedName
 		},
-		s.nameFilter,
+		nameFilter,
 	)
 
-	return &result, nil
+	return result
 }
 
 func wrapSchemaFetchError(name string, err error) error {

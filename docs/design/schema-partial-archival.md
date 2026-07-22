@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-16 complete
+Status: Proposed; delivery Stages 0-17 complete
 
 ## Summary
 
@@ -87,7 +87,7 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first sixteen delivery stages are complete. Public `Generate` does not yet
+The first seventeen delivery stages are complete. Public `Generate` does not yet
 retain tables or generate cleanup statements; ordinary table deletion still has
 the behavior described above. Public `Generate` independently rejects extension
 drops or version/schema updates when the changed extension owns an unfiltered
@@ -175,6 +175,12 @@ The implemented foundation includes:
   groups receive ordinary marker-comment updates when a later dependency move or
   shared component changes their payload. The planner remains disconnected from
   public `Generate`.
+- Dormant two-phase archival validation that revalidates source-only facts before
+  temporary SQL, reconstructs the unfiltered modeled source and trusted existing
+  groups, translates database-local OIDs for synthetic assertions, proves the
+  filtered retention postcondition, then proves cleanup scope, target identity
+  preservation, and the complete cleanup postcondition in the same temporary
+  database. It remains disconnected from public `assertValidPlan` and `Generate`.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -725,6 +731,34 @@ retention state. Source preflight and dedicated integration tests cover
 unmodeled/external state. It does not guarantee future executability after
 arbitrary database drift.
 
+The Stage 17 synthetic path retains an unfiltered modeled schema alongside the
+managed schema in the same catalog snapshot. This reconstruction-only field does
+not affect the existing hash. Existing group tables, indexes, constraints,
+partition links, routines, types, sequences, user rules, and extended statistics
+are reconstructed rather than replaced by empty placeholders. An existing
+cleanup dependency that the modeled schema and explicit follower reconstruction
+cannot reproduce fails validation closed.
+
+PostgreSQL restore cannot preserve OIDs. Stage 17 therefore first proves the
+persisted production OIDs, marker copies, topology, cleanup edges, and digests
+against the immutable source snapshot. It then deterministically maps each
+catalog-class/OID address to the same identity in the validation database,
+regenerates marker text and archival assertion SQL with validation OIDs, and runs
+those regenerated assertions. TOAST names are regenerated from the validation
+table identity. The original production-OID assertion SQL is not executed and is
+not claimed as validated; cleanup digests remain a source-static proof because
+their canonical operations intentionally contain production OIDs.
+
+Table/column options, comments, missing-value state, replica identity, clustering,
+RLS, trigger/policy definitions, and similar `SET SCHEMA` followers are checked
+against the source inventory and covered by real-PostgreSQL move tests. They are
+not attributed to the synthetic reconstruction when the ordinary model omits
+them. Temporary relations, security-label providers, custom table access methods,
+and cleanup dependency kinds without exact reconstruction fail closed. Role and
+ACL SQL is validated from the Stage 6 grant graph and DBMS-wide role tests; the
+synthetic executor may skip role-dependent statements, and cluster-wide role OIDs
+are not part of the cleanup pre/post identity comparison.
+
 The current acceptance harness compares complete schema-only dumps. For
 retention tests, compare the filtered managed dump after regular statements, then
 apply cleanup statements and compare the complete dump with the target database.
@@ -831,7 +865,7 @@ stage's scope.
 | 14 | Isolation and dependency rewiring | Complete | 6, 10, 11, 13 |
 | 15 | Declarative partition retention | Complete | 3, 14 |
 | 16 | Global cleanup graph | Complete | 1, 8, 11, 15 |
-| 17 | Two-phase plan validation | Pending | 4, 6, 10, 16 |
+| 17 | Two-phase plan validation | Complete | 4, 6, 10, 16 |
 | 18 | Versioned snapshot hash | Pending | 2, 4, 5, 6, 9, 10, 11, 16 |
 | 19 | Schema partial archival activation and documentation | Pending | 13-18 |
 
@@ -1366,7 +1400,7 @@ Acceptance gate:
 
 ### Stage 17: Two-phase plan validation
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 4, 6, 10, and 16.
 

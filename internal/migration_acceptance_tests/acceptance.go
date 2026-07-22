@@ -52,6 +52,15 @@ type (
 		//
 		// If no expectedDBSchemaDDL is specified, the newSchemaDDL will be used
 		expectedDBSchemaDDL []string
+
+		// Archival plans compare a filtered schema after regular statements and
+		// the complete schema after cleanup. These fields remain dormant until
+		// the archival plan factory is activated.
+		expectedPostRegularDBSchemaDDL []string
+		postRegularExcludeSchemas      []string
+		applyCleanupStatements         bool
+		postRegularAssertions          func(*testing.T, *pgxpool.Pool)
+		postCleanupAssertions          func(*testing.T, *pgxpool.Pool)
 	}
 
 	// DBMSWideAcceptanceTestCase describes an acceptance test that requires cluster-level objects.
@@ -158,13 +167,23 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	// Apply the plan
 	require.NoError(t, applyPlan(t.Context(), oldDb.ConnPool, plan), prettySprintPlan(plan))
 
-	// Make sure the pgdump after running the migration is the same as the
-	// pgdump from a database where we directly run the newSchemaDDL
-	oldDbDump, err := pgdump.GetDump(oldDb.ConnPool, pgdump.WithSchemaOnly(),
-		pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
+	if tc.postRegularAssertions != nil {
+		tc.postRegularAssertions(t, oldDb.ConnPool)
+	}
+	postRegularDumpOptions := []pgdump.Parameter{
+		pgdump.WithSchemaOnly(), pgdump.WithRestrictKey(pgdump.FixedRestrictKey),
+	}
+	for _, schemaName := range tc.postRegularExcludeSchemas {
+		postRegularDumpOptions = append(postRegularDumpOptions, pgdump.WithExcludeSchema(schemaName))
+	}
+	oldDbDump, err := pgdump.GetDump(oldDb.ConnPool, postRegularDumpOptions...)
 	require.NoError(t, err)
 
-	newDbDump := directlyRunDDLAndGetDump(t, tempDbFactory, tc.expectedDBSchemaDDL)
+	postRegularDDL := tc.expectedDBSchemaDDL
+	if tc.expectedPostRegularDBSchemaDDL != nil {
+		postRegularDDL = tc.expectedPostRegularDBSchemaDDL
+	}
+	newDbDump := directlyRunDDLAndGetDump(t, tempDbFactory, postRegularDDL)
 	assert.Equal(t, newDbDump, oldDbDump, prettySprintPlan(plan))
 
 	if tc.expectedPlanDDL != nil {
@@ -182,6 +201,19 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	plan, err = tc.planFactory(t.Context(), oldDb.ConnPool, tempDbFactory, tc.newSchemaDDL, tc.planOpts...)
 	require.NoError(t, err)
 	assert.Empty(t, plan.Statements, prettySprintPlan(plan))
+
+	if tc.applyCleanupStatements {
+		require.NoError(t, applyStatements(t.Context(), oldDb.ConnPool, plan.CleanupStatements),
+			prettySprintPlan(plan))
+		if tc.postCleanupAssertions != nil {
+			tc.postCleanupAssertions(t, oldDb.ConnPool)
+		}
+		postCleanupDump, err := pgdump.GetDump(oldDb.ConnPool, pgdump.WithSchemaOnly(),
+			pgdump.WithRestrictKey(pgdump.FixedRestrictKey))
+		require.NoError(t, err)
+		expectedPostCleanupDump := directlyRunDDLAndGetDump(t, tempDbFactory, tc.expectedDBSchemaDDL)
+		assert.Equal(t, expectedPostCleanupDump, postCleanupDump, prettySprintPlan(plan))
+	}
 }
 
 func directlyRunDDLAndGetDump(t *testing.T, factory *testdb.Factory, ddl []string) string {
@@ -205,8 +237,12 @@ func applyDDL(ctx context.Context, db *pgxpool.Pool, ddl []string) error {
 }
 
 func applyPlan(ctx context.Context, db *pgxpool.Pool, plan diff.Plan) error {
+	return applyStatements(ctx, db, plan.Statements)
+}
+
+func applyStatements(ctx context.Context, db *pgxpool.Pool, statements []diff.Statement) error {
 	var ddl []string
-	for _, stmt := range plan.Statements {
+	for _, stmt := range statements {
 		ddl = append(ddl, stmt.ToSQL())
 	}
 	return applyDDL(ctx, db, ddl)

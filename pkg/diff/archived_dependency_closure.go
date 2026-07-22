@@ -146,7 +146,8 @@ func planArchivedDependencyClosure(
 			address := currentTraversal.addressForKey(key)
 			if isArchivedDependencyLocalAddress(key, seeds) ||
 				(helpers[key] && isAutomaticallyMovedArchivedDependencyHelper(current.Inventory, key)) ||
-				isIgnoredArchivedDependencyClass(key.classOID) {
+				isIgnoredArchivedDependencyClass(key.classOID) ||
+				isRetainedParentPartitionBoundary(current.Inventory, key, group.tableRelationOIDs) {
 				continue
 			}
 			resolved, supported, err := resolveArchivedDependency(current.Inventory, address)
@@ -278,6 +279,23 @@ func planArchivedDependencyClosure(
 		result.ValidatedGroupIDs = append(result.ValidatedGroupIDs, group.id)
 	}
 	return result, nil
+}
+
+func isRetainedParentPartitionBoundary(
+	inventory schema.CatalogInventory,
+	key archivedDependencyAddressKey,
+	groupRelationOIDs []uint32,
+) bool {
+	if key.classOID != pgClassCatalogOID || slices.Contains(groupRelationOIDs, key.objectOID) {
+		return false
+	}
+	for _, edge := range inventory.InheritanceEdges {
+		if edge.ParentRelationOID == key.objectOID &&
+			slices.Contains(groupRelationOIDs, edge.ChildRelationOID) {
+			return true
+		}
+	}
+	return false
 }
 
 func removeArchivedBoundaryForeignKeyTraversal(

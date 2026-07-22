@@ -172,6 +172,9 @@ func planArchivalIsolation(
 			SharedDependencyEdges: canonicalArchivedDependencyGroupEdges(nil),
 		})
 	}
+	for idx := range plan.Groups {
+		groupPlans[plan.Groups[idx].GroupID] = nil
+	}
 	for _, validated := range closure.DependencyValidatedCandidateGroups {
 		candidate := validated.Candidate
 		if _, exists := groupPlans[candidate.GroupID]; exists {

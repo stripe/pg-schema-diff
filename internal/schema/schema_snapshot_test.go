@@ -114,6 +114,32 @@ func TestGetSchemaSnapshotUsesOneReadOnlyRepeatableReadTransaction(t *testing.T)
 	}
 }
 
+func TestGetSchemaSnapshotRetainsUnfilteredModelForValidationReconstruction(t *testing.T) {
+	t.Parallel()
+
+	factory := testdb.MustNewFactory(t)
+	db := factory.CreateDatabase(t)
+	_, err := db.ConnPool.Exec(t.Context(), `
+		CREATE SCHEMA managed_snapshot;
+		CREATE SCHEMA hidden_snapshot;
+		CREATE TABLE managed_snapshot.kept (id bigint);
+		CREATE TABLE hidden_snapshot.reconstructed (id bigint);
+	`)
+	require.NoError(t, err)
+
+	snapshot, err := GetSchemaSnapshot(t.Context(), db.ConnPool,
+		WithIncludeSchemaPatterns("managed_snapshot"))
+	require.NoError(t, err)
+	assert.Len(t, snapshot.Schema.Tables, 1)
+	assert.Equal(t, "managed_snapshot", snapshot.Schema.Tables[0].SchemaName)
+	assert.Len(t, snapshot.UnfilteredSchema.Tables, 2)
+	assert.Contains(t, snapshot.UnfilteredSchema.NamedSchemas, NamedSchema{Name: "hidden_snapshot"})
+	expectedHash, err := snapshot.Schema.Hash()
+	require.NoError(t, err)
+	assert.Equal(t, expectedHash, snapshot.Hash,
+		"the dormant reconstruction model must not expand the public schema hash")
+}
+
 type catalogQueryGate struct {
 	tx pgx.Tx
 
