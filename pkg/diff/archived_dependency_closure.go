@@ -46,6 +46,7 @@ type archivedDependencyClosureRequest struct {
 }
 
 type archivedDependencyClosureResult struct {
+	ValidatedGroupIDs                  []archivalGroupID
 	Objects                            []archivedDependencyClosureObject
 	Assignments                        []archivedDependencyAssignment
 	SharedGroupEdges                   []archivalMarkerSharedGroupEdgeV1
@@ -271,6 +272,9 @@ func planArchivedDependencyClosure(
 		return archivedDependencyClosureResult{}, err
 	}
 	result.DependencyValidatedCandidateGroups = validated
+	for _, group := range groups {
+		result.ValidatedGroupIDs = append(result.ValidatedGroupIDs, group.id)
+	}
 	return result, nil
 }
 

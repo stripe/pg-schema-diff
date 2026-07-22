@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-11 complete
+Status: Proposed; delivery Stages 0-12 complete
 
 ## Summary
 
@@ -87,12 +87,12 @@ Other generators depend on that physical deletion:
 
 ### Implemented foundation
 
-The first ten delivery stages are complete. They do not yet retain tables or
-generate cleanup statements; ordinary table deletion still has the behavior
-described above. Public `Generate` now independently rejects extension drops or
-version/schema updates when the changed extension owns an unfiltered ordinary,
-partitioned, partition, or foreign-table relation. No other archival preflight
-or retention behavior is active.
+The first thirteen delivery stages are complete. Public `Generate` does not yet
+retain tables or generate cleanup statements; ordinary table deletion still has
+the behavior described above. Public `Generate` independently rejects extension
+drops or version/schema updates when the changed extension owns an unfiltered
+ordinary, partitioned, partition, or foreign-table relation. No other archival
+preflight or retention behavior is active.
 
 The implemented foundation includes:
 
@@ -148,6 +148,11 @@ The implemented foundation includes:
 - An independent public extension safety check that rejects extension drops or
   version/schema updates owning hidden table-like relations, including when plan
   validation is disabled and no modeled table diff exists.
+- A dormant plain-table move graph that atomically initializes and locks down
+  marked cleanup groups, moves ordinary tables with strong-lock hazards, resumes
+  Stage 9 partial state using recorded names, refreshes supplied finalized
+  markers, and asserts exact post-move catalog identities. It rejects work owned
+  by later stages and remains disconnected from public `Generate`.
 
 The current prefix-only exclusion is transitional. It can hide an unrelated
 user-created schema with the same prefix. The complete archival implementation
@@ -780,7 +785,7 @@ stage's scope.
 | 9 | Archived-state resolver | Complete | 8 |
 | 10 | Source safety preflight | Complete | 5, 9 |
 | 11 | Archived dependency closure | Complete | 5, 9, 10 |
-| 12 | Dormant plain-table move engine | Pending | 7, 9, 10, 11 |
+| 12 | Dormant plain-table move engine | Complete | 7, 9, 10, 11 |
 | 13 | Replacement-aware regular graph | Pending | 12 |
 | 14 | Isolation and dependency rewiring | Pending | 6, 10, 11, 13 |
 | 15 | Declarative partition retention | Pending | 3, 14 |
@@ -1148,7 +1153,7 @@ Acceptance gate:
 
 ### Stage 12: Dormant plain-table move engine
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 7, 9, 10, and 11.
 

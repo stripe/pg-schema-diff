@@ -35,11 +35,12 @@ type sourceSafetyExpectedRetainedObject struct {
 }
 
 type sourceSafetyPreflightResult struct {
-	ExpectedRetainedObjects []sourceSafetyExpectedRetainedObject
-	IncomingDependencies    []sourceSafetyIncomingDependency
-	ForeignKeys             []sourceSafetyForeignKey
-	PublicationRelations    []schema.CatalogPublicationRelation
-	PublicationSchemas      []schema.CatalogPublicationSchema
+	ValidatedTableRelationOIDs []uint32
+	ExpectedRetainedObjects    []sourceSafetyExpectedRetainedObject
+	IncomingDependencies       []sourceSafetyIncomingDependency
+	ForeignKeys                []sourceSafetyForeignKey
+	PublicationRelations       []schema.CatalogPublicationRelation
+	PublicationSchemas         []schema.CatalogPublicationSchema
 }
 
 type sourceSafetyManagedScope string
@@ -322,6 +323,7 @@ func runSourceSafetyPreflight(request sourceSafetyPreflightRequest) (sourceSafet
 		)
 	}
 
+	result.ValidatedTableRelationOIDs = proposedRelationOIDs
 	return result, nil
 }
 
