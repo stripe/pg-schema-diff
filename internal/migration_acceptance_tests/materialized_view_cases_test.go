@@ -201,7 +201,8 @@ var materializedViewAcceptanceTestCases = []acceptanceTestCase{
 		},
 		newSchemaDDL: nil,
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{
@@ -268,9 +269,7 @@ var materializedViewAcceptanceTestCases = []acceptanceTestCase{
                 GROUP BY DATE_TRUNC('month', buzz);
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
-		},
+		expectedPlanErrorContains: "persistent materialized_view",
 	},
 	{
 		name: "Recreate materialized view due dependent table changing",
@@ -302,9 +301,7 @@ var materializedViewAcceptanceTestCases = []acceptanceTestCase{
                 GROUP BY foo;
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
-		},
+		expectedPlanErrorContains: "persistent materialized_view",
 	},
 	{
 		name: "Recreate materialized view due to dependent column changing",
@@ -606,7 +603,8 @@ var materializedViewAcceptanceTestCases = []acceptanceTestCase{
 		},
 		newSchemaDDL: nil,
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 }

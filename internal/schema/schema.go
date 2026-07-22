@@ -14,6 +14,8 @@ import (
 	dbsqlc "github.com/stripe/pg-schema-diff/internal/queries"
 )
 
+const DefaultCleanupSchemaPrefix = "pgschemadiff_archive"
+
 type (
 	// Object represents a resource in a schema (table, column, index...)
 	Object interface {
@@ -919,6 +921,20 @@ func filterSchema(result Schema, nameFilter nameFilter) Schema {
 	)
 
 	return result
+}
+
+// ExcludeSchemaNames returns a normalized copy without objects in the named
+// schemas. It is used after archival marker validation so catalog acquisition
+// can remain unfiltered until trust has been established.
+func ExcludeSchemaNames(input Schema, names []string) Schema {
+	excluded := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		excluded[name] = struct{}{}
+	}
+	return filterSchema(input, func(name SchemaQualifiedName) bool {
+		_, skip := excluded[name.SchemaName]
+		return !skip
+	}).Normalize()
 }
 
 func wrapSchemaFetchError(name string, err error) error {

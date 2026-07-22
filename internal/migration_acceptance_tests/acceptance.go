@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -54,8 +55,7 @@ type (
 		expectedDBSchemaDDL []string
 
 		// Archival plans compare a filtered schema after regular statements and
-		// the complete schema after cleanup. These fields remain dormant until
-		// the archival plan factory is activated.
+		// the complete schema after cleanup.
 		expectedPostRegularDBSchemaDDL []string
 		postRegularExcludeSchemas      []string
 		applyCleanupStatements         bool
@@ -65,15 +65,16 @@ type (
 
 	// DBMSWideAcceptanceTestCase describes an acceptance test that requires cluster-level objects.
 	DBMSWideAcceptanceTestCase struct {
-		Name                string
-		Roles               []string
-		OldSchemaDDL        []string
-		NewSchemaDDL        []string
-		ExpectedHazardTypes []diff.MigrationHazardType
-		ExpectedPlanErrorIs error
-		ExpectedPlanDDL     []string
-		ExpectEmptyPlan     bool
-		ExpectedDBSchemaDDL []string
+		Name                      string
+		Roles                     []string
+		OldSchemaDDL              []string
+		NewSchemaDDL              []string
+		ExpectedHazardTypes       []diff.MigrationHazardType
+		ExpectedPlanErrorIs       error
+		ExpectedPlanErrorContains string
+		ExpectedPlanDDL           []string
+		ExpectEmptyPlan           bool
+		ExpectedDBSchemaDDL       []string
 	}
 )
 
@@ -84,15 +85,16 @@ func RunDBMSWideTestCases(t *testing.T, testCases []DBMSWideAcceptanceTestCase) 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			runTest(t, acceptanceTestCase{
-				name:                tc.Name,
-				roles:               tc.Roles,
-				oldSchemaDDL:        tc.OldSchemaDDL,
-				newSchemaDDL:        tc.NewSchemaDDL,
-				expectedHazardTypes: tc.ExpectedHazardTypes,
-				expectedPlanErrorIs: tc.ExpectedPlanErrorIs,
-				expectedPlanDDL:     tc.ExpectedPlanDDL,
-				expectEmptyPlan:     tc.ExpectEmptyPlan,
-				expectedDBSchemaDDL: tc.ExpectedDBSchemaDDL,
+				name:                      tc.Name,
+				roles:                     tc.Roles,
+				oldSchemaDDL:              tc.OldSchemaDDL,
+				newSchemaDDL:              tc.NewSchemaDDL,
+				expectedHazardTypes:       tc.ExpectedHazardTypes,
+				expectedPlanErrorIs:       tc.ExpectedPlanErrorIs,
+				expectedPlanErrorContains: tc.ExpectedPlanErrorContains,
+				expectedPlanDDL:           tc.ExpectedPlanDDL,
+				expectEmptyPlan:           tc.ExpectEmptyPlan,
+				expectedDBSchemaDDL:       tc.ExpectedDBSchemaDDL,
 			})
 		})
 	}
@@ -173,8 +175,12 @@ func runTest(t *testing.T, tc acceptanceTestCase) {
 	postRegularDumpOptions := []pgdump.Parameter{
 		pgdump.WithSchemaOnly(), pgdump.WithRestrictKey(pgdump.FixedRestrictKey),
 	}
-	for _, schemaName := range tc.postRegularExcludeSchemas {
-		postRegularDumpOptions = append(postRegularDumpOptions, pgdump.WithExcludeSchema(schemaName))
+	postRegularExcludeSchemas := append([]string{}, tc.postRegularExcludeSchemas...)
+	postRegularExcludeSchemas = append(postRegularExcludeSchemas, cleanupSchemaNames(plan)...)
+	for _, schemaName := range postRegularExcludeSchemas {
+		quotedPattern := `"` + strings.ReplaceAll(schemaName, `"`, `""`) + `"`
+		postRegularDumpOptions = append(postRegularDumpOptions,
+			pgdump.WithExcludeSchema(quotedPattern))
 	}
 	oldDbDump, err := pgdump.GetDump(oldDb.ConnPool, postRegularDumpOptions...)
 	require.NoError(t, err)
@@ -263,7 +269,23 @@ func getUniqueHazardTypesFromStatements(statements []diff.Statement) []diff.Migr
 }
 
 func prettySprintPlan(plan diff.Plan) string {
-	return fmt.Sprintf("%# v", pretty.Formatter(plan.Statements))
+	return fmt.Sprintf("ordinary: %# v\ncleanup: %# v",
+		pretty.Formatter(plan.Statements), pretty.Formatter(plan.CleanupStatements))
+}
+
+func cleanupSchemaNames(plan diff.Plan) []string {
+	var result []string
+	for _, statement := range plan.CleanupStatements {
+		const prefix = `DROP SCHEMA "`
+		const suffix = `" RESTRICT`
+		if !strings.HasPrefix(statement.DDL, prefix) ||
+			!strings.HasSuffix(statement.DDL, suffix) {
+			continue
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(statement.DDL, prefix), suffix)
+		result = append(result, strings.ReplaceAll(name, `""`, `"`))
+	}
+	return result
 }
 
 type deterministicRandReader struct {

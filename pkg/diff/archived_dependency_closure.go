@@ -107,7 +107,7 @@ type archivedDependencyTraversal struct {
 	supportFunctions   map[archivedDependencyAddressKey][]schema.CatalogDependencyObject
 }
 
-// planArchivedDependencyClosure is dormant until archival activation. Raw
+// planArchivedDependencyClosure plans dependencies retained with archived tables. Raw
 // pg_depend direction is dependent -> referenced: traversal follows outgoing
 // references and follows reverse edges only for owned/internal helper objects.
 func planArchivedDependencyClosure(
@@ -127,7 +127,7 @@ func planArchivedDependencyClosure(
 	}
 
 	currentTraversal := buildArchivedDependencyTraversal(current.Inventory)
-	removeArchivedBoundaryForeignKeyTraversal(&currentTraversal, request.SourcePreflight)
+	removeArchivedBoundaryForeignKeyTraversal(&currentTraversal, current.Inventory, request.SourcePreflight)
 	targetTraversal := buildArchivedDependencyTraversal(target.Inventory)
 	managedTargetAddresses := managedTargetDependencyAddresses(target, targetTraversal)
 	resolvedByAddress := make(map[archivedDependencyAddressKey]resolvedArchivedDependency)
@@ -147,7 +147,7 @@ func planArchivedDependencyClosure(
 			if isArchivedDependencyLocalAddress(key, seeds) ||
 				(helpers[key] && isAutomaticallyMovedArchivedDependencyHelper(current.Inventory, key)) ||
 				isIgnoredArchivedDependencyClass(key.classOID) ||
-				isRetainedParentPartitionBoundary(current.Inventory, key, group.tableRelationOIDs) {
+				isRetainedParentPartitionBoundary(current.Inventory, key, *group) {
 				continue
 			}
 			resolved, supported, err := resolveArchivedDependency(current.Inventory, address)
@@ -284,14 +284,21 @@ func planArchivedDependencyClosure(
 func isRetainedParentPartitionBoundary(
 	inventory schema.CatalogInventory,
 	key archivedDependencyAddressKey,
-	groupRelationOIDs []uint32,
+	group preparedArchivedDependencyGroup,
 ) bool {
-	if key.classOID != pgClassCatalogOID || slices.Contains(groupRelationOIDs, key.objectOID) {
+	if key.classOID != pgClassCatalogOID || slices.Contains(group.tableRelationOIDs, key.objectOID) {
 		return false
+	}
+	if group.candidate != nil {
+		for _, lost := range group.candidate.Marker.LostParentAttachments {
+			if lost.ParentTable.OID == key.objectOID {
+				return true
+			}
+		}
 	}
 	for _, edge := range inventory.InheritanceEdges {
 		if edge.ParentRelationOID == key.objectOID &&
-			slices.Contains(groupRelationOIDs, edge.ChildRelationOID) {
+			slices.Contains(group.tableRelationOIDs, edge.ChildRelationOID) {
 			return true
 		}
 	}
@@ -300,6 +307,7 @@ func isRetainedParentPartitionBoundary(
 
 func removeArchivedBoundaryForeignKeyTraversal(
 	traversal *archivedDependencyTraversal,
+	inventory schema.CatalogInventory,
 	preflight sourceSafetyPreflightResult,
 ) {
 	excluded := make(map[archivedDependencyAddressKey]struct{})
@@ -312,6 +320,22 @@ func removeArchivedBoundaryForeignKeyTraversal(
 		}] = struct{}{}
 		for _, triggerOID := range foreignKey.TriggerOIDs {
 			excluded[archivedDependencyAddressKey{classOID: pgTriggerCatalogOID, objectOID: triggerOID}] = struct{}{}
+		}
+	}
+	for _, foreignKey := range inventory.ForeignKeys {
+		if foreignKey.ParentConstraintOID != 0 {
+			excluded[archivedDependencyAddressKey{
+				classOID: pgConstraintCatalogOID, objectOID: foreignKey.OID,
+			}] = struct{}{}
+		}
+	}
+	for _, trigger := range inventory.Triggers {
+		if _, inheritedForeignKey := excluded[archivedDependencyAddressKey{
+			classOID: pgConstraintCatalogOID, objectOID: trigger.ConstraintOID,
+		}]; inheritedForeignKey {
+			excluded[archivedDependencyAddressKey{
+				classOID: pgTriggerCatalogOID, objectOID: trigger.OID,
+			}] = struct{}{}
 		}
 	}
 	for key := range excluded {
@@ -725,13 +749,13 @@ func resolveArchivedDependency(
 				extensionName == "", extensionName,
 		), true, nil
 	case pgClassCatalogOID:
-		sequence, count := standaloneSequenceByOIDForClosure(inventory, address.ObjectOID)
+		sequence, owned, count := sequenceByOIDForClosure(inventory, address.ObjectOID)
 		if count == 0 {
 			return resolvedArchivedDependency{}, false, nil
 		}
 		if count > 1 {
 			return resolvedArchivedDependency{}, false,
-				fmt.Errorf("ambiguous standalone sequence OID %d", address.ObjectOID)
+				fmt.Errorf("ambiguous sequence OID %d", address.ObjectOID)
 		}
 		dataType, err := archivedTypeReference(inventory, sequence.DataTypeOID)
 		if err != nil {
@@ -755,7 +779,8 @@ func resolveArchivedDependency(
 			sequence.SchemaName, sequence.Name)
 		extensionName := archivedDependencyExtensionName(inventory, address)
 		return newResolvedArchivedDependency(
-			address, identity, definition, isMovableArchivedDependencySchema(sequence.SchemaName) &&
+			address, identity, definition, !owned &&
+				isMovableArchivedDependencySchema(sequence.SchemaName) &&
 				extensionName == "", extensionName,
 		), true, nil
 	case pgExtensionCatalogOID:
@@ -1610,13 +1635,15 @@ func catalogOperatorByOIDForClosure(inventory schema.CatalogInventory, oid uint3
 	return result, count
 }
 
-func standaloneSequenceByOIDForClosure(
+func sequenceByOIDForClosure(
 	inventory schema.CatalogInventory,
 	oid uint32,
-) (schema.CatalogSequence, int) {
-	for _, owned := range inventory.OwnedSequences {
-		if owned.SequenceOID == oid {
-			return schema.CatalogSequence{}, 0
+) (schema.CatalogSequence, bool, int) {
+	owned := false
+	for _, ownership := range inventory.OwnedSequences {
+		if ownership.SequenceOID == oid {
+			owned = true
+			break
 		}
 	}
 	var result schema.CatalogSequence
@@ -1627,7 +1654,7 @@ func standaloneSequenceByOIDForClosure(
 			count++
 		}
 	}
-	return result, count
+	return result, owned, count
 }
 
 func catalogExtensionByOIDForClosure(

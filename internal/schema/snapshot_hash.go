@@ -46,7 +46,7 @@ type snapshotHashFieldV1 struct {
 	Value any    `json:"value"`
 }
 
-// BuildSchemaSnapshotHashV1 returns the dormant Stage 18 candidate hash. The
+// BuildSchemaSnapshotHashV1 returns the active versioned snapshot hash. The
 // modeled schema and every catalog field are projected explicitly below, so a
 // future Go struct field cannot silently change the v1 contract.
 func BuildSchemaSnapshotHashV1(

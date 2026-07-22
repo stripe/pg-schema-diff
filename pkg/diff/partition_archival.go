@@ -166,6 +166,7 @@ func validateArchivalGroupAgainstInventory(
 				return err
 			}
 			expected = filterLostClonedTriggersFromPartitionEdge(expected, group.marker)
+			expected = filterDetachedPartitionEdgeTriggers(expected, group.marker)
 			if !reflect.DeepEqual(canonicalizeArchivalPartitionEdge(edge), expected) {
 				return fmt.Errorf("partition metadata for group %q edge %s does not match the source catalog",
 					group.id, strings.ReplaceAll(key, "\x00", " -> "))
@@ -246,6 +247,27 @@ func validateArchivalGroupAgainstInventory(
 		}
 	}
 	return nil
+}
+
+func filterDetachedPartitionEdgeTriggers(
+	edge archivalMarkerPartitionEdgeV1,
+	marker archivalMarkerV1,
+) archivalMarkerPartitionEdgeV1 {
+	attached := make(map[uint32]struct{})
+	for _, member := range marker.Members {
+		for _, object := range member.AttachedObjects {
+			if object.Kind == archivalMarkerObjectKindTrigger {
+				attached[object.OID] = struct{}{}
+			}
+		}
+	}
+	edge.ClonedTriggers = slices.DeleteFunc(slices.Clone(edge.ClonedTriggers),
+		func(trigger archivalMarkerClonedTriggerV1) bool {
+			_, parentAttached := attached[trigger.ParentTrigger.OID]
+			_, childAttached := attached[trigger.ChildTrigger.OID]
+			return !parentAttached || !childAttached
+		})
+	return canonicalizeArchivalPartitionEdge(edge)
 }
 
 func validateDetachedSubtreeBoundary(

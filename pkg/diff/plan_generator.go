@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/kr/pretty"
 	"github.com/stripe/pg-schema-diff/internal/pgidentifier"
 	"github.com/stripe/pg-schema-diff/internal/schema"
-	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
@@ -22,7 +20,7 @@ import (
 var errTempDbFactoryRequired = fmt.Errorf("tempDbFactory is required. include the option WithTempDbFactory")
 
 const (
-	defaultSchemaPartialArchivalPrefix = externalschema.DefaultCleanupSchemaPrefix
+	defaultSchemaPartialArchivalPrefix = schema.DefaultCleanupSchemaPrefix
 	maxSchemaPartialArchivalPrefixSize = 21
 )
 
@@ -77,7 +75,7 @@ func WithExcludeSchemaPatterns(patterns ...string) PlanOpt {
 	}
 }
 
-func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
+func WithGetSchemaOpts(getSchemaOpts ...schema.GetSchemaOpt) PlanOpt {
 	return func(opts *planOptions) {
 		opts.getSchemaOpts = append(opts.getSchemaOpts, getSchemaOpts...)
 	}
@@ -100,8 +98,9 @@ func WithNoConcurrentIndexOps() PlanOpt {
 	}
 }
 
-// WithSchemaPartialArchivalPrefix configures the prefix used to identify archival schemas.
-// Schemas whose names start with this prefix are excluded from plan generation.
+// WithSchemaPartialArchivalPrefix configures generated archival schema names and
+// strict discovery of existing marked archival schemas. A custom prefix replaces
+// the default prefix.
 func WithSchemaPartialArchivalPrefix(prefix string) PlanOpt {
 	return func(opts *planOptions) {
 		opts.schemaPartialArchivalPrefix = prefix
@@ -138,9 +137,6 @@ func Generate(
 	if err := validateSchemaPartialArchivalPrefix(planOptions.schemaPartialArchivalPrefix); err != nil {
 		return Plan{}, err
 	}
-	planOptions.getSchemaOpts = append(planOptions.getSchemaOpts,
-		schema.WithExcludeSchemaPatterns(regexp.QuoteMeta(planOptions.schemaPartialArchivalPrefix)+".*"))
-
 	currentSnapshot, err := fromSchema.GetSchemaSnapshot(ctx, schemaSourcePlanDeps{
 		tempDBFactory: planOptions.tempDbFactory,
 		logger:        planOptions.logger,
@@ -161,22 +157,45 @@ func Generate(
 		return Plan{}, err
 	}
 
-	statements, err := generateMigrationStatements(currentSnapshot.Schema, newSnapshot.Schema, planOptions)
+	archival, err := orchestrateArchivalGeneration(currentSnapshot, newSnapshot, planOptions)
 	if err != nil {
-		return Plan{}, fmt.Errorf("generating plan statements: %w", err)
+		return Plan{}, fmt.Errorf("generating archival migration plan: %w", err)
+	}
+	currentHash, err := buildCandidatePlanSnapshotHash(archival.current, archival.cleanup)
+	if err != nil {
+		return Plan{}, fmt.Errorf("hashing current schema snapshot: %w", err)
 	}
 
 	plan := Plan{
-		Statements:        statements,
-		CurrentSchemaHash: currentSnapshot.Hash,
+		Statements:        archival.statements,
+		CleanupStatements: archival.cleanup.CleanupStatements,
+		CurrentSchemaHash: currentHash,
 	}
 
+	archivalValidation := archivalPlanValidationRequest{
+		TempDBFactory: planOptions.tempDbFactory, Logger: planOptions.logger,
+		Prefix:          planOptions.schemaPartialArchivalPrefix,
+		CurrentSnapshot: archival.current, TargetSnapshot: archival.target,
+		OrdinaryStatements: plan.Statements, Cleanup: archival.cleanup,
+		SourcePreflight: archival.preflight, DependencyClosure: archival.dependencyClosure,
+		Isolation: archival.isolation, ManagedSchemaOptions: planOptions.getSchemaOpts,
+	}
+	if len(archival.cleanup.FinalizedMarkers) > 0 {
+		if err := validateArchivalPlanSourceFacts(archivalValidation); err != nil {
+			return Plan{}, fmt.Errorf("validating archival source safety: %w", err)
+		}
+	}
 	if planOptions.validatePlan {
 		if planOptions.tempDbFactory == nil {
 			return Plan{}, fmt.Errorf("cannot validate plan without a tempDbFactory: %w", errTempDbFactoryRequired)
 		}
-		if err := assertValidPlan(ctx, planOptions.tempDbFactory, currentSnapshot.Schema,
-			newSnapshot.Schema, plan, planOptions); err != nil {
+		if len(archival.cleanup.FinalizedMarkers) > 0 {
+			err = validateArchivalPlanTwoPhase(ctx, archivalValidation)
+		} else {
+			err = assertValidPlan(ctx, planOptions.tempDbFactory, archival.current.Schema,
+				archival.target.Schema, plan, planOptions)
+		}
+		if err != nil {
 			return Plan{}, fmt.Errorf("validating migration plan: %w \n%# v", err, pretty.Formatter(plan))
 		}
 	}

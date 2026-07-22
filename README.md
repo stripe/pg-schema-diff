@@ -110,6 +110,7 @@ ALTER TABLE "public"."foobar" DROP CONSTRAINT "pgschemadiff_tmpnn_GimngG1rRkODhK
   * Operators warned of dangerous operations.
   * Migration plans are validated first against a temporary database exactly as they would be performed against the real database.
 * Strong support of partitions
+* Data-preserving table removal with explicit, separately ordered cleanup plans
 # Install
 ```bash
 go get -u github.com/stripe/pg-schema-diff@latest
@@ -134,6 +135,37 @@ if err != nil {
 }	
 ```
 
+Removed and recreated tables are not dropped by the ordinary migration. They are
+moved into uniquely named, marked archival schemas using the default
+`pgschemadiff_archive` prefix. The returned plan has this JSON shape:
+
+```json
+{
+  "statements": [],
+  "cleanup_statements": [
+    {"ddl": "DROP TABLE ... RESTRICT", "hazards": []}
+  ],
+  "current_schema_hash": "pg-schema-diff:snapshot:v1:sha256:..."
+}
+```
+
+`cleanup_statements` is omitted when empty. A custom prefix replaces the default:
+
+```go
+plan, err := diff.Generate(
+	ctx,
+	diff.DBSchemaSource(connPool),
+	diff.DDLSchemaSource(ddl),
+	diff.WithTempDbFactory(tempDbFactory),
+	diff.WithSchemaPartialArchivalPrefix("deleted_archive"),
+)
+```
+
+Include and exclude schema options still accumulate. Prefix-like schemas are not
+trusted by name alone: existing archival schemas must have valid markers and
+matching catalog identities and cleanup digests. Target schemas may not use the
+selected reserved archival naming grammar.
+
 ## 2. Applying plan
 We leave plan application up to the user. For example, you might want to take out a session-level advisory lock if you are 
 concerned about concurrent migrations on your database. You might also want a second user to approve the plan
@@ -147,6 +179,55 @@ for _, stmt := range plan.Statements {
 	}
 }
 ```
+
+Apply only `plan.Statements` for the ordinary migration. This is also the
+compatibility behavior for existing plan consumers: removed rows remain retained
+and `CleanupStatements` is not applied automatically. Do not concatenate the two
+lists. Cleanup is an optional, destructive, later operation with its own hazards:
+
+```go
+for _, stmt := range plan.CleanupStatements {
+	// Require separate review and scheduling before executing destructive cleanup.
+	if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
+		panic(fmt.Sprintf("executing cleanup statement: %s", err))
+	}
+}
+```
+
+Ordinary archival statements can report `AUTHZ_UPDATE`, lock, and `CORRECTNESS`
+hazards. Physical table deletion and its `DELETES_DATA` hazard are confined to
+`CleanupStatements`; standalone destructive changes such as dropping a column or
+sequence may still report `DELETES_DATA` in the ordinary list.
+
+Before applying a stored plan, compare `plan.CurrentSchemaHash` with
+`schema.GetSchemaHash`. Both use the versioned
+`pg-schema-diff:snapshot:v1:sha256:` contract. Plans generated with a custom
+archival prefix must use the matching public helper:
+
+```go
+currentHash, err := schema.GetSchemaHashWithArchivalPrefix(
+	ctx,
+	connPool,
+	"deleted_archive",
+)
+if err != nil || currentHash != plan.CurrentSchemaHash {
+	panic("the source schema changed after plan generation")
+}
+```
+
+The v1 hash intentionally replaces the previous modeled-schema hash and is not
+compatible with stored legacy hash values. Adding `CleanupStatements` to `Plan`
+also means external unkeyed `diff.Plan{...}` literals no longer compile; use keyed
+fields.
+
+Archival supports ordinary tables, complete declarative partition trees, and
+detached declarative subtrees. It preserves supported table-local objects and
+isolates supported ACL, foreign-key, publication, and dependency boundaries.
+Traditional inheritance, foreign-table partitions, extension-owned removed
+tables, untrackable persisting routines, and dependencies that cannot be safely
+round-tripped fail closed. `WithDoNotValidatePlan` disables temporary-database
+execution only; source safety checks still run and never restore destructive table
+deletion.
 
 # Supported Postgres versions
 Supported: 14, 15, 16, 17

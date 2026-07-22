@@ -117,7 +117,7 @@ var migrationHazardArchivalSchemaLockdown = MigrationHazard{
 	Message: "The archival schemas are initialized without access for non-owner roles.",
 }
 
-// generatePlainTableArchivalStatements is dormant until archival activation.
+// generatePlainTableArchivalStatements builds archival move statements.
 func generatePlainTableArchivalStatements(request plainTableArchivalRequest) ([]Statement, error) {
 	groups, err := preparePlainTableArchivalGroups(request)
 	if err != nil {
@@ -484,7 +484,7 @@ func validatePlainTableArchivalPreflight(
 			if err != nil {
 				return err
 			}
-			move = filterPlainTableIsolationObjects(move, preflight, groupByRelationOID)
+			move = filterPlainTableIsolationObjects(inventory, move, preflight, groupByRelationOID)
 			move = filterLostParentClonedTriggers(move, group.marker, member.marker)
 			relation, err := uniqueRelationByOID(inventory, member.marker.SourceTable.OID)
 			if err != nil {
@@ -502,6 +502,7 @@ func validatePlainTableArchivalPreflight(
 }
 
 func filterPlainTableIsolationObjects(
+	inventory schema.CatalogInventory,
 	move schema.CatalogExpectedTableMove,
 	preflight sourceSafetyPreflightResult,
 	groupByRelationOID map[uint32]preparedArchivalGroup,
@@ -517,6 +518,22 @@ func filterPlainTableIsolationObjects(
 		constraints[foreignKey.ForeignKey.OID] = struct{}{}
 		for _, triggerOID := range foreignKey.TriggerOIDs {
 			triggers[triggerOID] = struct{}{}
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, foreignKey := range inventory.ForeignKeys {
+			if _, parentDropped := constraints[foreignKey.ParentConstraintOID]; foreignKey.ParentConstraintOID != 0 && parentDropped {
+				if _, known := constraints[foreignKey.OID]; !known {
+					constraints[foreignKey.OID] = struct{}{}
+					changed = true
+				}
+			}
+		}
+	}
+	for _, trigger := range inventory.Triggers {
+		if _, constraintDropped := constraints[trigger.ConstraintOID]; constraintDropped {
+			triggers[trigger.OID] = struct{}{}
 		}
 	}
 	move.CleanupSchemaObjects = slices.DeleteFunc(slices.Clone(move.CleanupSchemaObjects),

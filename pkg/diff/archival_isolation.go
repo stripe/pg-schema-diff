@@ -130,10 +130,27 @@ var (
 	}
 )
 
-// planArchivalIsolation is dormant until archival activation. It consumes only
-// immutable typed catalog products and validates marker metadata before any SQL
-// graph is constructed.
 func planArchivalIsolation(
+	inventory schema.CatalogInventory,
+	target schema.Schema,
+	preflight sourceSafetyPreflightResult,
+	closure archivedDependencyClosureResult,
+	groups []preparedArchivalGroup,
+) (archivalIsolationPlan, error) {
+	plan, err := buildArchivalIsolationPlan(inventory, target, preflight, closure, groups)
+	if err != nil {
+		return archivalIsolationPlan{}, err
+	}
+	if err := validateArchivalIsolationMarkers(groups, plan.Groups); err != nil {
+		return archivalIsolationPlan{}, err
+	}
+	return plan, nil
+}
+
+// buildArchivalIsolationPlan resolves the Stage 14 side of the marker cycle.
+// The orchestrator writes this metadata into new markers before invoking the
+// validating planArchivalIsolation path.
+func buildArchivalIsolationPlan(
 	inventory schema.CatalogInventory,
 	target schema.Schema,
 	preflight sourceSafetyPreflightResult,
@@ -206,9 +223,6 @@ func planArchivalIsolation(
 		return archivalIsolationPlan{}, err
 	}
 	if err := planArchivalIncomingDependencyDeletes(preflight, &plan); err != nil {
-		return archivalIsolationPlan{}, err
-	}
-	if err := validateArchivalIsolationMarkers(groups, plan.Groups); err != nil {
 		return archivalIsolationPlan{}, err
 	}
 	if err := completeResumedArchivalIncomingForeignKeys(inventory, target, groups, &plan); err != nil {

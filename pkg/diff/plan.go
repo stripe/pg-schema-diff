@@ -56,15 +56,17 @@ func (s Statement) ToSQL() string {
 	return s.DDL + ";"
 }
 
-// Plan represents a set of statements to be executed in order to migrate a database from schema A to schema B.
+// Plan represents an ordinary migration and its optional deferred cleanup.
+// Apply Statements to reach the managed target while retaining removed table
+// data. CleanupStatements are destructive, are never applied automatically, and
+// must not be concatenated with Statements.
 type Plan struct {
 	// Statements is the ordinary migration from schema A to schema B.
 	Statements []Statement `json:"statements"`
-	// CleanupStatements are optional statements that may be executed separately at an unspecified later time.
+	// CleanupStatements physically delete retained objects when executed separately at a later time.
 	CleanupStatements []Statement `json:"cleanup_statements,omitempty"`
-	// CurrentSchemaHash is the hash of the current schema, schema A. If you serialize this plans somewhere and
-	// plan on running them later, you should verify that the current schema hash matches the current schema hash.
-	// To get the current schema hash, you can use schema.GetPublicSchemaHash(ctx, conn)
+	// CurrentSchemaHash is the versioned hash of the source snapshot. Before applying a serialized plan, compare it
+	// with schema.GetSchemaHash or schema.GetSchemaHashWithArchivalPrefix using the same prefix and schema filters.
 	CurrentSchemaHash string `json:"current_schema_hash"`
 }
 

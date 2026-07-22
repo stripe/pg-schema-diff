@@ -7,8 +7,8 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
-// buildCandidatePlanSnapshotHash is the dormant plan-side Stage 18 seam. Stage
-// 16/17 owns marker validation; the shared hasher binds trusted identities to
+// buildCandidatePlanSnapshotHash builds the active plan-side v1 snapshot hash.
+// Stage 16/17 owns marker validation; the shared hasher binds trusted identities to
 // the immutable raw schema OID/name/comment facts instead of parsing markers a
 // second, weaker way.
 func buildCandidatePlanSnapshotHash(

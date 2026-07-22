@@ -35,7 +35,7 @@ func TestArchivalNamesUseSingleTimestampCapturedByGenerate(t *testing.T) {
 		t: t,
 		expectedDeps: schemaSourcePlanDeps{
 			logger:        slog.Default(),
-			getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+			getSchemaOpts: nil,
 		},
 		snapshot: schema.SchemaSnapshot{Hash: "snapshot-hash"},
 	}

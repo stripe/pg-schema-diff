@@ -109,7 +109,7 @@ func TestCandidatePlanSnapshotHashExcludesGenerationAndRenderingState(t *testing
 		"rendered SQL, statement ordering, validation flags, and hazard state are not immutable source facts")
 }
 
-func TestGenerateKeepsCandidateSnapshotHashDormant(t *testing.T) {
+func TestGenerateUsesVersionedSnapshotHash(t *testing.T) {
 	t.Parallel()
 
 	snapshot := schema.SchemaSnapshot{
@@ -122,13 +122,12 @@ func TestGenerateKeepsCandidateSnapshotHashDormant(t *testing.T) {
 	source := fakeSchemaSource{
 		t: t,
 		expectedDeps: schemaSourcePlanDeps{
-			logger: slog.Default(), getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+			logger: slog.Default(), getSchemaOpts: nil,
 		},
 		snapshot: snapshot,
 	}
 
 	plan, err := Generate(t.Context(), source, source, WithDoNotValidatePlan())
 	require.NoError(t, err)
-	assert.Equal(t, "legacy-stage-18-hash", plan.CurrentSchemaHash)
-	assert.NotEqual(t, candidate, plan.CurrentSchemaHash)
+	assert.Equal(t, candidate, plan.CurrentSchemaHash)
 }

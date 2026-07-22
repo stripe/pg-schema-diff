@@ -68,7 +68,7 @@ type discoveredArchivedSchema struct {
 }
 
 // resolveArchivedState reads only the unfiltered catalog inventories. It is
-// dormant and must not be called by Generate until the later trust gates land.
+// Existing groups are filtered only after all later trust gates pass.
 func resolveArchivedState(
 	prefix string,
 	currentSnapshot schema.SchemaSnapshot,

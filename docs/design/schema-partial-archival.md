@@ -1,6 +1,6 @@
 # Schema Partial Archival
 
-Status: Proposed; delivery Stages 0-18 complete
+Status: Implemented; delivery Stages 0-19 complete
 
 ## Summary
 
@@ -61,40 +61,32 @@ coordination, and execution of cleanup statements are intentionally out of scope
 
 ## Current Behavior
 
-Table identity is its schema-qualified escaped name. `diffLists` in
-`pkg/diff/diff.go` places a missing table in `tableDiffs.deletes`. It also emits
-delete plus add when a table must be recreated.
+Table identity remains its schema-qualified escaped name. A missing or recreated
+table enters `tableDiffs.deletes`, but public `Generate` now assigns every such
+table an archival move or cleanup-only disposition. No generated ordinary plan
+uses the physical-delete disposition.
 
-`tableSQLVertexGenerator.deleteStatements` in `pkg/diff/sql_generator.go`
-currently emits:
+The ordinary list initializes marked cleanup schemas, isolates supported
+cross-boundary metadata, moves tables with `ALTER TABLE ... SET SCHEMA`, and
+creates replacement objects after source names are free. Complete declarative
+partition trees move recursively; a removed subtree is moved while attached and
+then detached from its retained parent. The cleanup list contains explicit
+ordered `RESTRICT` drops and is never applied automatically.
 
-```sql
-DROP TABLE <schema-qualified-name>
-```
+Existing generated-name schemas are excluded from the managed model only after
+strict marker, name, catalog identity, topology, dependency, and cleanup-digest
+validation. Prefix-like unmarked schemas remain managed, and invalid archival
+state fails closed.
 
-The statement has `DELETES_DATA`. Child partitions emit no SQL because the
-parent drop removes them.
+### Implemented behavior
 
-Other generators depend on that physical deletion:
+All nineteen delivery stages are active in public `Generate`. Safety preflight,
+dependency closure, replacement-aware generation, isolation, partition handling,
+global cleanup planning, two-phase validation, and versioned source hashing run
+as one orchestration path. Disabling temporary validation does not disable source
+safety checks.
 
-- Index deletion is suppressed when its owning table is deleted.
-- Owned sequence deletion is suppressed when its owning table is deleted.
-- Child partitions rely on the parent drop.
-- A recreated table is added after the delete vertex, assuming all old relation
-  names have disappeared.
-- Enum, extension, and named-schema deletion occurs after the table graph.
-- Validation expects the migrated modeled schema to match the target exactly.
-
-### Implemented foundation
-
-The first eighteen delivery stages are complete. Public `Generate` does not yet
-retain tables or generate cleanup statements; ordinary table deletion still has
-the behavior described above. Public `Generate` independently rejects extension
-drops or version/schema updates when the changed extension owns an unfiltered
-ordinary, partitioned, partition, or foreign-table relation. No other archival
-preflight or retention behavior is active.
-
-The implemented foundation includes:
+The implemented behavior includes:
 
 - `WithIncludeSchemaPatterns` and `WithExcludeSchemaPatterns` in `pkg/diff` and
   `pkg/schema`. Patterns are Go regular expressions automatically anchored to the
@@ -103,17 +95,15 @@ The implemented foundation includes:
 - `schema.DefaultCleanupSchemaPrefix`, currently `pgschemadiff_archive`.
 - `diff.WithSchemaPartialArchivalPrefix`, including simple-identifier, `pg`/`pg_`,
   and 21-byte length validation.
-- Automatic exclusion of schemas whose names start with the selected cleanup
-  prefix from the current schema, target schema, plan validation, and
-  `CurrentSchemaHash`. A custom prefix replaces the default; the two prefixes are
-  not both excluded.
-- Default cleanup-schema exclusion in `schema.GetSchemaHash`, implemented through
-  `WithExcludeSchemaPatterns` so caller-provided exclusions accumulate with it.
-- `Plan.CleanupStatements`, with empty cleanup lists omitted from JSON. Generated
-  plans currently leave the list empty, and `Plan.InsertStatement` modifies only
-  the ordinary `Statements` list.
-- One UTC generation timestamp captured in the internal generation context per
-  `Generate` call. The timestamp does not yet affect SQL or serialized plans.
+- Marker-aware exclusion of trusted archival schemas from the current managed
+  schema, plan validation, and `CurrentSchemaHash`. A custom prefix replaces the
+  default; the two prefixes are not both reserved.
+- Matching strict trust and custom-prefix behavior in `schema.GetSchemaHash` and
+  `schema.GetSchemaHashWithArchivalPrefix`; caller filters continue to accumulate.
+- `Plan.CleanupStatements`, with empty cleanup lists omitted from JSON.
+  `Plan.InsertStatement` modifies only the ordinary `Statements` list.
+- One UTC generation timestamp captured per `Generate` call and used by every
+  cleanup schema allocated by that plan.
 - Consistent catalog snapshots for every database-backed schema fetch. Each
   fetch pins one connection, runs sequential catalog queries in a read-only
   repeatable-read transaction, and normalizes and hashes the modeled schema
@@ -123,8 +113,7 @@ The implemented foundation includes:
   inheritance, and table-local preservation metadata. Typed expected-move
   identities distinguish cleanup-schema followers, attached subobjects,
   explicit extended-statistics moves, and PostgreSQL-owned TOAST state. The
-  inventory does not yet affect public hashes or diffs; Stage 18's dormant
-  candidate hash covers it.
+  inventory feeds safety decisions and the active v1 public and plan hash.
 - Unfiltered raw dependency edges, complete foreign keys, dependent
   relation/routine and type-platform identities, extension membership, event
   triggers, and all publication forms. Routine body facts are classified
@@ -134,14 +123,14 @@ The implemented foundation includes:
   ACLs plus role identities and membership options. A dormant typed planner
   validates explicit grant ancestry and orders dependent revokes without
   rendering SQL or using `CASCADE`.
-- Dormant strict v1 marker and typed cleanup-operation codecs with canonical
+- Strict v1 marker and typed cleanup-operation codecs with canonical
   ordering, validation, and domain-separated cleanup digests.
-- A dormant archived-state resolver that discovers generated-name candidates
+- An archived-state resolver that discovers generated-name candidates
   from the unfiltered inventory, fails closed on marker or catalog disagreement,
   validates exact OID-based local identities and partition topology, and returns
   provisional candidate views plus deterministic resume descriptors without
   emitting SQL or changing public filtering.
-- A dormant source-snapshot safety preflight that classifies incoming dependents
+- A source-snapshot safety preflight that classifies incoming dependents
   by modeled scope and target intent, inventories crossing foreign keys and
   publication memberships, and rejects unround-trippable dependencies, platform
   blockers, extension members, and unknown dependency classes before graph
@@ -149,24 +138,23 @@ The implemented foundation includes:
 - An independent public extension safety check that rejects extension drops or
   version/schema updates owning hidden table-like relations, including when plan
   validation is disabled and no modeled table diff exists.
-- A dormant archival move graph that atomically initializes and locks down marked
+- An archival move graph that atomically initializes and locks down marked
   cleanup groups, moves ordinary tables or complete recursive declarative
   partition trees, resumes partial multi-member state using recorded names,
   refreshes supplied finalized markers, and asserts exact post-move catalog
   identities. Descendants move deepest-first with lexical tie-breaking and each
-  group exposes one cleanup-root intent. The graph remains disconnected from
-  public `Generate`.
-- A dormant replacement-aware regular graph with explicit physical-delete,
+  group exposes one cleanup-root intent.
+- A replacement-aware regular graph with explicit physical-delete,
   archival-move, and cleanup-only table dispositions. It preserves moved
   table-local children, orders target relation/type namespace reuse after moves,
   supports retain-then-create table recreation, and keeps final marker/catalog
-  assertions after integrated regular work without changing public generation.
-- Dormant retained-parent subtree handling that initializes every member schema,
+  assertions after integrated regular work.
+- Retained-parent subtree handling that initializes every member schema,
   moves the subtree while attached, detaches its cleanup-schema root afterward,
   and records the removed routing metadata. Stage 14 ACL, FK, publication,
   extended-statistics, and dependency isolation applies to every physical member;
   same-group FKs remain attached and cross-boundary FKs are removed.
-- A dormant global cleanup planner that validates every existing component's
+- A global cleanup planner that validates every existing component's
   previous operation digest before applying current closure changes, emits one
   canonical typed DAG across new and existing groups, renders only explicit
   `RESTRICT` drops, and feeds component-finalized marker text back to regular
@@ -174,23 +162,20 @@ The implemented foundation includes:
   component; operation IDs and edges, rather than a separate SQL ordering graph,
   determine the global lexical topological statement order. Existing complete
   groups receive ordinary marker-comment updates when a later dependency move or
-  shared component changes their payload. The planner remains disconnected from
-  public `Generate`.
-- Dormant two-phase archival validation that revalidates source-only facts before
+  shared component changes their payload.
+- Two-phase archival validation that revalidates source-only facts before
   temporary SQL, reconstructs the unfiltered modeled source and trusted existing
   groups, translates database-local OIDs for synthetic assertions, proves the
   filtered retention postcondition, then proves cleanup scope, target identity
   preservation, and the complete cleanup postcondition in the same temporary
-  database. It remains disconnected from public `assertValidPlan` and `Generate`.
-- A dormant versioned snapshot hash with an explicit field-by-field encoder for
+  database.
+- A versioned snapshot hash with an explicit field-by-field encoder for
   the managed modeled schema, complete unfiltered safety inventory, and trusted
-  source marker identities. Plan and public-package candidate seams share the
-  encoder, but legacy hashes remain active until Stage 19.
+  source marker identities. Plan and public-package paths share the active v1
+  encoder.
 
-The current prefix-only exclusion is transitional. It can hide an unrelated
-user-created schema with the same prefix. The complete archival implementation
-must replace this trust-by-name behavior with the marker and catalog validation
-defined below.
+Prefix-only exclusion is no longer used. A schema matching the reserved naming
+grammar is trusted only after the marker and catalog validation defined below.
 
 The implementation must separate two effects currently represented by one table
 delete vertex:
@@ -231,13 +216,12 @@ delete vertex:
 
 ## Public API
 
-The filtering foundation uses `pgschemadiff_archive` as the default
-cleanup-schema prefix and exposes the feature-level API:
+The implementation uses `pgschemadiff_archive` as the default cleanup-schema
+prefix and exposes the feature-level API:
 
 ```go
-// WithSchemaPartialArchivalPrefix configures the prefix used to identify archival
-// schemas. Schemas whose names start with this prefix are excluded from plan
-// generation.
+// WithSchemaPartialArchivalPrefix configures generated archival schema names and
+// strict discovery of existing marked archival schemas.
 func WithSchemaPartialArchivalPrefix(prefix string) PlanOpt
 ```
 
@@ -254,10 +238,10 @@ plan, err := diff.Generate(
 ```
 
 Omitting the option uses `pgschemadiff_archive`. Passing an empty or invalid
-prefix returns an error. Passing a custom prefix replaces the default exclusion;
-for example, `deleted` excludes `deleted.*` schema names but does not exclude
-`pgschemadiff_archive.*` schema names. Pattern notation here describes the
-equivalent anchored Go regular expression, not a PostgreSQL `LIKE` expression.
+prefix returns an error. Passing a custom prefix replaces the default reserved
+naming grammar. For example, valid marked `deleted_...` archival schemas are
+excluded from the managed model while `pgschemadiff_archive_...` schemas remain
+managed. Prefix-like unmarked schemas are not hidden.
 
 The underlying schema-filter APIs are:
 
@@ -267,28 +251,29 @@ func WithExcludeSchemaPatterns(patterns ...string) GetSchemaOpt
 ```
 
 Each regular expression is compiled as `^(?:<pattern>)$`. Include and exclude
-patterns accumulate. `Generate` derives an exclusion pattern from
-`WithSchemaPartialArchivalPrefix` after processing other plan options, so callers
-should configure plan archival filtering through that option. Additional schema
-hash exclusions can be passed to `schema.GetSchemaHash`, for example:
+patterns accumulate. Callers configure archival discovery and naming through
+`WithSchemaPartialArchivalPrefix`; it does not replace caller filters. Additional
+schema hash exclusions can be passed to the public hash functions.
 
 ```go
-hash, err := schema.GetSchemaHash(
+hash, err := schema.GetSchemaHashWithArchivalPrefix(
     ctx,
     connPool,
+    "deleted",
     schema.WithExcludeSchemaPatterns("deleted.*"),
 )
 ```
 
-The future archival implementation will use the same prefix for generated schema
-names. Once archival is implemented, an invalid prefix must never restore
-ordinary `DROP TABLE` generation.
+The selected prefix is used for generated schema names and existing-group trust.
+An invalid prefix returns an error and never restores ordinary `DROP TABLE`
+generation.
 
-`CleanupStatements` is currently always empty in generated plans. Once retention
-is implemented, existing callers that apply only `plan.Statements` will retain
-removed tables and not delete data. Consumers will be able to inspect, serialize,
-or separately persist `plan.CleanupStatements` using the same `Statement` JSON and
-`ToSQL` behavior as regular statements.
+`CleanupStatements` contains the destructive half of table removal. Existing
+callers that apply only `plan.Statements` retain removed tables and do not delete
+their rows. Consumers can inspect, serialize, or separately persist
+`plan.CleanupStatements` using the same `Statement` JSON and `ToSQL` behavior as
+regular statements. Concatenating the two lists is unsupported, and no library or
+CLI path applies cleanup automatically.
 
 `Plan.InsertStatement` will continue to modify only the ordinary statement list.
 Do not add cleanup-list mutation in the first version: marker cleanup digests are
@@ -806,9 +791,10 @@ The implemented filtering foundation renamed `WithIncludeSchemas` and
 support full Go regular expressions and are automatically anchored to the entire
 schema name.
 
-`CurrentSchemaHash` omits schemas matching the active cleanup pattern.
-`schema.GetSchemaHash` omits schemas matching the default cleanup prefix and any
-additional patterns supplied through `WithExcludeSchemaPatterns`.
+`CurrentSchemaHash` omits only archival schemas trusted under the active prefix.
+`schema.GetSchemaHash` applies the same trust contract for the default prefix;
+`schema.GetSchemaHashWithArchivalPrefix` reproduces plans that use a custom
+prefix. Additional include and exclude patterns accumulate on both paths.
 
 The addition of `CleanupStatements` is additive for JSON and Go callers that use
 keyed struct literals or accessors. It is a source-breaking change for unkeyed
@@ -819,17 +805,17 @@ continue to apply the ordinary migration only.
 Consumers that serialize complete plans gain a new `cleanup_statements` field.
 Document that concatenating the two lists changes semantics and is unsupported.
 
-Expand `CurrentSchemaHash` to cover the complete immutable source snapshot used
+`CurrentSchemaHash` covers the complete immutable source snapshot used
 for ordinary generation: managed modeled objects, archival markers/groups,
 excluded-schema safety dependencies, extension membership, enabled event
 triggers, publication state, ACL inventory, and relation/type namespaces.
-Refactor public `pkg/schema.GetSchemaHash` to acquire the same snapshot and use
+Public `pkg/schema.GetSchemaHash` acquires the same snapshot and uses
 the same filter/safety-closure semantics so callers can reproduce the plan hash.
 This changes hash compatibility and must be versioned/documented.
 
-### Candidate snapshot hash v1
+### Snapshot hash v1
 
-Stage 18 defines, but does not activate, this output format:
+Stage 18 defined and Stage 19 activates this output format:
 
 ```text
 pg-schema-diff:snapshot:v1:sha256:<64 lowercase hexadecimal characters>
@@ -893,7 +879,7 @@ Trusted archival groups sort by complete record and contain the validated group
 ID plus each source schema's OID, name, and raw canonical marker comment. The
 shared hasher intentionally does not parse markers. Diff orchestration owns the
 strict marker/name/catalog/digest validation and supplies group identities;
-`pkg/schema` must use that same trust result when Stage 19 activates the path.
+`pkg/schema` uses that same trust result through the diff orchestration path.
 This prevents a second, weaker marker parser while keeping the shared bytes
 reproducible. Newly predicted post-plan groups are not source hash material.
 
@@ -910,9 +896,9 @@ The fixed minimal contract vector in the Stage 18 tests is:
 pg-schema-diff:snapshot:v1:sha256:3af1b7820b9fd2b3181e47cfb3cd539cbe313e28b46b16f9be6af2d3e7406858
 ```
 
-`Generate.CurrentSchemaHash` and `schema.GetSchemaHash` continue to return the
-legacy modeled-schema hash in Stage 18. Stage 19 remains responsible for
-activating this candidate format on both public paths.
+`Generate.CurrentSchemaHash`, `schema.GetSchemaHash`, and
+`schema.GetSchemaHashWithArchivalPrefix` return this format. Legacy
+modeled-schema hashes do not compare equal to v1 hashes.
 
 This design does not introduce a future cleanup execution hash or cleanup
 application contract.
@@ -959,7 +945,7 @@ stage's scope.
 | 16 | Global cleanup graph | Complete | 1, 8, 11, 15 |
 | 17 | Two-phase plan validation | Complete | 4, 6, 10, 16 |
 | 18 | Versioned snapshot hash | Complete | 2, 4, 5, 6, 9, 10, 11, 16 |
-| 19 | Schema partial archival activation and documentation | Pending | 13-18 |
+| 19 | Schema partial archival activation and documentation | Complete | 13-18 |
 
 ### Stage 0: Schema-filtering foundation
 
@@ -1557,7 +1543,7 @@ Acceptance gate:
 
 ### Stage 19: Schema partial archival activation and documentation
 
-Status: Pending.
+Status: Complete.
 
 Depends on: Stages 13 through 18.
 

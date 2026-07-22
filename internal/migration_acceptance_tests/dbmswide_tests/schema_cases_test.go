@@ -392,12 +392,7 @@ var schemaAcceptanceTests = []acceptanceTestCase{
                 GROUP BY fizz, buzz;
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAuthzUpdate,
-			diff.MigrationHazardTypeDeletesData,
-			diff.MigrationHazardTypeHasUntrackableDependencies,
-			diff.MigrationHazardTypeIndexBuild,
-		},
+		expectedPlanErrorContains: "extension \"amcheck\" is dropped",
 	},
 	{
 		name: "Drop partitioned table, Add partitioned table with local keys",
@@ -477,7 +472,10 @@ var schemaAcceptanceTests = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeCorrectness,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeAcquiresShareRowExclusiveLock,
 		},
 	},
 }

@@ -557,7 +557,7 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, err
 	}
 	if len(s.archivalGroups) != 0 {
-		diff = rewriteSchemaDiffForArchivalIsolation(diff, s.archivalIsolation)
+		diff = rewriteSchemaDiffForArchivalIsolation(diff, s.archivalIsolation, tableDispositions)
 	}
 
 	materializedViewsInNewSchemaByName := buildSchemaObjByNameMap(diff.new.MaterializedViews)

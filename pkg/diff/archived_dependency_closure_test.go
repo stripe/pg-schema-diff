@@ -494,6 +494,39 @@ func TestPlanArchivedDependencyClosureCandidateSharedEdges(t *testing.T) {
 	require.ErrorContains(t, err, "shared dependency edges do not match")
 }
 
+func TestPlanArchivedDependencyClosureCandidateUsesLostParentBoundary(t *testing.T) {
+	t.Parallel()
+
+	request := newArchivedDependencyTestRequest(10)
+	request.ProposedGroups = nil
+	request.CandidateGroups = []structurallyValidArchivedCandidateGroup{
+		closureCandidateGroup("group-a", 10, "archive_dep_a"),
+	}
+	parent := schema.CatalogRelation{
+		OID: 20, SchemaName: "managed", Name: "active_parent", Kind: schema.RelKindPartitionedTable,
+	}
+	request.CurrentSnapshot.Inventory.Relations = append(
+		request.CurrentSnapshot.Inventory.Relations, parent,
+	)
+	request.CurrentSnapshot.Inventory.Dependencies = []schema.CatalogDependency{
+		closureDependency(
+			closureTableAddress(10, "managed", "archived"),
+			closureTableAddress(parent.OID, parent.SchemaName, parent.Name),
+		),
+	}
+	request.CandidateGroups[0].Marker.LostParentAttachments = []archivalMarkerLostParentAttachmentV1{{
+		ParentTable: archivedDependencyMarkerObject(
+			parent.OID, archivalMarkerObjectKindTable, parent.SchemaName, parent.Name,
+		),
+	}}
+
+	result, err := planArchivedDependencyClosure(request)
+	require.NoError(t, err)
+	assert.Empty(t, result.Objects)
+	assert.Empty(t, result.Assignments)
+	require.Len(t, result.DependencyValidatedCandidateGroups, 1)
+}
+
 func TestPlanArchivedDependencyClosureDoesNotMutateSnapshots(t *testing.T) {
 	t.Parallel()
 

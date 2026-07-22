@@ -194,7 +194,14 @@ func runSourceSafetyPreflight(request sourceSafetyPreflightRequest) (sourceSafet
 	}
 
 	foreignKeyOIDs := make(map[uint32]struct{})
+	allForeignKeyOIDs := make(map[uint32]struct{}, len(current.Inventory.ForeignKeys))
 	for _, foreignKey := range current.Inventory.ForeignKeys {
+		allForeignKeyOIDs[foreignKey.OID] = struct{}{}
+		// Dropping the parent constraint removes PostgreSQL's inherited copies.
+		// Treating those copies as independent FKs emits invalid child drops.
+		if foreignKey.ParentConstraintOID != 0 {
+			continue
+		}
 		direction, touchesProposed := classifySourceSafetyForeignKeyDirection(foreignKey, proposedRelations)
 		if !touchesProposed {
 			continue
@@ -215,7 +222,7 @@ func runSourceSafetyPreflight(request sourceSafetyPreflightRequest) (sourceSafet
 	}
 	foreignKeyTriggerOIDs := make(map[uint32]struct{})
 	for _, trigger := range current.Inventory.Triggers {
-		if _, belongsToForeignKey := foreignKeyOIDs[trigger.ConstraintOID]; belongsToForeignKey {
+		if _, belongsToForeignKey := allForeignKeyOIDs[trigger.ConstraintOID]; belongsToForeignKey {
 			foreignKeyTriggerOIDs[trigger.OID] = struct{}{}
 			for idx := range result.ForeignKeys {
 				if result.ForeignKeys[idx].ForeignKey.OID == trigger.ConstraintOID {
@@ -245,10 +252,10 @@ func runSourceSafetyPreflight(request sourceSafetyPreflightRequest) (sourceSafet
 			continue
 		}
 		if sourceSafetyAddressIsRetained(dependency.Dependent, retainedAddresses) ||
-			isSourceSafetyAttachedTableObject(dependency, tableRelationOID) {
+			isSourceSafetyAttachedTableObject(current.Inventory, dependency, proposedRelations) {
 			continue
 		}
-		if _, isForeignKey := foreignKeyOIDs[dependency.Dependent.ObjectOID]; isForeignKey &&
+		if _, isForeignKey := allForeignKeyOIDs[dependency.Dependent.ObjectOID]; isForeignKey &&
 			dependency.Dependent.ClassOID == pgConstraintCatalogOID {
 			continue
 		}
@@ -487,16 +494,30 @@ func sourceSafetyAddressContains(expected, actual schema.CatalogDependencyObject
 		(expected.SubObjectID == 0 || expected.SubObjectID == actual.SubObjectID)
 }
 
-func isSourceSafetyAttachedTableObject(dependency schema.CatalogDependency, relationOID uint32) bool {
+func isSourceSafetyAttachedTableObject(
+	inventory schema.CatalogInventory,
+	dependency schema.CatalogDependency,
+	proposedRelations map[uint32]schema.CatalogRelation,
+) bool {
 	dependent := dependency.Dependent
-	if dependent.ClassOID == pgClassCatalogOID && dependent.ObjectOID == relationOID {
+	if _, proposed := proposedRelations[dependent.ObjectOID]; dependent.ClassOID == pgClassCatalogOID && proposed {
 		return true
 	}
 	// An automatic pg_attrdef-to-column edge identifies a default attached to the
 	// proposed table. Other default dependencies remain unsupported and fail closed.
-	return dependent.ClassOID == pgAttrDefCatalogOID && dependent.ObjectType == "default value" &&
-		dependency.Type == "a" && dependency.Referenced.ClassOID == pgClassCatalogOID &&
-		dependency.Referenced.ObjectOID == relationOID
+	if dependent.ClassOID != pgAttrDefCatalogOID || dependent.ObjectType != "default value" {
+		return false
+	}
+	for _, edge := range inventory.Dependencies {
+		if edge.Dependent.ClassOID == dependent.ClassOID &&
+			edge.Dependent.ObjectOID == dependent.ObjectOID &&
+			edge.Type == "a" && edge.Referenced.ClassOID == pgClassCatalogOID &&
+			edge.Referenced.SubObjectID > 0 {
+			_, proposed := proposedRelations[edge.Referenced.ObjectOID]
+			return proposed
+		}
+	}
+	return false
 }
 
 func resolveSourceSafetyDependent(

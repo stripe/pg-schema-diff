@@ -23,7 +23,7 @@ func (id replacementAwareVertexID) String() string {
 	return "replacement_aware:" + string(id.kind)
 }
 
-// generateReplacementAwareSchemaSQL is dormant until archival activation.
+// generateReplacementAwareSchemaSQL integrates archival moves with regular SQL.
 func generateReplacementAwareSchemaSQL(
 	generator *schemaSQLGenerator,
 	diff schemaDiff,
@@ -177,6 +177,7 @@ func integrateReplacementAwareRegularGraph(
 func rewriteSchemaDiffForArchivalIsolation(
 	diff schemaDiff,
 	plan archivalIsolationPlan,
+	dispositions tableDispositions,
 ) schemaDiff {
 	diff.foreignKeyConstraintDiffs.deletes = slices.DeleteFunc(
 		slices.Clone(diff.foreignKeyConstraintDiffs.deletes),
@@ -195,6 +196,32 @@ func rewriteSchemaDiffForArchivalIsolation(
 			return false
 		},
 	)
+
+	// SET SCHEMA carries an owned sequence with its archived table. If the
+	// target retains that sequence identity, create a replacement after the
+	// archival move instead of trying to alter the now-moved source sequence.
+	targetSequences := buildSchemaObjByNameMap(diff.new.Sequences)
+	addedSequences := buildSchemaObjByNameMap(diff.sequenceDiffs.adds)
+	for _, oldSequence := range diff.old.Sequences {
+		if oldSequence.Owner == nil ||
+			!tableIsPreserved(dispositions, oldSequence.Owner.TableName.GetName()) {
+			continue
+		}
+		targetSequence, retained := targetSequences[oldSequence.GetName()]
+		if !retained {
+			continue
+		}
+		diff.sequenceDiffs.alters = slices.DeleteFunc(
+			slices.Clone(diff.sequenceDiffs.alters),
+			func(value sequenceDiff) bool {
+				return value.old.GetName() == oldSequence.GetName()
+			},
+		)
+		if _, alreadyAdded := addedSequences[targetSequence.GetName()]; !alreadyAdded {
+			diff.sequenceDiffs.adds = append(diff.sequenceDiffs.adds, targetSequence)
+			addedSequences[targetSequence.GetName()] = targetSequence
+		}
+	}
 
 	for _, assignment := range plan.DependencyMoves {
 		sourceName := markerObjectSchemaName(assignment.Source)

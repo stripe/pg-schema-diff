@@ -237,7 +237,7 @@ func finalizeArchivalIsolationUnitMarker(
 	groupID := marker.GroupID
 	move, err := request.CurrentInventory.ExpectedTableMove(marker.Members[0].SourceTable.OID)
 	require.NoError(t, err)
-	move = filterPlainTableIsolationObjects(move, request.SourcePreflight,
+	move = filterPlainTableIsolationObjects(request.CurrentInventory, move, request.SourcePreflight,
 		map[uint32]preparedArchivalGroup{marker.Members[0].SourceTable.OID: {id: groupID}})
 	marker.Members[0].AutomaticallyMovedObjects = markerObjectsFromCatalog(
 		move.CleanupSchemaObjects, marker.Members[0].CleanupTable.SchemaName,

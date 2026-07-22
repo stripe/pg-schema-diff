@@ -61,7 +61,7 @@ type preparedArchivalMemberNameRequest struct {
 }
 
 // allocateArchivalNames builds and validates every allocation before returning.
-// It is dormant until the archival graph is activated in a later delivery stage.
+// The resulting names are consumed by the archival graph.
 func allocateArchivalNames(
 	planOpts *planOptions,
 	currentInventory schema.CatalogInventory,
@@ -405,9 +405,9 @@ func truncateArchivalSourceComponents(sourceSchema, sourceTable string, byteBudg
 			return "", "", fmt.Errorf("source schema and table names cannot fit within %d bytes", byteBudget)
 		}
 		if canTrimSchema && (!canTrimTable || len(string(schemaRunes)) >= len(string(tableRunes))) {
-			schemaRunes = schemaRunes[:len(schemaRunes)-1]
+			schemaRunes = append(schemaRunes[:1], schemaRunes[2:]...)
 		} else {
-			tableRunes = tableRunes[:len(tableRunes)-1]
+			tableRunes = append(tableRunes[:1], tableRunes[2:]...)
 		}
 	}
 	return string(schemaRunes), string(tableRunes), nil

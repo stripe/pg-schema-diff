@@ -790,9 +790,7 @@ var triggerAcceptanceTestCases = []acceptanceTestCase{
                EXECUTE PROCEDURE "increment version"();
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
-		},
+		expectedPlanErrorContains: "persistent routine",
 	},
 	{
 		name: "alter - non-constraint trigger to constraint trigger",

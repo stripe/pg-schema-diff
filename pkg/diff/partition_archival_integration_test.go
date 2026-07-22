@@ -507,7 +507,7 @@ func TestPartitionArchivalPostgresIsolationAcrossMembers(t *testing.T) {
 		member := &marker.Members[idx]
 		move, err := before.Inventory.ExpectedTableMove(member.SourceTable.OID)
 		require.NoError(t, err)
-		move = filterPlainTableIsolationObjects(move, request.SourcePreflight, groupByOID)
+		move = filterPlainTableIsolationObjects(before.Inventory, move, request.SourcePreflight, groupByOID)
 		member.AutomaticallyMovedObjects = markerObjectsFromCatalog(
 			move.CleanupSchemaObjects, member.CleanupTable.SchemaName,
 		)

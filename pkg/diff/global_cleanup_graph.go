@@ -10,7 +10,7 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/schema"
 )
 
-// globalCleanupPlanRequest is the dormant Stage 16 boundary. PredictedGroups
+// globalCleanupPlanRequest is the Stage 16 boundary. PredictedGroups
 // are the post-regular groups prepared by Stages 12-15; complete existing
 // groups come from DependencyClosure.
 type globalCleanupPlanRequest struct {
@@ -86,7 +86,7 @@ var (
 	}
 )
 
-// planGlobalCleanup is dormant until archival activation. Canonical operations
+// planGlobalCleanup builds canonical operations
 // are authoritative: marker digests and rendered statements are both derived
 // from the same ordered operation graph.
 func planGlobalCleanup(request globalCleanupPlanRequest) (globalCleanupPlanResult, error) {

@@ -232,8 +232,15 @@ func TestSourceSafetyPreflightForeignKeyInventory(t *testing.T) {
 			OID: 101, Name: "outgoing_fk", OwningRelationOID: 10, OwningSchemaName: "managed",
 			OwningRelationName: "archived", ReferencedRelationOID: 30,
 		},
+		{
+			OID: 103, ParentConstraintOID: 100, Name: "incoming_fk", OwningRelationOID: 20,
+			OwningSchemaName: "managed", OwningRelationName: "owner", ReferencedRelationOID: 10,
+		},
 	}
 	for _, foreignKey := range current.Inventory.ForeignKeys {
+		if foreignKey.ParentConstraintOID != 0 {
+			continue
+		}
 		current.Schema.ForeignKeyConstraints = append(current.Schema.ForeignKeyConstraints,
 			sourceSafetyModeledForeignKey(foreignKey))
 	}

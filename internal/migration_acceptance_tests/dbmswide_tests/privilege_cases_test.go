@@ -124,7 +124,7 @@ var privilegeAcceptanceTestCases = []acceptanceTestCase{
 		// No hazards expected since table is brand new
 	},
 	{
-		name:  "Drop table with privileges (only DeletesData hazard)",
+		name:  "Drop table with privileges",
 		roles: []string{"app_user"},
 		oldSchemaDDL: []string{
 			`
@@ -133,7 +133,8 @@ var privilegeAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{

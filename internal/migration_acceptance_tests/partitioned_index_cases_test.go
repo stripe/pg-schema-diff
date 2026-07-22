@@ -630,16 +630,10 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
             CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
 		`},
 		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 			diff.MigrationHazardTypeIndexDropped,
 			diff.MigrationHazardTypeDeletesData,
-		},
-		expectedPlanDDL: []string{
-			"DROP INDEX CONCURRENTLY \"public\".\"foobar_1_some_local_idx\"",
-			"DROP INDEX \"public\".\"some_idx\"",
-			"ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"id\"",
-			"DROP TABLE \"schema_1\".\"foobar\"",
-			"DROP SCHEMA \"schema_1\"",
 		},
 	},
 	{

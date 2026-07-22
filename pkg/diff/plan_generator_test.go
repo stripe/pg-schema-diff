@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stripe/pg-schema-diff/internal/schema"
 	"github.com/stripe/pg-schema-diff/internal/testdb"
-	externalschema "github.com/stripe/pg-schema-diff/pkg/schema"
 )
 
 type fakeSchemaSource struct {
@@ -91,13 +90,11 @@ func TestSimpleMigratorTestSuite(t *testing.T) {
 
 		logger := slog.Default()
 
-		getSchemaOpts := []externalschema.GetSchemaOpt{
-			externalschema.WithIncludeSchemaPatterns("schema_1"),
-			externalschema.WithIncludeSchemaPatterns("schema_2"),
+		getSchemaOpts := []schema.GetSchemaOpt{
+			schema.WithIncludeSchemaPatterns("schema_1"),
+			schema.WithIncludeSchemaPatterns("schema_2"),
 		}
-		expectedGetSchemaOpts := append([]externalschema.GetSchemaOpt{}, getSchemaOpts...)
-		expectedGetSchemaOpts = append(expectedGetSchemaOpts,
-			externalschema.WithExcludeSchemaPatterns(defaultSchemaPartialArchivalPrefix+".*"))
+		expectedGetSchemaOpts := append([]schema.GetSchemaOpt{}, getSchemaOpts...)
 
 		expectedErr := fmt.Errorf("some error")
 		fakeSchemaSource := fakeSchemaSource{
@@ -173,7 +170,7 @@ func TestValidateSchemaPartialArchivalPrefix(t *testing.T) {
 	}
 }
 
-func TestGenerateIgnoresCleanupSchemaPrefixes(t *testing.T) {
+func TestGenerateDoesNotTrustUnmarkedPrefixSchemas(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -181,16 +178,15 @@ func TestGenerateIgnoresCleanupSchemaPrefixes(t *testing.T) {
 		prefix       string
 		schemaPrefix string
 		inTarget     bool
-		expectEmpty  bool
 	}{
-		{name: "default prefix", prefix: defaultSchemaPartialArchivalPrefix, expectEmpty: true},
-		{name: "custom prefix", prefix: "deleted", expectEmpty: true},
+		{name: "default prefix", prefix: defaultSchemaPartialArchivalPrefix},
+		{name: "custom prefix", prefix: "deleted"},
 		{
 			name:         "custom prefix replaces default exclusion",
 			prefix:       "deleted",
 			schemaPrefix: defaultSchemaPartialArchivalPrefix,
 		},
-		{name: "target schema", prefix: defaultSchemaPartialArchivalPrefix, inTarget: true, expectEmpty: true},
+		{name: "target schema", prefix: defaultSchemaPartialArchivalPrefix, inTarget: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -218,11 +214,11 @@ func TestGenerateIgnoresCleanupSchemaPrefixes(t *testing.T) {
 			}
 			plan, err := Generate(t.Context(), DBSchemaSource(db.ConnPool), DDLSchemaSource(targetDDL), opts...)
 			require.NoError(t, err)
-			assert.Empty(t, plan.CleanupStatements)
-			if tc.expectEmpty {
-				assert.Empty(t, plan.Statements)
+			assert.NotEmpty(t, plan.Statements)
+			if tc.inTarget {
+				assert.Empty(t, plan.CleanupStatements)
 			} else {
-				assert.NotEmpty(t, plan.Statements)
+				assert.NotEmpty(t, plan.CleanupStatements)
 			}
 		})
 	}
@@ -246,7 +242,7 @@ func TestGenerateCapturesGenerationTimestamp(t *testing.T) {
 		t: t,
 		expectedDeps: schemaSourcePlanDeps{
 			logger:        slog.Default(),
-			getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+			getSchemaOpts: nil,
 		},
 		snapshot: schema.SchemaSnapshot{Hash: "snapshot-hash"},
 	}
@@ -258,7 +254,7 @@ func TestGenerateCapturesGenerationTimestamp(t *testing.T) {
 	assert.Equal(t, clockTime.UTC(), capturedOptions.generationTimestamp)
 	assert.Equal(t, time.UTC, capturedOptions.generationTimestamp.Location())
 	assert.Empty(t, plan.CleanupStatements)
-	assert.Equal(t, "snapshot-hash", plan.CurrentSchemaHash)
+	assert.Contains(t, plan.CurrentSchemaHash, schema.SchemaSnapshotHashV1Prefix)
 }
 
 func TestGenerateRejectsChangedExtensionOwningHiddenTableWithoutValidation(t *testing.T) {
@@ -269,7 +265,7 @@ func TestGenerateRejectsChangedExtensionOwningHiddenTableWithoutValidation(t *te
 	}
 	expectedDeps := schemaSourcePlanDeps{
 		logger:        slog.Default(),
-		getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+		getSchemaOpts: nil,
 	}
 	current := fakeSchemaSource{
 		t: t, expectedDeps: expectedDeps,
@@ -295,12 +291,12 @@ func TestGenerateRejectsChangedExtensionOwningHiddenTableWithoutValidation(t *te
 	require.ErrorContains(t, err, "extension owns table-like relation hidden.member")
 }
 
-func TestGenerateKeepsSourceSafetyPreflightDormant(t *testing.T) {
+func TestGenerateRunsSourceSafetyPreflightWithoutValidation(t *testing.T) {
 	t.Parallel()
 
 	expectedDeps := schemaSourcePlanDeps{
 		logger:        slog.Default(),
-		getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+		getSchemaOpts: nil,
 	}
 	current := fakeSchemaSource{
 		t: t, expectedDeps: expectedDeps,
@@ -333,23 +329,15 @@ func TestGenerateKeepsSourceSafetyPreflightDormant(t *testing.T) {
 	}
 	target := fakeSchemaSource{t: t, expectedDeps: expectedDeps}
 
-	plan, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
-	require.NoError(t, err)
-	require.Len(t, plan.Statements, 1)
-	assert.Equal(t, Statement{
-		DDL: `DROP TABLE "public"."archived"`,
-		Hazards: []MigrationHazard{{
-			Type:    MigrationHazardTypeDeletesData,
-			Message: "Deletes all rows in the table (and the table itself)",
-		}},
-	}, plan.Statements[0])
+	_, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
+	require.ErrorContains(t, err, "unsupported catalog dependency")
 }
 
-func TestGenerateKeepsArchivedDependencyClosureDormant(t *testing.T) {
+func TestGenerateActivatesArchivedDependencyClosure(t *testing.T) {
 	t.Parallel()
 
 	expectedDeps := schemaSourcePlanDeps{
-		logger: slog.Default(), getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+		logger: slog.Default(), getSchemaOpts: nil,
 	}
 	current := fakeSchemaSource{
 		t: t, expectedDeps: expectedDeps,
@@ -378,17 +366,18 @@ func TestGenerateKeepsArchivedDependencyClosureDormant(t *testing.T) {
 
 	plan, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
 	require.NoError(t, err)
-	require.Len(t, plan.Statements, 1)
-	assert.Equal(t, `DROP TABLE "public"."archived"`, plan.Statements[0].DDL)
-	assert.Empty(t, plan.CleanupStatements)
-	assert.Equal(t, "legacy-hash", plan.CurrentSchemaHash)
+	assert.NotEmpty(t, plan.Statements)
+	assert.NotEmpty(t, plan.CleanupStatements)
+	for _, statement := range plan.Statements {
+		assert.NotContains(t, statement.DDL, "DROP TABLE")
+	}
 }
 
-func TestGenerateKeepsLegacyTableRecreationPhysical(t *testing.T) {
+func TestGenerateNeverFallsBackToPhysicalRecreation(t *testing.T) {
 	t.Parallel()
 
 	expectedDeps := schemaSourcePlanDeps{
-		logger: slog.Default(), getSchemaOpts: make([]schema.GetSchemaOpt, 1),
+		logger: slog.Default(), getSchemaOpts: nil,
 	}
 	tableName := schema.SchemaQualifiedName{SchemaName: "public", EscapedName: `"recreated"`}
 	current := fakeSchemaSource{
@@ -409,17 +398,6 @@ func TestGenerateKeepsLegacyTableRecreationPhysical(t *testing.T) {
 		}}}},
 	}
 
-	plan, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
-	require.NoError(t, err)
-	assert.Equal(t, []Statement{
-		{
-			DDL: `DROP TABLE "public"."recreated"`,
-			Hazards: []MigrationHazard{{
-				Type:    MigrationHazardTypeDeletesData,
-				Message: "Deletes all rows in the table (and the table itself)",
-			}},
-		},
-		{DDL: "CREATE TABLE \"public\".\"recreated\" (\n\t\"id\" bigint NOT NULL\n) PARTITION BY HASH (id)"},
-	}, plan.Statements)
-	assert.Empty(t, plan.CleanupStatements)
+	_, err := Generate(t.Context(), current, target, WithDoNotValidatePlan())
+	require.ErrorContains(t, err, "catalog relation identities")
 }

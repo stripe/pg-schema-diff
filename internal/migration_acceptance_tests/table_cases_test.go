@@ -1,8 +1,13 @@
 package migration_acceptance_tests
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 )
 
@@ -174,7 +179,9 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeCorrectness,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 		newSchemaDDL: nil,
 	},
@@ -194,7 +201,8 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 		},
 		newSchemaDDL: nil,
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{
@@ -216,7 +224,8 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{
@@ -603,6 +612,56 @@ var tableAcceptanceTestCases = []acceptanceTestCase{
                 city_name VARCHAR(255) NOT NULL DEFAULT ''
             );
 			`,
+		},
+	},
+	{
+		name: "Archive table rows before separately applying cleanup",
+		oldSchemaDDL: []string{`
+			CREATE TABLE archived_accounts (
+				id bigint PRIMARY KEY,
+				balance bigint NOT NULL
+			);
+			INSERT INTO archived_accounts VALUES (1, 100), (2, 250);
+		`},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+		},
+		applyCleanupStatements: true,
+		postRegularAssertions: func(t *testing.T, pool *pgxpool.Pool) {
+			var activeTableExists bool
+			require.NoError(t, pool.QueryRow(t.Context(), `
+				SELECT EXISTS (
+					SELECT 1
+					FROM pg_catalog.pg_class AS c
+					JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+					WHERE n.nspname = 'public' AND c.relname = 'archived_accounts'
+				)
+			`).Scan(&activeTableExists))
+			assert.False(t, activeTableExists)
+
+			var archiveSchema string
+			require.NoError(t, pool.QueryRow(t.Context(), `
+				SELECT n.nspname
+				FROM pg_catalog.pg_class AS c
+				JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+				WHERE n.nspname LIKE 'pgschemadiff_archive_%'
+				  AND c.relname = 'archived_accounts'
+			`).Scan(&archiveSchema))
+			var rowCount int
+			require.NoError(t, pool.QueryRow(t.Context(), fmt.Sprintf(
+				"SELECT count(*) FROM %s", pgx.Identifier{archiveSchema, "archived_accounts"}.Sanitize(),
+			)).Scan(&rowCount))
+			assert.Equal(t, 2, rowCount)
+		},
+		postCleanupAssertions: func(t *testing.T, pool *pgxpool.Pool) {
+			var cleanupSchemaCount int
+			require.NoError(t, pool.QueryRow(t.Context(), `
+				SELECT count(*)
+				FROM pg_catalog.pg_namespace
+				WHERE nspname LIKE 'pgschemadiff_archive_%'
+			`).Scan(&cleanupSchemaCount))
+			assert.Zero(t, cleanupSchemaCount)
 		},
 	},
 }

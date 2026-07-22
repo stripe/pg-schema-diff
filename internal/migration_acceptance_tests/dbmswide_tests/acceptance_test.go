@@ -8,15 +8,16 @@ import (
 )
 
 type acceptanceTestCase struct {
-	name                string
-	roles               []string
-	oldSchemaDDL        []string
-	newSchemaDDL        []string
-	expectedHazardTypes []diff.MigrationHazardType
-	expectedPlanErrorIs error
-	expectedPlanDDL     []string
-	expectEmptyPlan     bool
-	expectedDBSchemaDDL []string
+	name                      string
+	roles                     []string
+	oldSchemaDDL              []string
+	newSchemaDDL              []string
+	expectedHazardTypes       []diff.MigrationHazardType
+	expectedPlanErrorIs       error
+	expectedPlanErrorContains string
+	expectedPlanDDL           []string
+	expectEmptyPlan           bool
+	expectedDBSchemaDDL       []string
 }
 
 func runTestCases(t *testing.T, testCases []acceptanceTestCase) {
@@ -25,15 +26,16 @@ func runTestCases(t *testing.T, testCases []acceptanceTestCase) {
 	dbmswideTestCases := make([]acceptance.DBMSWideAcceptanceTestCase, 0, len(testCases))
 	for _, tc := range testCases {
 		dbmswideTestCases = append(dbmswideTestCases, acceptance.DBMSWideAcceptanceTestCase{
-			Name:                tc.name,
-			Roles:               tc.roles,
-			OldSchemaDDL:        tc.oldSchemaDDL,
-			NewSchemaDDL:        tc.newSchemaDDL,
-			ExpectedHazardTypes: tc.expectedHazardTypes,
-			ExpectedPlanErrorIs: tc.expectedPlanErrorIs,
-			ExpectedPlanDDL:     tc.expectedPlanDDL,
-			ExpectEmptyPlan:     tc.expectEmptyPlan,
-			ExpectedDBSchemaDDL: tc.expectedDBSchemaDDL,
+			Name:                      tc.name,
+			Roles:                     tc.roles,
+			OldSchemaDDL:              tc.oldSchemaDDL,
+			NewSchemaDDL:              tc.newSchemaDDL,
+			ExpectedHazardTypes:       tc.expectedHazardTypes,
+			ExpectedPlanErrorIs:       tc.expectedPlanErrorIs,
+			ExpectedPlanErrorContains: tc.expectedPlanErrorContains,
+			ExpectedPlanDDL:           tc.expectedPlanDDL,
+			ExpectEmptyPlan:           tc.expectEmptyPlan,
+			ExpectedDBSchemaDDL:       tc.expectedDBSchemaDDL,
 		})
 	}
 	acceptance.RunDBMSWideTestCases(t, dbmswideTestCases)

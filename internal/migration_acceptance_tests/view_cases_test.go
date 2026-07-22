@@ -201,7 +201,8 @@ var viewAcceptanceTestCases = []acceptanceTestCase{
 		},
 		newSchemaDDL: nil,
 		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
 		},
 	},
 	{
@@ -268,9 +269,7 @@ var viewAcceptanceTestCases = []acceptanceTestCase{
                 GROUP BY DATE_TRUNC('month', buzz);
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
-		},
+		expectedPlanErrorContains: "persistent view",
 	},
 	{
 		name: "Recreate view due dependent table changing",
@@ -302,9 +301,7 @@ var viewAcceptanceTestCases = []acceptanceTestCase{
                 GROUP BY foo;
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeDeletesData,
-		},
+		expectedPlanErrorContains: "persistent view",
 	},
 	{
 		name: "Recreate view due to dependent column changing",

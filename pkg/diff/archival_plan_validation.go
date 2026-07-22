@@ -14,8 +14,7 @@ import (
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
-// archivalPlanValidationRequest is the dormant Stage 17 boundary. It is kept
-// separate from assertValidPlan until archival activation in Stage 19.
+// archivalPlanValidationRequest is the Stage 17 two-phase validation boundary.
 type archivalPlanValidationRequest struct {
 	TempDBFactory tempdb.Factory
 	Logger        *slog.Logger
@@ -827,7 +826,8 @@ func matchArchivalValidationObject(
 	for _, oid := range archivalValidationCandidateOIDs(temporary, expected.Kind) {
 		candidate, candidateCount := currentCatalogObjectsWithOID(temporary, expected.Kind, oid)
 		if candidateCount == 1 && candidate.SchemaName == actual.SchemaName &&
-			candidate.Name == actual.Name && slices.Equal(candidate.IdentityArguments, actual.IdentityArguments) {
+			candidate.Name == actual.Name && slices.Equal(candidate.IdentityArguments, actual.IdentityArguments) &&
+			archivalValidationObjectOwnerMatches(source, temporary, expected.Kind, expected.OID, oid) {
 			matches = append(matches, oid)
 		}
 	}
@@ -836,6 +836,62 @@ func matchArchivalValidationObject(
 			len(matches), markerObjectDisplayName(actual))
 	}
 	return matches[0], nil
+}
+
+func archivalValidationObjectOwnerMatches(
+	source schema.CatalogInventory,
+	temporary schema.CatalogInventory,
+	kind archivalMarkerObjectKind,
+	sourceOID uint32,
+	temporaryOID uint32,
+) bool {
+	ownerOID := func(inventory schema.CatalogInventory, oid uint32) uint32 {
+		switch kind {
+		case archivalMarkerObjectKindIndex:
+			for _, object := range inventory.Indexes {
+				if object.OID == oid {
+					return object.RelationOID
+				}
+			}
+		case archivalMarkerObjectKindConstraint:
+			for _, object := range inventory.Constraints {
+				if object.OID == oid {
+					return object.RelationOID
+				}
+			}
+		case archivalMarkerObjectKindTrigger:
+			for _, object := range inventory.Triggers {
+				if object.OID == oid {
+					return object.RelationOID
+				}
+			}
+		case archivalMarkerObjectKindRule:
+			for _, object := range inventory.Rules {
+				if object.OID == oid {
+					return object.RelationOID
+				}
+			}
+		case archivalMarkerObjectKindPolicy:
+			for _, object := range inventory.Policies {
+				if object.OID == oid {
+					return object.RelationOID
+				}
+			}
+		}
+		return 0
+	}
+	sourceOwnerOID := ownerOID(source, sourceOID)
+	temporaryOwnerOID := ownerOID(temporary, temporaryOID)
+	if sourceOwnerOID == 0 && temporaryOwnerOID == 0 {
+		return true
+	}
+	if sourceOwnerOID == 0 || temporaryOwnerOID == 0 {
+		return false
+	}
+	sourceOwner := catalogRelationWithOID(source, sourceOwnerOID)
+	temporaryOwner := catalogRelationWithOID(temporary, temporaryOwnerOID)
+	return sourceOwner != nil && temporaryOwner != nil &&
+		sourceOwner.SchemaName == temporaryOwner.SchemaName && sourceOwner.Name == temporaryOwner.Name
 }
 
 func archivalValidationCandidateOIDs(
@@ -1445,6 +1501,18 @@ func archivalManagedCatalogMetadata(
 			owned[archivedDependencyAddressKey{
 				classOID: pgNamespaceCatalogOID, objectOID: catalogSchema.OID,
 			}] = struct{}{}
+		}
+	}
+	for _, dependency := range inventory.Dependencies {
+		if dependency.Dependent.ClassOID == pgAttrDefCatalogOID &&
+			dependency.Referenced.ClassOID == pgClassCatalogOID {
+			if _, archivedTable := owned[archivedDependencyAddressKey{
+				classOID: pgClassCatalogOID, objectOID: dependency.Referenced.ObjectOID,
+			}]; archivedTable {
+				owned[archivedDependencyAddressKey{
+					classOID: pgAttrDefCatalogOID, objectOID: dependency.Dependent.ObjectOID,
+				}] = struct{}{}
+			}
 		}
 	}
 	isOwned := func(classOID, objectOID uint32) bool {
