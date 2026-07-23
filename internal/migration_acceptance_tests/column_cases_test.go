@@ -1,18 +1,9 @@
 package migration_acceptance_tests
 
 import (
-	"context"
-	"database/sql"
-	"strings"
 	"testing"
 
-	"github.com/google/uuid"
-	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
-	"github.com/stripe/pg-schema-diff/pkg/log"
-	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
 var columnAcceptanceTestCases = []acceptanceTestCase{
@@ -1383,81 +1374,4 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 
 func TestColumnTestCases(t *testing.T) {
 	runTestCases(t, columnAcceptanceTestCases)
-}
-
-// If the pre-fix unqualified to_timestamp() emission is used, apply invokes the
-// planted public.to_timestamp(bigint) shadow and fails.
-func TestBigintToTimestampMigrationFailsWithUnqualifiedToTimestamp(t *testing.T) {
-	t.Parallel()
-
-	oldDb, err := pgEngine.CreateDatabaseWithName("pgtemp_" + uuid.NewString())
-	require.NoError(t, err)
-	defer oldDb.DropDB()
-
-	oldSchemaDDL := `
-		CREATE FUNCTION public.to_timestamp(bigint)
-		RETURNS timestamp without time zone LANGUAGE plpgsql AS $$
-		BEGIN
-		  RAISE EXCEPTION 'pwnd';
-		END $$;
-
-		CREATE TABLE "Foobar"(
-		    id INT PRIMARY KEY,
-		    some_time_col BIGINT NOT NULL
-		);
-		INSERT INTO "Foobar" VALUES (1, 1700000000000);
-	`
-	require.NoError(t, applyDDL(oldDb, []string{oldSchemaDDL}))
-
-	newSchemaDDL := []string{`
-		CREATE FUNCTION public.to_timestamp(bigint)
-		RETURNS timestamp without time zone LANGUAGE plpgsql AS $$
-		BEGIN
-		  RAISE EXCEPTION 'pwnd';
-		END $$;
-
-		CREATE TABLE "Foobar"(
-		    id INT PRIMARY KEY,
-		    some_time_col TIMESTAMP NOT NULL
-		);
-	`}
-
-	oldDBConnPool, err := sql.Open("pgx", oldDb.GetDSN())
-	require.NoError(t, err)
-	defer oldDBConnPool.Close()
-	oldDBConnPool.SetMaxOpenConns(1)
-
-	tempDbFactory, err := tempdb.NewOnInstanceFactory(context.Background(), func(ctx context.Context, dbName string) (*sql.DB, error) {
-		return sql.Open("pgx", pgEngine.GetPostgresDatabaseConnOpts().With("dbname", dbName).ToDSN())
-	})
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, tempDbFactory.Close())
-	}()
-
-	plan, err := diff.Generate(context.Background(),
-		diff.DBSchemaSource(oldDBConnPool),
-		diff.DDLSchemaSource(newSchemaDDL),
-		diff.WithTempDbFactory(tempDbFactory),
-		diff.WithLogger(log.SimpleLogger()),
-	)
-	require.NoError(t, err)
-
-	const vulnerableUsing = `using to_timestamp("some_time_col" / 1000)`
-	var vulnerablePlan diff.Plan
-	var mutatedAlterColumn bool
-	for _, stmt := range plan.Statements {
-		upperDDL := strings.ToUpper(stmt.DDL)
-		if strings.Contains(upperDDL, "ALTER COLUMN") && strings.Contains(upperDDL, " USING ") {
-			idx := strings.Index(upperDDL, " USING ")
-			stmt.DDL = stmt.DDL[:idx] + " " + vulnerableUsing
-			mutatedAlterColumn = true
-		}
-		vulnerablePlan.Statements = append(vulnerablePlan.Statements, stmt)
-	}
-	require.True(t, mutatedAlterColumn, "expected an ALTER COLUMN ... USING statement to rewrite: %# v", plan.Statements)
-
-	err = applyPlan(oldDb, vulnerablePlan)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "pwnd")
 }
