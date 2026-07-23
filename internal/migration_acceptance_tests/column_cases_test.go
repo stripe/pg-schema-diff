@@ -309,7 +309,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
-		name: "Change BIGINT to TIMESTAMP (validate conversion and ANALYZE)",
+		name: "Change BIGINT to TIMESTAMP (ignores shadowed to_timestamp in USING)",
 		oldSchemaDDL: []string{
 			`
             CREATE FUNCTION public.to_timestamp(bigint)
