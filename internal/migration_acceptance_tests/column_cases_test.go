@@ -312,7 +312,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		name: "Change BIGINT to TIMESTAMP (ignores shadowed to_timestamp in USING)",
 		oldSchemaDDL: []string{
 			`
-            CREATE FUNCTION public.to_timestamp(bigint)
+            CREATE FUNCTION public.to_timestamp(double precision)
             RETURNS timestamp without time zone LANGUAGE plpgsql AS $$
             BEGIN
               RAISE EXCEPTION 'pwnd';
@@ -327,7 +327,7 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 		},
 		newSchemaDDL: []string{
 			`
-            CREATE FUNCTION public.to_timestamp(bigint)
+            CREATE FUNCTION public.to_timestamp(double precision)
             RETURNS timestamp without time zone LANGUAGE plpgsql AS $$
             BEGIN
               RAISE EXCEPTION 'pwnd';
