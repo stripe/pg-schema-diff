@@ -30,5 +30,5 @@ func TestTypeTransformationQualifiesToTimestampBuiltin(t *testing.T) {
 
 	assert.NotRegexp(t, unqualifiedToTimestampInUsing, stmt.DDL)
 	assert.Regexp(t, qualifiedToTimestampInUsing, stmt.DDL)
-	assert.Contains(t, stmt.DDL, `::pg_catalog.float8)`)
+	assert.Contains(t, stmt.DDL, `::pg_catalog.float8`)
 }
