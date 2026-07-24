@@ -327,8 +327,49 @@ var columnAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 		expectedPlanDDL: []string{
-			"ALTER TABLE \"public\".\"Foobar\" ALTER COLUMN \"some_time_col\" SET DATA TYPE timestamp without time zone using to_timestamp(\"some_time_col\" / 1000)",
+			"ALTER TABLE \"public\".\"Foobar\" ALTER COLUMN \"some_time_col\" SET DATA TYPE timestamp without time zone using pg_catalog.to_timestamp(\"some_time_col\"::pg_catalog.float8 OPERATOR(pg_catalog./) 1000.0::pg_catalog.float8)",
 			"ANALYZE \"public\".\"Foobar\" (\"some_time_col\")",
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeImpactsDatabasePerformance,
+		},
+	},
+	{
+		name:  "Change BIGINT to TIMESTAMP (ignores shadowed to_timestamp in USING)",
+		roles: []string{"shadow_test_role"},
+		oldSchemaDDL: []string{
+			`
+            ALTER ROLE postgres SET search_path TO public, pg_catalog;
+
+            CREATE FUNCTION public.to_timestamp(double precision)
+            RETURNS timestamp without time zone LANGUAGE plpgsql AS $$
+            BEGIN
+              RAISE EXCEPTION 'pwnd';
+            END $$;
+
+            CREATE TABLE "Foobar"(
+                id INT PRIMARY KEY,
+                some_time_col BIGINT NOT NULL
+            );
+            INSERT INTO "Foobar" VALUES (1, 1700000000000);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            ALTER ROLE postgres SET search_path TO public, pg_catalog;
+
+            CREATE FUNCTION public.to_timestamp(double precision)
+            RETURNS timestamp without time zone LANGUAGE plpgsql AS $$
+            BEGIN
+              RAISE EXCEPTION 'pwnd';
+            END $$;
+
+            CREATE TABLE "Foobar"(
+                id INT PRIMARY KEY,
+                some_time_col TIMESTAMP NOT NULL
+            );
+			`,
 		},
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
