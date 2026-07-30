@@ -133,6 +133,33 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Add a multiline expression index",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE index_test (
+                flag BOOLEAN,
+                value1 TEXT,
+                value2 TEXT
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE index_test (
+                flag BOOLEAN,
+                value1 TEXT,
+                value2 TEXT
+            );
+            CREATE INDEX ix_test ON index_test ((
+                CASE WHEN flag THEN value1 ELSE value2 END
+            ));
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
 		name: "Add a unique index",
 		oldSchemaDDL: []string{
 			`

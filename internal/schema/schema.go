@@ -319,7 +319,7 @@ var (
 	// because only UNIQUE indices will have the UNIQUE keyword in their pg_get_indexdef statement
 	//
 	// The third matching group is the rest of the statement
-	idxToConcurrentlyRegex = regexp.MustCompile("^(CREATE (UNIQUE )?INDEX )(.*)$")
+	idxToConcurrentlyRegex = regexp.MustCompile("(?s)^(CREATE (UNIQUE )?INDEX )(.*)$")
 )
 
 // GetIndexDefStatement is the output of pg_getindexdef. It is a `CREATE INDEX` statement that will re-create
