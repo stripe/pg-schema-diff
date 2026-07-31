@@ -111,7 +111,7 @@ func failIfHazardsNotAllowed(plan diff.Plan, allowedHazardsTypesStrs []string) e
 
 	}
 	if len(disallowedHazardMsgs) > 0 {
-		return fmt.Errorf("prohited hazards found\n"+
+		return fmt.Errorf("prohibited hazards found\n"+
 			"These hazards must be allowed via the allow-hazards flag, e.g., --allow-hazards %s\n"+
 			"Prohibited hazards in the following statements:\n%s",
 			strings.Join(getHazardTypes(plan), ","),
