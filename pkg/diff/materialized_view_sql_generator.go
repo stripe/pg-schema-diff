@@ -94,7 +94,14 @@ func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (parti
 		materializedViewSb.WriteString(fmt.Sprintf(" TABLESPACE %s", schema.EscapeIdentifier(mv.Tablespace)))
 	}
 	materializedViewSb.WriteString(" AS\n")
-	materializedViewSb.WriteString(mv.ViewDefinition)
+	// pg_get_viewdef() may include a trailing semicolon in the view definition. Strip it so
+	// that WITH NO DATA is part of the same CREATE MATERIALIZED VIEW statement.
+	materializedViewSb.WriteString(strings.TrimRight(mv.ViewDefinition, "; \n\t"))
+	// Prevent the materialized view's stored query from being executed during schema
+	// reconstruction. Without WITH NO DATA, Postgres defaults to WITH DATA, which populates
+	// the view by running the query with the current connection's privileges. A low-privileged
+	// user could exploit this by planting a materialized view whose body escalates privileges.
+	materializedViewSb.WriteString("\nWITH NO DATA")
 
 	addVertexId := buildMaterializedViewVertexId(mv.SchemaQualifiedName, diffTypeAddAlter)
 
