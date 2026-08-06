@@ -38,6 +38,8 @@ type runCmdWithAssertionsParams struct {
 	outputEquals string
 	// outputContains is a list of substrings that are expected to be contained in the stdout output of the command.
 	outputContains []string
+	// outputNotContains is a list of substrings that are expected to NOT be contained in the stdout output.
+	outputNotContains []string
 	// expectErrContains is a list of substrings that are expected to be contained in the error returned by
 	// cmd.RunE. This is DISTINCT from stdErr.
 	expectErrContains []string
@@ -73,6 +75,9 @@ func (suite *cmdTestSuite) runCmdWithAssertions(tc runCmdWithAssertionsParams) {
 		for _, o := range tc.outputContains {
 			suite.Contains(stdOutStr, o)
 		}
+	}
+	for _, o := range tc.outputNotContains {
+		suite.NotContains(stdOutStr, o)
 	}
 	if len(tc.outputEquals) > 0 {
 		suite.Equal(tc.outputEquals, stdOutStr)

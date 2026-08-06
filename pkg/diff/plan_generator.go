@@ -90,6 +90,16 @@ func WithExcludeSchemas(schemas ...string) PlanOpt {
 	}
 }
 
+// WithExcludeTablePatterns excludes tables whose name or schema-qualified name (e.g., "public.foobar") fully matches
+// any of the given regex patterns (patterns are anchored, i.e., evaluated as ^(?:pattern)$). Objects owned by an
+// excluded table (indexes, constraints, triggers, policies, privileges) and partitions of an excluded table are also
+// excluded. The exclusion applies to both the current and target schemas.
+func WithExcludeTablePatterns(patterns ...string) PlanOpt {
+	return func(opts *planOptions) {
+		opts.getSchemaOpts = append(opts.getSchemaOpts, schema.WithExcludeTables(patterns...))
+	}
+}
+
 func WithGetSchemaOpts(getSchemaOpts ...externalschema.GetSchemaOpt) PlanOpt {
 	return func(opts *planOptions) {
 		opts.getSchemaOpts = append(opts.getSchemaOpts, getSchemaOpts...)

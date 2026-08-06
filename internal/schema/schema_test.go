@@ -1443,3 +1443,65 @@ func TestTriggerDefStmtToCreateOrReplace(t *testing.T) {
 		})
 	}
 }
+
+func TestGetSchemaWithExcludeTables(t *testing.T) {
+	engine, err := pgengine.StartEngine()
+	require.NoError(t, err)
+	defer engine.Close()
+
+	db, err := engine.CreateDatabase()
+	require.NoError(t, err)
+	defer db.DropDB()
+
+	connPool, err := sql.Open("pgx", db.GetDSN())
+	require.NoError(t, err)
+	defer connPool.Close()
+
+	_, err = connPool.Exec(`
+		CREATE SCHEMA schema_1;
+
+		CREATE TABLE foo (id INT PRIMARY KEY);
+		CREATE INDEX foo_idx ON foo(id);
+
+		-- Excluded by the bare pattern, along with its index and foreign key
+		CREATE TABLE tmp_bar (id INT PRIMARY KEY, foo_id INT REFERENCES foo(id));
+		CREATE INDEX tmp_bar_idx ON tmp_bar(foo_id);
+
+		-- Excluded by the bare pattern, which matches tables in all schemas
+		CREATE TABLE schema_1.tmp_bar (id INT);
+
+		-- Excluded by the schema-qualified pattern
+		CREATE TABLE schema_1.qualified_excluded (id INT);
+		-- Kept: the schema-qualified pattern only matches schema_1
+		CREATE TABLE qualified_excluded (id INT);
+
+		-- Kept: patterns are anchored, so tmp_.* must match the entire name
+		CREATE TABLE my_tmp_bar (id INT);
+
+		-- The partition is excluded because its parent is excluded, even though its own name does not match
+		CREATE TABLE tmp_events (id INT) PARTITION BY RANGE (id);
+		CREATE TABLE events_p1 PARTITION OF tmp_events FOR VALUES FROM (0) TO (100);
+	`)
+	require.NoError(t, err)
+
+	fetchedSchema, err := GetSchema(context.Background(), connPool, WithExcludeTables(`tmp_.*`, `schema_1\.qualified_excluded`))
+	require.NoError(t, err)
+
+	var tableNames []string
+	for _, table := range fetchedSchema.Tables {
+		tableNames = append(tableNames, table.GetFQEscapedName())
+	}
+	assert.ElementsMatch(t, []string{`"public"."foo"`, `"public"."qualified_excluded"`, `"public"."my_tmp_bar"`}, tableNames)
+
+	var indexNames []string
+	for _, idx := range fetchedSchema.Indexes {
+		indexNames = append(indexNames, idx.Name)
+	}
+	assert.ElementsMatch(t, []string{"foo_pkey", "foo_idx"}, indexNames)
+
+	assert.Empty(t, fetchedSchema.ForeignKeyConstraints)
+
+	// Invalid patterns error out before any introspection happens.
+	_, err = GetSchema(context.Background(), connPool, WithExcludeTables(`[`))
+	require.ErrorContains(t, err, "compiling exclude table pattern")
+}

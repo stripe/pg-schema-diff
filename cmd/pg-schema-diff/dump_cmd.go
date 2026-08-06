@@ -26,18 +26,28 @@ func buildDumpCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&includeSchemas, "include-schema", nil, "Include the specified schema in the dump")
 	cmd.Flags().StringArrayVar(&excludeSchemas, "exclude-schema", nil, "Exclude the specified schema from the dump")
 
+	var excludeTablePatterns []string
+	cmd.Flags().StringArrayVar(&excludeTablePatterns, "exclude-table", nil,
+		"Exclude tables matching this Go regexp. The pattern is matched (fully anchored) against both the table "+
+			"name and the schema-qualified name, e.g., 'tmp_.*' or 'public\\.tmp_.*'. Can be repeated.")
+
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		connConfig, err := parseConnectionFlags(connFlags)
 		if err != nil {
 			return err
 		}
 
+		if err := validateExcludeTablePatterns(excludeTablePatterns); err != nil {
+			return err
+		}
+
 		cmd.SilenceUsage = true
 
 		plan, err := generateDump(cmd.Context(), generateDumpParams{
-			connConfig:     connConfig,
-			includeSchemas: includeSchemas,
-			excludeSchemas: excludeSchemas,
+			connConfig:           connConfig,
+			includeSchemas:       includeSchemas,
+			excludeSchemas:       excludeSchemas,
+			excludeTablePatterns: excludeTablePatterns,
 		})
 		if err != nil {
 			return err
@@ -51,9 +61,10 @@ func buildDumpCmd() *cobra.Command {
 }
 
 type generateDumpParams struct {
-	connConfig     *pgx.ConnConfig
-	includeSchemas []string
-	excludeSchemas []string
+	connConfig           *pgx.ConnConfig
+	includeSchemas       []string
+	excludeSchemas       []string
+	excludeTablePatterns []string
 }
 
 func generateDump(ctx context.Context, params generateDumpParams) (diff.Plan, error) {
@@ -82,6 +93,7 @@ func generateDump(ctx context.Context, params generateDumpParams) (diff.Plan, er
 		diff.WithTempDbFactory(tempDbFactory),
 		diff.WithIncludeSchemas(params.includeSchemas...),
 		diff.WithExcludeSchemas(params.excludeSchemas...),
+		diff.WithExcludeTablePatterns(params.excludeTablePatterns...),
 		diff.WithDoNotValidatePlan(),
 		diff.WithNoConcurrentIndexOps(),
 	)
