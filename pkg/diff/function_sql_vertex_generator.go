@@ -30,12 +30,21 @@ func (f *functionSQLVertexGenerator) Add(function schema.Function) ([]Statement,
 				"created/altered before this statement.",
 		})
 	}
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         function.FunctionDef,
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     hazards,
-	}}, nil
+	}}
+	privilegeStmts, err := exactRoutinePrivilegeStatements(
+		newFunctionPrivilegeSQLVertexGenerator(function.SchemaQualifiedName),
+		function.Privileges,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("generating function privilege statements: %w", err)
+	}
+	stmts = append(stmts, privilegeStmts...)
+	return stmts, nil
 }
 
 func (f *functionSQLVertexGenerator) Delete(function schema.Function) ([]Statement, error) {
@@ -60,10 +69,33 @@ func (f *functionSQLVertexGenerator) Delete(function schema.Function) ([]Stateme
 func (f *functionSQLVertexGenerator) Alter(diff functionDiff) ([]Statement, error) {
 	// We are assuming the function has been normalized, i.e., we don't have to worry DependsOnFunctions ordering
 	// causing a false positive diff detected.
-	if cmp.Equal(diff.old, diff.new) {
-		return nil, nil
+	oldWithoutPrivileges := diff.old
+	oldWithoutPrivileges.Privileges = nil
+	newWithoutPrivileges := diff.new
+	newWithoutPrivileges.Privileges = nil
+
+	var stmts []Statement
+	if !cmp.Equal(oldWithoutPrivileges, newWithoutPrivileges) {
+		addStmts, err := f.Add(diff.new)
+		if err != nil {
+			return nil, err
+		}
+		stmts = append(stmts, addStmts...)
+	} else {
+		privilegesPartialGraph, err := generatePartialGraph(
+			newFunctionPrivilegeSQLVertexGenerator(diff.new.SchemaQualifiedName),
+			diff.privilegesDiff,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("resolving function privilege sql: %w", err)
+		}
+		privilegeStmts, err := graphStatements(privilegesPartialGraph)
+		if err != nil {
+			return nil, fmt.Errorf("ordering function privilege sql: %w", err)
+		}
+		stmts = append(stmts, privilegeStmts...)
 	}
-	return f.Add(diff.new)
+	return stmts, nil
 }
 
 func canFunctionDependenciesBeTracked(function schema.Function) bool {

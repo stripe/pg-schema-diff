@@ -134,10 +134,12 @@ type (
 
 	functionDiff struct {
 		oldAndNew[schema.Function]
+		privilegesDiff listDiff[schema.Privilege, privilegeDiff]
 	}
 
 	procedureDiff struct {
 		oldAndNew[schema.Procedure]
+		privilegesDiff listDiff[schema.Privilege, privilegeDiff]
 	}
 )
 
@@ -285,11 +287,13 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	functionDiffs, err := diffLists(old.Functions, new.Functions, func(old, new schema.Function, _, _ int) (functionDiff, bool, error) {
+		privilegesDiff, err := buildPrivilegeDiffs(old.Privileges, new.Privileges)
+		if err != nil {
+			return functionDiff{}, false, fmt.Errorf("diffing privileges: %w", err)
+		}
 		return functionDiff{
-			oldAndNew[schema.Function]{
-				old: old,
-				new: new,
-			},
+			oldAndNew:      oldAndNew[schema.Function]{old: old, new: new},
+			privilegesDiff: privilegesDiff,
 		}, false, nil
 	})
 	if err != nil {
@@ -297,11 +301,13 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	procedureDiffs, err := diffLists(old.Procedures, new.Procedures, func(old, new schema.Procedure, _, _ int) (procedureDiff, bool, error) {
+		privilegesDiff, err := buildPrivilegeDiffs(old.Privileges, new.Privileges)
+		if err != nil {
+			return procedureDiff{}, false, fmt.Errorf("diffing privileges: %w", err)
+		}
 		return procedureDiff{
-			oldAndNew[schema.Procedure]{
-				old: old,
-				new: new,
-			},
+			oldAndNew:      oldAndNew[schema.Procedure]{old: old, new: new},
+			privilegesDiff: privilegesDiff,
 		}, false, nil
 	})
 	if err != nil {
@@ -429,15 +435,7 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 
 	}
 
-	privilegesDiff, err := diffLists(
-		oldTable.Privileges,
-		newTable.Privileges,
-		func(old, new schema.TablePrivilege, _, _ int) (privilegeDiff, bool, error) {
-			// Recreate the privilege if IsGrantable changes
-			recreate := old.IsGrantable != new.IsGrantable
-			return privilegeDiff{oldAndNew[schema.TablePrivilege]{old: old, new: new}}, recreate, nil
-		},
-	)
+	privilegesDiff, err := buildPrivilegeDiffs(oldTable.Privileges, newTable.Privileges)
 	if err != nil {
 		return tableDiff{}, false, fmt.Errorf("diffing privileges: %w", err)
 	}
@@ -452,6 +450,18 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 		policiesDiff:        policiesDiff,
 		privilegesDiff:      privilegesDiff,
 	}, false, nil
+}
+
+func buildPrivilegeDiffs(oldPrivileges, newPrivileges []schema.Privilege) (listDiff[schema.Privilege, privilegeDiff], error) {
+	return diffLists(
+		oldPrivileges,
+		newPrivileges,
+		func(old, new schema.Privilege, _, _ int) (privilegeDiff, bool, error) {
+			// Recreate the privilege if IsGrantable changes.
+			recreate := old.IsGrantable != new.IsGrantable
+			return privilegeDiff{oldAndNew[schema.Privilege]{old: old, new: new}}, recreate, nil
+		},
+	)
 }
 
 type indexDiffConfig struct {
@@ -885,14 +895,14 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		stmts = append(stmts, stripMigrationHazards(forceRLSForTable(table))...)
 	}
 
-	privilegeGenerator := &privilegeSQLVertexGenerator{tableName: table.SchemaQualifiedName}
+	privilegeGenerator := newPrivilegeSQLVertexGenerator(table.SchemaQualifiedName)
 	for _, privilege := range table.Privileges {
-		addPrivilegeStmts, err := privilegeGenerator.Add(privilege)
+		addPrivilegePartialGraph, err := privilegeGenerator.Add(privilege)
 		if err != nil {
 			return nil, fmt.Errorf("generating add privilege statements for privilege %s: %w", privilege.GetName(), err)
 		}
 		// Remove hazards from statements since the table is brand new
-		stmts = append(stmts, stripMigrationHazards(addPrivilegeStmts...)...)
+		stmts = append(stmts, stripMigrationHazards(addPrivilegePartialGraph.statements()...)...)
 	}
 
 	return stmts, nil

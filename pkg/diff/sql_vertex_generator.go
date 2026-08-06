@@ -65,6 +65,18 @@ func graphFromPartials(parts partialSQLGraph) (*sqlGraph, error) {
 	return graph, nil
 }
 
+func graphStatements(parts partialSQLGraph) ([]Statement, error) {
+	graph, err := graphFromPartials(parts)
+	if err != nil {
+		return nil, fmt.Errorf("converting partial SQL graph")
+	}
+	stmts, err := graph.toOrderedStatements()
+	if err != nil {
+		return nil, fmt.Errorf("getting ordered statements: %w", err)
+	}
+	return stmts, nil
+}
+
 func mergeVertices(old, new sqlVertex) sqlVertex {
 	priority := old.priority
 	if new.priority != sqlPriorityUnset && (priority == sqlPriorityUnset || new.priority > priority) {

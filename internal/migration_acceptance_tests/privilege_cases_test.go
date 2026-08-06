@@ -157,6 +157,39 @@ var privilegeAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name:  "Revoke implicit PUBLIC EXECUTE and grant function EXECUTE to role",
+		roles: []string{"app_user"},
+		oldSchemaDDL: []string{
+			`
+				CREATE SCHEMA welcome;
+				CREATE FUNCTION welcome.available_deposit_ordinal() RETURNS integer
+					LANGUAGE SQL
+					RETURN 1;
+				CREATE FUNCTION welcome.on_deposit(deposit_id uuid) RETURNS void
+					LANGUAGE SQL
+					AS $$ SELECT $$;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+				CREATE SCHEMA welcome;
+				CREATE FUNCTION welcome.available_deposit_ordinal() RETURNS integer
+					LANGUAGE SQL
+					RETURN 1;
+				REVOKE EXECUTE ON FUNCTION welcome.available_deposit_ordinal() FROM PUBLIC;
+				GRANT EXECUTE ON FUNCTION welcome.available_deposit_ordinal() TO app_user;
+
+				CREATE FUNCTION welcome.on_deposit(deposit_id uuid) RETURNS void
+					LANGUAGE SQL
+					AS $$ SELECT $$;
+				REVOKE EXECUTE ON FUNCTION welcome.on_deposit(uuid) FROM PUBLIC;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+	},
+	{
 		name:  "Grant on partitioned parent table",
 		roles: []string{"app_user"},
 		oldSchemaDDL: []string{

@@ -86,11 +86,17 @@ func (s Schema) Normalize() Schema {
 	var normFunctions []Function
 	for _, function := range sortSchemaObjectsByName(s.Functions) {
 		function.DependsOnFunctions = sortSchemaObjectsByName(function.DependsOnFunctions)
+		function.Privileges = sortSchemaObjectsByName(function.Privileges)
 		normFunctions = append(normFunctions, function)
 	}
 	s.Functions = normFunctions
 
-	s.Procedures = sortSchemaObjectsByName(s.Procedures)
+	var normProcedures []Procedure
+	for _, procedure := range sortSchemaObjectsByName(s.Procedures) {
+		procedure.Privileges = sortSchemaObjectsByName(procedure.Privileges)
+		normProcedures = append(normProcedures, procedure)
+	}
+	s.Procedures = normProcedures
 	s.Triggers = sortSchemaObjectsByName(s.Triggers)
 
 	var normViews []View
@@ -242,23 +248,26 @@ func (t Table) IsPartition() bool {
 	return t.ParentTable != nil
 }
 
-// TablePrivilege represents a privilege granted on a table
-type TablePrivilege struct {
+// Privilege represents a privilege granted on a schema object.
+type Privilege struct {
 	// Grantee is the role that has the privilege. Empty string means PUBLIC.
 	Grantee string
-	// Privilege is the type of privilege (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER)
+	// Privilege is the type of privilege (SELECT, EXECUTE, etc.)
 	Privilege string
 	// IsGrantable indicates if the grantee can grant this privilege to others (WITH GRANT OPTION)
 	IsGrantable bool
 }
 
-func (p TablePrivilege) GetName() string {
+func (p Privilege) GetName() string {
 	grantee := p.Grantee
 	if grantee == "" {
 		grantee = "PUBLIC"
 	}
 	return fmt.Sprintf("%s:%s", grantee, p.Privilege)
 }
+
+// TablePrivilege represents a privilege granted on a table.
+type TablePrivilege = Privilege
 
 type ColumnIdentityType string
 
@@ -449,6 +458,7 @@ type Function struct {
 	// can track the dependencies of the function (or not)
 	Language           string
 	DependsOnFunctions []SchemaQualifiedName
+	Privileges         []Privilege
 }
 
 type Procedure struct {
@@ -456,7 +466,8 @@ type Procedure struct {
 	// Def is the statement required to completely (re)create
 	// the procedure, as returned by `pg_get_functiondef`. It is a CREATE OR REPLACE
 	// statement.
-	Def string
+	Def        string
+	Privileges []Privilege
 }
 
 var (
@@ -1319,12 +1330,17 @@ func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.G
 	if err != nil {
 		return Function{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
 	}
+	privileges, err := parseJSONPrivileges(rawFunction.Privileges)
+	if err != nil {
+		return Function{}, fmt.Errorf("parseJSONPrivileges(%s): %w", rawFunction.Oid, err)
+	}
 
 	return Function{
 		SchemaQualifiedName: buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
 		FunctionDef:         rawFunction.FuncDef,
 		Language:            rawFunction.FuncLang,
 		DependsOnFunctions:  dependsOnFunctions,
+		Privileges:          privileges,
 	}, nil
 }
 
@@ -1353,9 +1369,14 @@ func (s *schemaFetcher) fetchProcedures(ctx context.Context) ([]Procedure, error
 
 	var procedures []Procedure
 	for _, rawProcedure := range rawProcedures {
+		privileges, err := parseJSONPrivileges(rawProcedure.Privileges)
+		if err != nil {
+			return nil, fmt.Errorf("parseJSONPrivileges(%s): %w", rawProcedure.Oid, err)
+		}
 		p := Procedure{
 			SchemaQualifiedName: buildProcName(rawProcedure.FuncName, rawProcedure.FuncIdentityArguments, rawProcedure.FuncSchemaName),
 			Def:                 rawProcedure.FuncDef,
+			Privileges:          privileges,
 		}
 		procedures = append(procedures, p)
 	}
@@ -1578,6 +1599,26 @@ func parseJSONTableDependencies(vals []string) ([]TableDependency, error) {
 		out = append(out, TableDependency{
 			SchemaQualifiedName: buildNameFromUnescaped(s.Name, s.Schema),
 			Columns:             s.Columns,
+		})
+	}
+	return out, nil
+}
+
+func parseJSONPrivileges(vals []string) ([]Privilege, error) {
+	var out []Privilege
+	for _, v := range vals {
+		var p struct {
+			Grantee     string `json:"grantee"`
+			Privilege   string `json:"privilege"`
+			IsGrantable bool   `json:"is_grantable"`
+		}
+		if err := json.Unmarshal([]byte(v), &p); err != nil {
+			return nil, fmt.Errorf("json.Unmarshal(%q, Privilege): %w", string(v), err)
+		}
+		out = append(out, Privilege{
+			Grantee:     p.Grantee,
+			Privilege:   p.Privilege,
+			IsGrantable: p.IsGrantable,
 		})
 	}
 	return out, nil
