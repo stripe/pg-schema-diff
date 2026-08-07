@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/internal/util"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
