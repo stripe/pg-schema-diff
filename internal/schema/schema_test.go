@@ -1382,6 +1382,15 @@ func TestIdxDefStmtToCreateIdxConcurrently(t *testing.T) {
 			out:     `CREATE UNIQUE INDEX CONCURRENTLY "CREATE INDEX ON" ON public.foobar USING btree (foo)`,
 		},
 		{
+			name: "multiline expression index",
+			defStmt: `CREATE INDEX ix_test ON public.index_test USING btree ((
+    CASE WHEN flag THEN value1 ELSE value2 END
+))`,
+			out: `CREATE INDEX CONCURRENTLY ix_test ON public.index_test USING btree ((
+    CASE WHEN flag THEN value1 ELSE value2 END
+))`,
+		},
+		{
 			name:      "case sensitive",
 			defStmt:   `CREATE uNIQUE INDEX foobar ON public.foobar USING btree (foo)`,
 			expectErr: true,
