@@ -88,6 +88,11 @@ func (o oldAndNew[S]) GetOld() S {
 type (
 	namedSchemaDiff struct {
 		oldAndNew[schema.NamedSchema]
+		privilegesDiff listDiff[schema.SchemaPrivilege, schemaPrivilegeDiff]
+	}
+
+	schemaPrivilegeDiff struct {
+		oldAndNew[schema.SchemaPrivilege]
 	}
 
 	enumDiff struct {
@@ -196,11 +201,27 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		old.NamedSchemas,
 		new.NamedSchemas,
 		func(old, new schema.NamedSchema, _, _ int) (namedSchemaDiff, bool, error) {
+			oldPrivileges := filterSchemaOwnerPrivileges(old.Privileges, old.Owner)
+			newPrivileges := filterSchemaOwnerPrivileges(new.Privileges, new.Owner)
+			privilegesDiff, err := diffLists(
+				oldPrivileges,
+				newPrivileges,
+				func(old, new schema.SchemaPrivilege, _, _ int) (schemaPrivilegeDiff, bool, error) {
+					// Recreate the privilege if IsGrantable changes
+					recreate := old.IsGrantable != new.IsGrantable
+					return schemaPrivilegeDiff{oldAndNew[schema.SchemaPrivilege]{old: old, new: new}}, recreate, nil
+				},
+			)
+			if err != nil {
+				return namedSchemaDiff{}, false, fmt.Errorf("diffing schema privileges: %w", err)
+			}
+
 			return namedSchemaDiff{
 				oldAndNew[schema.NamedSchema]{
 					old: old,
 					new: new,
 				},
+				privilegesDiff,
 			}, false, nil
 		})
 	if err != nil {
@@ -357,6 +378,21 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		viewDiff:                  viewDiffs,
 		materializedViewDiffs:     materializedViewDiffs,
 	}, false, nil
+}
+
+func filterSchemaOwnerPrivileges(privileges []schema.SchemaPrivilege, owner string) []schema.SchemaPrivilege {
+	if owner == "" {
+		return privileges
+	}
+
+	var filtered []schema.SchemaPrivilege
+	for _, privilege := range privileges {
+		if privilege.Grantee == owner && (privilege.Privilege == "USAGE" || privilege.Privilege == "CREATE") {
+			continue
+		}
+		filtered = append(filtered, privilege)
+	}
+	return filtered
 }
 
 func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, requiresRecreation bool, err error) {

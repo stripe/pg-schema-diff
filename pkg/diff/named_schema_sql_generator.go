@@ -11,11 +11,31 @@ import (
 type namedSchemaSQLGenerator struct{}
 
 func (n *namedSchemaSQLGenerator) Add(s schema.NamedSchema) ([]Statement, error) {
-	return []Statement{{
-		DDL:         fmt.Sprintf("CREATE SCHEMA %s", schema.EscapeIdentifier(s.Name)),
+	stmts := []Statement{{
+		DDL:         buildCreateSchemaDDL(s),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
-	}}, nil
+	}}
+
+	privilegeGenerator := &schemaPrivilegeSQLGenerator{schemaName: s.Name}
+	for _, privilege := range s.Privileges {
+		addPrivilegeStmts, err := privilegeGenerator.Add(privilege)
+		if err != nil {
+			return nil, fmt.Errorf("generating add schema privilege statements for privilege %s: %w", privilege.GetName(), err)
+		}
+		// Remove hazards from statements since the schema is brand new.
+		stmts = append(stmts, stripMigrationHazards(addPrivilegeStmts...)...)
+	}
+
+	return stmts, nil
+}
+
+func buildCreateSchemaDDL(s schema.NamedSchema) string {
+	ddl := fmt.Sprintf("CREATE SCHEMA %s", schema.EscapeIdentifier(s.Name))
+	if s.Owner != "" {
+		ddl += fmt.Sprintf(" AUTHORIZATION %s", schema.EscapeIdentifier(s.Owner))
+	}
+	return ddl
 }
 
 func (n *namedSchemaSQLGenerator) Delete(s schema.NamedSchema) ([]Statement, error) {
@@ -26,6 +46,31 @@ func (n *namedSchemaSQLGenerator) Delete(s schema.NamedSchema) ([]Statement, err
 	}}, nil
 }
 
-func (n *namedSchemaSQLGenerator) Alter(_ namedSchemaDiff) ([]Statement, error) {
-	return nil, nil
+func (n *namedSchemaSQLGenerator) Alter(diff namedSchemaDiff) ([]Statement, error) {
+	privilegeGenerator := &schemaPrivilegeSQLGenerator{schemaName: diff.new.Name}
+	privilegeStatements, err := diff.privilegesDiff.resolveToSQLGroupedByEffect(privilegeGenerator)
+	if err != nil {
+		return nil, fmt.Errorf("resolving schema privilege sql: %w", err)
+	}
+
+	var stmts []Statement
+	stmts = append(stmts, privilegeStatements.Deletes...)
+	stmts = append(stmts, privilegeStatements.Alters...)
+	if diff.old.Owner != diff.new.Owner && diff.new.Owner != "" {
+		stmts = append(stmts, buildAlterSchemaOwnerStatement(diff.new.Name, diff.new.Owner))
+	}
+	stmts = append(stmts, privilegeStatements.Adds...)
+	return stmts, nil
+}
+
+func buildAlterSchemaOwnerStatement(schemaName, owner string) Statement {
+	return Statement{
+		DDL:         fmt.Sprintf("ALTER SCHEMA %s OWNER TO %s", schema.EscapeIdentifier(schemaName), schema.EscapeIdentifier(owner)),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards: []MigrationHazard{{
+			Type:    MigrationHazardTypeAuthzUpdate,
+			Message: "Changing schema ownership changes implicit privileges for the old and new owners.",
+		}},
+	}
 }
