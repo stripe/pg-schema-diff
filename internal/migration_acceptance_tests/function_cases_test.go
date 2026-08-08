@@ -73,6 +73,20 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name:         "Create sql function after table referenced by body",
+		oldSchemaDDL: nil,
+		newSchemaDDL: []string{
+			`
+			CREATE SCHEMA app;
+			CREATE TABLE app.dead_letter(id int);
+			CREATE FUNCTION app.record_dead_letter()
+			RETURNS void
+			LANGUAGE sql
+			AS $$ INSERT INTO app.dead_letter(id) VALUES (1) $$;
+			`,
+		},
+	},
+	{
 		name:         "Create functions with quoted names (with conflicting names)",
 		oldSchemaDDL: nil,
 		newSchemaDDL: []string{
