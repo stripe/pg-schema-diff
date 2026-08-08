@@ -20,6 +20,7 @@ SELECT
     c.oid,
     c.relname::TEXT AS table_name,
     table_namespace.nspname::TEXT AS table_schema_name,
+    owner_role.rolname::TEXT AS owner,
     c.relreplident::TEXT AS replica_identity,
     c.relrowsecurity AS rls_enabled,
     c.relforcerowsecurity AS rls_forced,
@@ -38,6 +39,7 @@ FROM pg_catalog.pg_class AS c
 INNER JOIN
     pg_catalog.pg_namespace AS table_namespace
     ON c.relnamespace = table_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner_role ON c.relowner = owner_role.oid
 LEFT JOIN
     pg_catalog.pg_inherits AS table_inherits
     ON c.oid = table_inherits.inhrelid
@@ -262,6 +264,7 @@ SELECT
     pg_proc.oid,
     pg_proc.proname::TEXT AS func_name,
     proc_namespace.nspname::TEXT AS func_schema_name,
+    owner_role.rolname::TEXT AS owner,
     proc_lang.lanname::TEXT AS func_lang,
     pg_catalog.pg_get_function_identity_arguments(
         pg_proc.oid
@@ -271,6 +274,7 @@ FROM pg_catalog.pg_proc
 INNER JOIN
     pg_catalog.pg_namespace AS proc_namespace
     ON pg_proc.pronamespace = proc_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner_role ON pg_proc.proowner = owner_role.oid
 INNER JOIN
     pg_catalog.pg_language AS proc_lang
     ON pg_proc.prolang = proc_lang.oid
@@ -341,6 +345,7 @@ WHERE
 SELECT
     seq_c.relname::TEXT AS sequence_name,
     seq_ns.nspname::TEXT AS sequence_schema_name,
+    owner_role.rolname::TEXT AS owner,
     COALESCE(owner_attr.attname, '')::TEXT AS owner_column_name,
     COALESCE(owner_ns.nspname, '')::TEXT AS owner_schema_name,
     COALESCE(owner_c.relname, '')::TEXT AS owner_table_name,
@@ -354,6 +359,7 @@ SELECT
 FROM pg_catalog.pg_sequence AS pg_seq
 INNER JOIN pg_catalog.pg_class AS seq_c ON pg_seq.seqrelid = seq_c.oid
 INNER JOIN pg_catalog.pg_namespace AS seq_ns ON seq_c.relnamespace = seq_ns.oid
+INNER JOIN pg_catalog.pg_roles AS owner_role ON seq_c.relowner = owner_role.oid
 LEFT JOIN pg_catalog.pg_depend AS depend
     ON
         depend.classid = 'pg_class'::REGCLASS
@@ -405,6 +411,7 @@ WHERE
 SELECT
     pg_type.typname::TEXT AS enum_name,
     type_namespace.nspname::TEXT AS enum_schema_name,
+    owner_role.rolname::TEXT AS owner,
     (SELECT
         ARRAY_AGG(
             pg_enum.enumlabel
@@ -416,6 +423,7 @@ FROM pg_catalog.pg_type AS pg_type
 INNER JOIN
     pg_catalog.pg_namespace AS type_namespace
     ON pg_type.typnamespace = type_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS owner_role ON pg_type.typowner = owner_role.oid
 WHERE
     pg_type.typtype = 'e'
     AND type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
@@ -488,6 +496,7 @@ WHERE
 SELECT
     n.nspname::TEXT AS schema_name,
     c.relname::TEXT AS view_name,
+    owner_role.rolname::TEXT AS owner,
     c.reloptions::TEXT [] AS rel_options,
     (SELECT
         ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
@@ -539,6 +548,7 @@ SELECT
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
+INNER JOIN pg_catalog.pg_roles AS owner_role ON c.relowner = owner_role.oid
 WHERE
     c.relkind = 'v'
     AND n.nspname NOT IN ('pg_catalog', 'information_schema')
@@ -557,6 +567,7 @@ WHERE
 SELECT
     n.nspname::TEXT AS schema_name,
     c.relname::TEXT AS view_name,
+    owner_role.rolname::TEXT AS owner,
     c.reloptions::TEXT [] AS rel_options,
     COALESCE(ts.spcname, '')::TEXT AS tablespace_name,
     (SELECT
@@ -610,6 +621,7 @@ SELECT
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
+INNER JOIN pg_catalog.pg_roles AS owner_role ON c.relowner = owner_role.oid
 LEFT JOIN pg_catalog.pg_tablespace AS ts ON c.reltablespace = ts.oid
 WHERE
     c.relkind = 'm'

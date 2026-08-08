@@ -30,12 +30,14 @@ func (f *functionSQLVertexGenerator) Add(function schema.Function) ([]Statement,
 				"created/altered before this statement.",
 		})
 	}
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         function.FunctionDef,
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     hazards,
-	}}, nil
+	}}
+	stmts = append(stmts, ownerDDLForAdd(ownershipTarget("FUNCTION", function.SchemaQualifiedName), function.Owner)...)
+	return stmts, nil
 }
 
 func (f *functionSQLVertexGenerator) Delete(function schema.Function) ([]Statement, error) {
@@ -60,10 +62,22 @@ func (f *functionSQLVertexGenerator) Delete(function schema.Function) ([]Stateme
 func (f *functionSQLVertexGenerator) Alter(diff functionDiff) ([]Statement, error) {
 	// We are assuming the function has been normalized, i.e., we don't have to worry DependsOnFunctions ordering
 	// causing a false positive diff detected.
+	oldCopy := diff.old
+	oldCopy.Owner = diff.new.Owner
+	if cmp.Equal(oldCopy, diff.new) {
+		return ownerDDLForAlter(ownershipTarget("FUNCTION", diff.new.SchemaQualifiedName), diff.old.Owner, diff.new.Owner), nil
+	}
 	if cmp.Equal(diff.old, diff.new) {
 		return nil, nil
 	}
-	return f.Add(diff.new)
+	newForAlter := diff.new
+	newForAlter.Owner = ""
+	stmts, err := f.Add(newForAlter)
+	if err != nil {
+		return nil, err
+	}
+	stmts = append(stmts, ownerDDLForAlter(ownershipTarget("FUNCTION", diff.new.SchemaQualifiedName), diff.old.Owner, diff.new.Owner)...)
+	return stmts, nil
 }
 
 func canFunctionDependenciesBeTracked(function schema.Function) bool {

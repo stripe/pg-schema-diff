@@ -840,6 +840,7 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	})
+	stmts = append(stmts, ownerDDLForAdd(ownershipTarget("TABLE", table.SchemaQualifiedName), table.Owner)...)
 
 	csg := checkConstraintSQLVertexGenerator{
 		tableName:  table.SchemaQualifiedName,
@@ -930,6 +931,7 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 	}
 
 	var stmts []Statement
+	stmts = append(stmts, ownerDDLForAlter(ownershipTarget("TABLE", diff.new.SchemaQualifiedName), diff.old.Owner, diff.new.Owner)...)
 	// Only handle disabling RLS if it was previously enabled.
 	// We want to disable RLS before we do any other operations on the table, e.g., delete policies, to avoid creating an
 	// outage while RLS is being disabled
@@ -2520,9 +2522,11 @@ type sequenceSQLVertexGenerator struct {
 }
 
 func (s *sequenceSQLVertexGenerator) Add(seq schema.Sequence) ([]Statement, error) {
-	return []Statement{
+	stmts := []Statement{
 		s.buildAddAlterSequenceStatement(seq, false),
-	}, nil
+	}
+	stmts = append(stmts, ownerDDLForAdd(ownershipTarget("SEQUENCE", seq.SchemaQualifiedName), seq.RoleOwner)...)
+	return stmts, nil
 }
 
 func (s *sequenceSQLVertexGenerator) Delete(seq schema.Sequence) ([]Statement, error) {
@@ -2547,6 +2551,9 @@ func (s *sequenceSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, erro
 	var stmts []Statement
 	// Ownership changes handled by the sequenceOwnershipSQLVertexGenerator
 	diff.old.Owner = diff.new.Owner
+	oldRoleOwner := diff.old.RoleOwner
+	roleOwnerChanged := oldRoleOwner != diff.new.RoleOwner
+	diff.old.RoleOwner = diff.new.RoleOwner
 
 	// Explicitly list all the diffs supported by the alter statement, rather than just using !cmp.Equal, so we don't
 	// risk introducing a bug if we add new fields to schema.Sequence
@@ -2571,6 +2578,9 @@ func (s *sequenceSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, erro
 
 	if !cmp.Equal(diff.old, diff.new) {
 		return nil, fmt.Errorf("altering sequence to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
+	}
+	if roleOwnerChanged {
+		stmts = append(stmts, ownerDDLForAlter(ownershipTarget("SEQUENCE", diff.new.SchemaQualifiedName), oldRoleOwner, diff.new.RoleOwner)...)
 	}
 
 	return stmts, nil
