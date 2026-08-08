@@ -828,7 +828,12 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		columnDefs = append(columnDefs, "\t"+columnDef)
 	}
 	createTableSb := strings.Builder{}
-	createTableSb.WriteString(fmt.Sprintf("CREATE TABLE %s (\n%s\n)",
+	tableKind := "TABLE"
+	if table.IsUnlogged {
+		tableKind = "UNLOGGED TABLE"
+	}
+	createTableSb.WriteString(fmt.Sprintf("CREATE %s %s (\n%s\n)",
+		tableKind,
 		table.GetFQEscapedName(),
 		strings.Join(columnDefs, ",\n"),
 	))
@@ -954,6 +959,10 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 		stmts = append(stmts, alterBaseTableStmts...)
 	}
 
+	if diff.old.IsUnlogged != diff.new.IsUnlogged {
+		stmts = append(stmts, alterTablePersistenceStatement(diff.new.SchemaQualifiedName, diff.new.IsUnlogged))
+	}
+
 	if diff.old.ReplicaIdentity != diff.new.ReplicaIdentity {
 		alterReplicaIdentityStmt, err := alterReplicaIdentityStatement(diff.new.SchemaQualifiedName, diff.new.ReplicaIdentity)
 		if err != nil {
@@ -1058,6 +1067,22 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	stmts = append(stmts, dropTempCCs...)
 
 	return stmts, nil
+}
+
+func alterTablePersistenceStatement(table schema.SchemaQualifiedName, isUnlogged bool) Statement {
+	persistence := "LOGGED"
+	if isUnlogged {
+		persistence = "UNLOGGED"
+	}
+	return Statement{
+		DDL:         fmt.Sprintf("%s SET %s", alterTablePrefix(table), persistence),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+		Hazards: []MigrationHazard{{
+			Type:    MigrationHazardTypeAcquiresAccessExclusiveLock,
+			Message: "Changing table persistence requires an ACCESS EXCLUSIVE lock and rewrites the table",
+		}},
+	}
 }
 
 func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, error) {
