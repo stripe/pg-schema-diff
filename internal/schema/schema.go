@@ -145,6 +145,9 @@ func normalizeView(v View) View {
 		normTableDeps = append(normTableDeps, d)
 	}
 	v.TableDependencies = normTableDeps
+
+	v.Privileges = sortSchemaObjectsByName(v.Privileges)
+
 	return v
 }
 
@@ -531,6 +534,7 @@ type View struct {
 
 	// TableDependencies is a list of tables the view depends on.
 	TableDependencies []TableDependency
+	Privileges        []TablePrivilege
 }
 
 type MaterializedView struct {
@@ -1491,6 +1495,15 @@ func (s *schemaFetcher) fetchViews(ctx context.Context) ([]View, error) {
 		return nil, fmt.Errorf("GetViews: %w", err)
 	}
 
+	privileges, err := s.fetchPrivileges(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetchPrivileges(): %w", err)
+	}
+	privilegesByView := make(map[string][]TablePrivilege)
+	for _, p := range privileges {
+		privilegesByView[p.table.GetFQEscapedName()] = append(privilegesByView[p.table.GetFQEscapedName()], p.privilege)
+	}
+
 	var views []View
 	for _, v := range rawViews {
 		options, err := relOptionsToMap(v.RelOptions)
@@ -1503,12 +1516,14 @@ func (s *schemaFetcher) fetchViews(ctx context.Context) ([]View, error) {
 			return nil, fmt.Errorf("parsing schema qualified names JSON: %w", err)
 		}
 
+		schemaQualifiedName := buildNameFromUnescaped(v.ViewName, v.SchemaName)
 		views = append(views, View{
-			SchemaQualifiedName: buildNameFromUnescaped(v.ViewName, v.SchemaName),
+			SchemaQualifiedName: schemaQualifiedName,
 			ViewDefinition:      v.ViewDefinition,
 			Options:             options,
 
 			TableDependencies: tableDependencies,
+			Privileges:        privilegesByView[schemaQualifiedName.GetFQEscapedName()],
 		})
 	}
 

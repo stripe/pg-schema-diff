@@ -641,9 +641,9 @@ WITH parsed_acl AS (
         n.nspname NOT IN ('pg_catalog', 'information_schema')
         AND n.nspname !~ '^pg_toast'
         AND n.nspname !~ '^pg_temp'
-        AND (c.relkind = 'r' OR c.relkind = 'p')
+        AND (c.relkind = 'r' OR c.relkind = 'p' OR c.relkind = 'v')
         AND c.relacl IS NOT null
-        -- Exclude tables owned by extensions
+        -- Exclude tables/views owned by extensions
         AND NOT EXISTS (
             SELECT depend.objid
             FROM pg_catalog.pg_depend AS depend
