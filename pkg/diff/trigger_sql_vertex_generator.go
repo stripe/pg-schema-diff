@@ -28,11 +28,13 @@ func (t *triggerSQLVertexGenerator) Add(trigger schema.Trigger) ([]Statement, er
 }
 
 func (t *triggerSQLVertexGenerator) addStatements(trigger schema.Trigger) []Statement {
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         string(trigger.GetTriggerDefStmt),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 	}}
+	stmts = append(stmts, commentDDLForAdd(commentTargetTrigger(trigger.EscapedName, trigger.OwningTable), trigger.Description)...)
+	return stmts
 }
 
 func (t *triggerSQLVertexGenerator) Delete(trigger schema.Trigger) ([]Statement, error) {
@@ -52,6 +54,13 @@ func (t *triggerSQLVertexGenerator) Alter(diff triggerDiff) ([]Statement, error)
 		return nil, nil
 	}
 
+	// Comment-only diff: don't recreate the trigger, just emit a COMMENT statement.
+	oldCopy := diff.old
+	oldCopy.Description = diff.new.Description
+	if cmp.Equal(oldCopy, diff.new) {
+		return commentDDLForAlter(commentTargetTrigger(diff.new.EscapedName, diff.new.OwningTable), diff.old.Description, diff.new.Description), nil
+	}
+
 	if diff.old.IsConstraint || diff.new.IsConstraint {
 		// Constraint triggers do not support "CREATE OR REPLACE", so just drop the original trigger and
 		// create the new one.
@@ -63,11 +72,13 @@ func (t *triggerSQLVertexGenerator) Alter(diff triggerDiff) ([]Statement, error)
 	if err != nil {
 		return nil, fmt.Errorf("modifying get trigger def statement to create or replace: %w", err)
 	}
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         createOrReplaceStmt,
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
-	}}, nil
+	}}
+	stmts = append(stmts, commentDDLForAlter(commentTargetTrigger(diff.new.EscapedName, diff.new.OwningTable), diff.old.Description, diff.new.Description)...)
+	return stmts, nil
 }
 
 func (t *triggerSQLVertexGenerator) GetSQLVertexId(trigger schema.Trigger, diffType diffType) sqlVertexId {

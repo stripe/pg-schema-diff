@@ -196,6 +196,8 @@ const (
 // schema
 type NamedSchema struct {
 	Name string
+	// Description is the comment attached to the schema (pg_description). Empty means no comment.
+	Description string
 }
 
 func (n NamedSchema) GetName() string {
@@ -205,11 +207,15 @@ func (n NamedSchema) GetName() string {
 type Extension struct {
 	SchemaQualifiedName
 	Version string
+	// Description is the comment attached to the extension (pg_description). Empty means no comment.
+	Description string
 }
 
 type Enum struct {
 	SchemaQualifiedName
 	Labels []string
+	// Description is the comment attached to the enum type (pg_description). Empty means no comment.
+	Description string
 }
 
 type Table struct {
@@ -229,6 +235,9 @@ type Table struct {
 
 	ParentTable *SchemaQualifiedName
 	ForValues   string
+
+	// Description is the comment attached to the table (pg_description). Empty means no comment.
+	Description string
 }
 
 func (t Table) IsPartitioned() bool {
@@ -303,6 +312,8 @@ type (
 		// It is used for data-packing purposes
 		Size     int
 		Identity *ColumnIdentity
+		// Description is the comment attached to the column (pg_description). Empty means no comment.
+		Description string
 	}
 )
 
@@ -347,6 +358,8 @@ type (
 		EscapedConstraintName string
 		ConstraintDef         string
 		IsLocal               bool
+		// Description is the comment attached to the constraint (pg_description). Empty means no comment.
+		Description string
 	}
 
 	Index struct {
@@ -367,6 +380,11 @@ type (
 		GetIndexDefStmt GetIndexDefStatement
 
 		ParentIdx *SchemaQualifiedName
+
+		// Description is the comment attached to the index (pg_description). Empty means no comment.
+		// Note: when the index backs a constraint (PRIMARY KEY / UNIQUE), the comment lives on the
+		// constraint instead — see IndexConstraint.Description.
+		Description string
 	}
 )
 
@@ -401,6 +419,8 @@ type CheckConstraint struct {
 	IsValid            bool
 	IsInheritable      bool
 	DependsOnFunctions []SchemaQualifiedName
+	// Description is the comment attached to the constraint (pg_description). Empty means no comment.
+	Description string
 }
 
 func (c CheckConstraint) GetName() string {
@@ -413,6 +433,8 @@ type ForeignKeyConstraint struct {
 	ForeignTable  SchemaQualifiedName
 	ConstraintDef string
 	IsValid       bool
+	// Description is the comment attached to the constraint (pg_description). Empty means no comment.
+	Description string
 }
 
 func (f ForeignKeyConstraint) GetName() string {
@@ -436,6 +458,8 @@ type (
 		MinValue   int64
 		CacheSize  int64
 		Cycle      bool
+		// Description is the comment attached to the sequence (pg_description). Empty means no comment.
+		Description string
 	}
 )
 
@@ -449,6 +473,8 @@ type Function struct {
 	// can track the dependencies of the function (or not)
 	Language           string
 	DependsOnFunctions []SchemaQualifiedName
+	// Description is the comment attached to the function (pg_description). Empty means no comment.
+	Description string
 }
 
 type Procedure struct {
@@ -457,6 +483,8 @@ type Procedure struct {
 	// the procedure, as returned by `pg_get_functiondef`. It is a CREATE OR REPLACE
 	// statement.
 	Def string
+	// Description is the comment attached to the procedure (pg_description). Empty means no comment.
+	Description string
 }
 
 var (
@@ -496,6 +524,8 @@ type Policy struct {
 	UsingExpression string
 	// Columns are the columns that the policy applies to.
 	Columns []string
+	// Description is the comment attached to the policy (pg_description). Empty means no comment.
+	Description string
 }
 
 func (p Policy) GetName() string {
@@ -510,6 +540,8 @@ type Trigger struct {
 	// by pg_get_triggerdef
 	GetTriggerDefStmt GetTriggerDefStatement
 	IsConstraint      bool
+	// Description is the comment attached to the trigger (pg_description). Empty means no comment.
+	Description string
 }
 
 func (t Trigger) GetName() string {
@@ -531,6 +563,8 @@ type View struct {
 
 	// TableDependencies is a list of tables the view depends on.
 	TableDependencies []TableDependency
+	// Description is the comment attached to the view (pg_description). Empty means no comment.
+	Description string
 }
 
 type MaterializedView struct {
@@ -544,6 +578,8 @@ type MaterializedView struct {
 
 	// TableDependencies is a list of tables the materialized view depends on.
 	TableDependencies []TableDependency
+	// Description is the comment attached to the materialized view (pg_description). Empty means no comment.
+	Description string
 }
 
 type (
@@ -842,15 +878,16 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 }
 
 func (s *schemaFetcher) fetchNamedSchemas(ctx context.Context) ([]NamedSchema, error) {
-	schemaNames, err := s.q.GetSchemas(ctx)
+	rawSchemas, err := s.q.GetSchemas(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GetSchemas(): %w", err)
 	}
 
 	var schemas []NamedSchema
-	for _, schemaName := range schemaNames {
+	for _, rs := range rawSchemas {
 		schemas = append(schemas, NamedSchema{
-			Name: schemaName,
+			Name:        rs.SchemaName,
+			Description: rs.Description,
 		})
 	}
 
@@ -881,7 +918,8 @@ func (s *schemaFetcher) fetchExtensions(ctx context.Context) ([]Extension, error
 				EscapedName: EscapeIdentifier(e.ExtensionName),
 				SchemaName:  e.SchemaName,
 			},
-			Version: e.ExtensionVersion,
+			Version:     e.ExtensionVersion,
+			Description: e.Description,
 		})
 	}
 
@@ -909,7 +947,8 @@ func (s *schemaFetcher) fetchEnums(ctx context.Context) ([]Enum, error) {
 				SchemaName:  rawEnum.EnumSchemaName,
 				EscapedName: EscapeIdentifier(rawEnum.EnumName),
 			},
-			Labels: rawEnum.EnumLabels,
+			Labels:      rawEnum.EnumLabels,
+			Description: rawEnum.Description,
 		})
 	}
 
@@ -1036,6 +1075,7 @@ func (s *schemaFetcher) buildTable(
 			GenerationExpression: column.GenerationExpression,
 			Size:                 int(column.ColumnSize),
 			Identity:             identity,
+			Description:          column.Description,
 		})
 	}
 
@@ -1064,6 +1104,7 @@ func (s *schemaFetcher) buildTable(
 
 		ParentTable: parentTable,
 		ForValues:   table.PartitionForValues,
+		Description: table.Description,
 	}, nil
 }
 
@@ -1131,6 +1172,7 @@ func (s *schemaFetcher) buildCheckConstraint(ctx context.Context, cc queries.Get
 		IsValid:            cc.IsValid,
 		IsInheritable:      !cc.IsNotInheritable,
 		DependsOnFunctions: dependsOnFunctions,
+		Description:        cc.Description,
 	}, nil
 }
 
@@ -1165,6 +1207,7 @@ func (s *schemaFetcher) buildIndex(rawIndex queries.GetIndexesRow) Index {
 			EscapedConstraintName: EscapeIdentifier(rawIndex.ConstraintName),
 			ConstraintDef:         rawIndex.ConstraintDef,
 			IsLocal:               rawIndex.ConstraintIsLocal,
+			Description:           rawIndex.ConstraintDescription,
 		}
 	}
 
@@ -1191,6 +1234,8 @@ func (s *schemaFetcher) buildIndex(rawIndex queries.GetIndexesRow) Index {
 		Constraint: indexConstraint,
 
 		ParentIdx: parentIdx,
+
+		Description: rawIndex.Description,
 	}
 }
 
@@ -1214,6 +1259,7 @@ func (s *schemaFetcher) fetchForeignKeyCons(ctx context.Context) ([]ForeignKeyCo
 			},
 			ConstraintDef: rawFkCon.ConstraintDef,
 			IsValid:       rawFkCon.IsValid,
+			Description:   rawFkCon.Description,
 		})
 	}
 
@@ -1254,14 +1300,15 @@ func (s *schemaFetcher) fetchSequences(ctx context.Context) ([]Sequence, error) 
 				SchemaName:  rawSeq.SequenceSchemaName,
 				EscapedName: EscapeIdentifier(rawSeq.SequenceName),
 			},
-			Owner:      owner,
-			Type:       rawSeq.DataType,
-			StartValue: rawSeq.StartValue,
-			Increment:  rawSeq.IncrementValue,
-			MaxValue:   rawSeq.MaxValue,
-			MinValue:   rawSeq.MinValue,
-			CacheSize:  rawSeq.CacheSize,
-			Cycle:      rawSeq.IsCycle,
+			Owner:       owner,
+			Type:        rawSeq.DataType,
+			StartValue:  rawSeq.StartValue,
+			Increment:   rawSeq.IncrementValue,
+			MaxValue:    rawSeq.MaxValue,
+			MinValue:    rawSeq.MinValue,
+			CacheSize:   rawSeq.CacheSize,
+			Cycle:       rawSeq.IsCycle,
+			Description: rawSeq.Description,
 		})
 	}
 
@@ -1325,6 +1372,7 @@ func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.G
 		FunctionDef:         rawFunction.FuncDef,
 		Language:            rawFunction.FuncLang,
 		DependsOnFunctions:  dependsOnFunctions,
+		Description:         rawFunction.Description,
 	}, nil
 }
 
@@ -1356,6 +1404,7 @@ func (s *schemaFetcher) fetchProcedures(ctx context.Context) ([]Procedure, error
 		p := Procedure{
 			SchemaQualifiedName: buildProcName(rawProcedure.FuncName, rawProcedure.FuncIdentityArguments, rawProcedure.FuncSchemaName),
 			Def:                 rawProcedure.FuncDef,
+			Description:         rawProcedure.Description,
 		}
 		procedures = append(procedures, p)
 	}
@@ -1398,6 +1447,7 @@ func (s *schemaFetcher) fetchPolicies(ctx context.Context) ([]policyAndTable, er
 				CheckExpression: rp.CheckExpression,
 				UsingExpression: rp.UsingExpression,
 				Columns:         rp.ColumnNames,
+				Description:     rp.Description,
 			},
 			table: buildNameFromUnescaped(rp.OwningTableName, rp.OwningTableSchemaName),
 		})
@@ -1468,6 +1518,7 @@ func (s *schemaFetcher) fetchTriggers(ctx context.Context) ([]Trigger, error) {
 			Function:          buildProcName(rawTrigger.FuncName, rawTrigger.FuncIdentityArguments, rawTrigger.FuncSchemaName),
 			GetTriggerDefStmt: GetTriggerDefStatement(rawTrigger.TriggerDef),
 			IsConstraint:      rawTrigger.IsConstraint,
+			Description:       rawTrigger.Description,
 		})
 	}
 
@@ -1509,6 +1560,7 @@ func (s *schemaFetcher) fetchViews(ctx context.Context) ([]View, error) {
 			Options:             options,
 
 			TableDependencies: tableDependencies,
+			Description:       v.Description,
 		})
 	}
 
@@ -1548,6 +1600,7 @@ func (s *schemaFetcher) fetchMaterializedViews(ctx context.Context) ([]Materiali
 			Tablespace:          mv.TablespaceName,
 
 			TableDependencies: tableDependencies,
+			Description:       mv.Description,
 		})
 	}
 

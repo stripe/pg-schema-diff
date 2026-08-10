@@ -536,6 +536,15 @@ func buildIndexDiff(deps indexDiffConfig, old, new schema.Index) (diff indexDiff
 		updatedOld.IsInvalid = new.IsInvalid
 	}
 
+	// Description-only diffs are emitted as a COMMENT ON ... statement by the index Alter
+	// generator, so they must not force recreation here.
+	updatedOld.Description = new.Description
+	if updatedOld.Constraint != nil && new.Constraint != nil {
+		updatedConstraint := *updatedOld.Constraint
+		updatedConstraint.Description = new.Constraint.Description
+		updatedOld.Constraint = &updatedConstraint
+	}
+
 	recreateIndex := !cmp.Equal(updatedOld, new)
 	return indexDiff{
 		oldAndNew: oldAndNew[schema.Index]{
@@ -841,6 +850,14 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		LockTimeout: lockTimeoutDefault,
 	})
 
+	// Emit COMMENT ON TABLE / COMMENT ON COLUMN immediately after CREATE TABLE so that
+	// metadata travels with the structural DDL. PG drops these along with the table on
+	// failure rollback, so no hazards are needed.
+	stmts = append(stmts, commentDDLForAdd(commentTargetTable(table.SchemaQualifiedName), table.Description)...)
+	for _, c := range table.Columns {
+		stmts = append(stmts, commentDDLForAdd(commentTargetColumn(table.SchemaQualifiedName, c.Name), c.Description)...)
+	}
+
 	csg := checkConstraintSQLVertexGenerator{
 		tableName:  table.SchemaQualifiedName,
 		isNewTable: true,
@@ -930,6 +947,7 @@ func (t *tableSQLVertexGenerator) Alter(diff tableDiff) ([]Statement, error) {
 	}
 
 	var stmts []Statement
+	stmts = append(stmts, commentDDLForAlter(commentTargetTable(diff.new.SchemaQualifiedName), diff.old.Description, diff.new.Description)...)
 	// Only handle disabling RLS if it was previously enabled.
 	// We want to disable RLS before we do any other operations on the table, e.g., delete policies, to avoid creating an
 	// outage while RLS is being disabled
@@ -1267,7 +1285,9 @@ func (csg *columnSQLVertexGenerator) Add(column schema.Column) ([]Statement, err
 	if newColumnRequiresFullTableRewrite(column) {
 		stmt.Hazards = append(stmt.Hazards, migrationHazardNewColumnFullTableRewrite)
 	}
-	return []Statement{stmt}, nil
+	stmts := []Statement{stmt}
+	stmts = append(stmts, commentDDLForAdd(commentTargetColumn(csg.tableName, column.Name), column.Description)...)
+	return stmts, nil
 }
 
 func newColumnRequiresFullTableRewrite(column schema.Column) bool {
@@ -1386,6 +1406,8 @@ func (csg *columnSQLVertexGenerator) Alter(diff columnDiff) ([]Statement, error)
 			LockTimeout: lockTimeoutDefault,
 		})
 	}
+
+	stmts = append(stmts, commentDDLForAlter(commentTargetColumn(csg.tableName, newColumn.Name), oldColumn.Description, newColumn.Description)...)
 
 	return stmts, nil
 }
@@ -1732,11 +1754,14 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 		// If the table is the base table of a partitioned table, the constraint should "ONLY" be added to the base
 		//table. We can then concurrently build all of the partitioned indexes and attach them.
 		// Without "ONLY", all the partitioned indexes will be automatically built
-		return []Statement{{
+		stmts := []Statement{{
 			DDL:         fmt.Sprintf("ALTER TABLE ONLY %s ADD CONSTRAINT %s %s", index.OwningRelName.GetFQEscapedName(), index.Constraint.EscapedConstraintName, index.Constraint.ConstraintDef),
 			Timeout:     statementTimeoutDefault,
 			LockTimeout: lockTimeoutDefault,
-		}}, nil
+		}}
+		stmts = append(stmts, commentDDLForAdd(commentTargetConstraint(index.Constraint.EscapedConstraintName, index.OwningRelName), index.Constraint.Description)...)
+		stmts = append(stmts, commentDDLForAdd(commentTargetIndex(index.GetSchemaQualifiedName()), index.Description)...)
+		return stmts, nil
 	}
 
 	// Only indexes on non-partitioned tables can be created concurrently
@@ -1753,7 +1778,10 @@ func (isg *indexSQLVertexGenerator) addIdxStmtsWithHazards(index schema.Index) (
 			return nil, fmt.Errorf("generating add constraint statement: %w", err)
 		}
 		stmts = append(stmts, addConstraintStmt)
+		stmts = append(stmts, commentDDLForAdd(commentTargetConstraint(index.Constraint.EscapedConstraintName, index.OwningRelName), index.Constraint.Description)...)
 	}
+
+	stmts = append(stmts, commentDDLForAdd(commentTargetIndex(index.GetSchemaQualifiedName()), index.Description)...)
 
 	if index.ParentIdx != nil && isg.attachPartitionSQLVertexGenerator.isPartitionAlreadyAttachedBeforeIndexBuilds(index.OwningRelName) {
 		// Only attach the index if the index is built after the table is partitioned. If the partition
@@ -1885,6 +1913,7 @@ func (isg *indexSQLVertexGenerator) Alter(diff indexDiff) ([]Statement, error) {
 			return nil, fmt.Errorf("generating add constraint statement: %w", err)
 		}
 		stmts = append(stmts, addConstraintStmt)
+		stmts = append(stmts, commentDDLForAdd(commentTargetConstraint(diff.new.Constraint.EscapedConstraintName, diff.new.OwningRelName), diff.new.Constraint.Description)...)
 		diff.old.Constraint = diff.new.Constraint
 	}
 
@@ -1893,8 +1922,26 @@ func (isg *indexSQLVertexGenerator) Alter(diff indexDiff) ([]Statement, error) {
 		diff.old.ParentIdx = diff.new.ParentIdx
 	}
 
+	// Mask Description fields: handled by explicit COMMENT statements emitted at the end.
+	indexDescChanged := diff.old.Description != diff.new.Description
+	diff.old.Description = diff.new.Description
+	var oldConstraintDescChanged bool
+	if diff.old.Constraint != nil && diff.new.Constraint != nil {
+		oldConstraintDescChanged = diff.old.Constraint.Description != diff.new.Constraint.Description
+		oldCon := *diff.old.Constraint
+		oldCon.Description = diff.new.Constraint.Description
+		diff.old.Constraint = &oldCon
+	}
+
 	if !cmp.Equal(diff.old, diff.new) {
 		return nil, fmt.Errorf("index diff could not be resolved %s", cmp.Diff(diff.old, diff.new))
+	}
+
+	if indexDescChanged {
+		stmts = append(stmts, commentOnStatement(commentTargetIndex(diff.new.GetSchemaQualifiedName()), diff.new.Description))
+	}
+	if oldConstraintDescChanged {
+		stmts = append(stmts, commentOnStatement(commentTargetConstraint(diff.new.Constraint.EscapedConstraintName, diff.new.OwningRelName), diff.new.Constraint.Description))
 	}
 
 	return stmts, nil
@@ -2096,6 +2143,7 @@ func (csg *checkConstraintSQLVertexGenerator) Add(con schema.CheckConstraint) ([
 		stmts = append(stmts, validateConstraintStatement(csg.tableName, schema.EscapeIdentifier(con.Name)))
 	}
 
+	stmts = append(stmts, commentDDLForAdd(commentTargetConstraint(schema.EscapeIdentifier(con.Name), csg.tableName), con.Description)...)
 	return stmts, nil
 }
 
@@ -2142,6 +2190,8 @@ func (csg *checkConstraintSQLVertexGenerator) Delete(con schema.CheckConstraint)
 
 func (csg *checkConstraintSQLVertexGenerator) Alter(diff checkConstraintDiff) ([]Statement, error) {
 	oldCopy := diff.old
+	// Mask Description: handled by an explicit COMMENT statement at the end.
+	oldCopy.Description = diff.new.Description
 
 	var stmts []Statement
 	if !diff.old.IsValid && diff.new.IsValid {
@@ -2161,6 +2211,7 @@ func (csg *checkConstraintSQLVertexGenerator) Alter(diff checkConstraintDiff) ([
 		return nil, fmt.Errorf("check constraints that depend on UDFs: %w", ErrNotImplemented)
 	}
 
+	stmts = append(stmts, commentDDLForAlter(commentTargetConstraint(schema.EscapeIdentifier(diff.new.Name), csg.tableName), diff.old.Description, diff.new.Description)...)
 	return stmts, nil
 }
 
@@ -2419,18 +2470,20 @@ func (f *foreignKeyConstraintSQLVertexGenerator) Add(con schema.ForeignKeyConstr
 				"Instead, consider adding the constraint as NOT VALID and validating it later.",
 		})
 	}
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         fmt.Sprintf("%s %s", addConstraintPrefix(con.OwningTable, con.EscapedName), con.ConstraintDef),
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     hazards,
-	}}, nil
+	}}
+	stmts = append(stmts, commentDDLForAdd(commentTargetConstraint(con.EscapedName, con.OwningTable), con.Description)...)
+	return stmts, nil
 }
 
 func (f *foreignKeyConstraintSQLVertexGenerator) addAsInvalidThenValidateStatements(con schema.ForeignKeyConstraint) []Statement {
 	// If adding a valid constraint, we will first add the constraint as not valid then validate it in order to
 	// circumvent requiring a SHARE_ROW_EXCLUSIVE lock on the tables.
-	return []Statement{
+	stmts := []Statement{
 		{
 			DDL:         fmt.Sprintf("%s %s NOT VALID", addConstraintPrefix(con.OwningTable, con.EscapedName), con.ConstraintDef),
 			Timeout:     statementTimeoutDefault,
@@ -2438,6 +2491,8 @@ func (f *foreignKeyConstraintSQLVertexGenerator) addAsInvalidThenValidateStateme
 		},
 		validateConstraintStatement(con.OwningTable, con.EscapedName),
 	}
+	stmts = append(stmts, commentDDLForAdd(commentTargetConstraint(con.EscapedName, con.OwningTable), con.Description)...)
+	return stmts
 }
 
 func (f *foreignKeyConstraintSQLVertexGenerator) Delete(con schema.ForeignKeyConstraint) ([]Statement, error) {
@@ -2464,10 +2519,16 @@ func (f *foreignKeyConstraintSQLVertexGenerator) Alter(diff foreignKeyConstraint
 		diff.old.ConstraintDef = strings.TrimSuffix(diff.old.ConstraintDef, " NOT VALID")
 		stmts = append(stmts, validateConstraintStatement(diff.new.OwningTable, diff.new.EscapedName))
 	}
+	// Mask Description: handled by an explicit COMMENT statement at the end.
+	descChanged := diff.old.Description != diff.new.Description
+	diff.old.Description = diff.new.Description
 	if !cmp.Equal(diff.old, diff.new) {
 		return nil, fmt.Errorf("altering foreign key constraint to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
 	}
 
+	if descChanged {
+		stmts = append(stmts, commentOnStatement(commentTargetConstraint(diff.new.EscapedName, diff.new.OwningTable), diff.new.Description))
+	}
 	return stmts, nil
 }
 
@@ -2520,9 +2581,11 @@ type sequenceSQLVertexGenerator struct {
 }
 
 func (s *sequenceSQLVertexGenerator) Add(seq schema.Sequence) ([]Statement, error) {
-	return []Statement{
+	stmts := []Statement{
 		s.buildAddAlterSequenceStatement(seq, false),
-	}, nil
+	}
+	stmts = append(stmts, commentDDLForAdd(commentTargetSequence(seq.SchemaQualifiedName), seq.Description)...)
+	return stmts, nil
 }
 
 func (s *sequenceSQLVertexGenerator) Delete(seq schema.Sequence) ([]Statement, error) {
@@ -2547,6 +2610,9 @@ func (s *sequenceSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, erro
 	var stmts []Statement
 	// Ownership changes handled by the sequenceOwnershipSQLVertexGenerator
 	diff.old.Owner = diff.new.Owner
+	// Mask Description: handled by an explicit COMMENT statement below.
+	descChanged := diff.old.Description != diff.new.Description
+	diff.old.Description = diff.new.Description
 
 	// Explicitly list all the diffs supported by the alter statement, rather than just using !cmp.Equal, so we don't
 	// risk introducing a bug if we add new fields to schema.Sequence
@@ -2571,6 +2637,10 @@ func (s *sequenceSQLVertexGenerator) Alter(diff sequenceDiff) ([]Statement, erro
 
 	if !cmp.Equal(diff.old, diff.new) {
 		return nil, fmt.Errorf("altering sequence to resolve the following diff %s: %w", cmp.Diff(diff.old, diff.new), ErrNotImplemented)
+	}
+
+	if descChanged {
+		stmts = append(stmts, commentOnStatement(commentTargetSequence(diff.new.SchemaQualifiedName), diff.new.Description))
 	}
 
 	return stmts, nil
@@ -2734,12 +2804,14 @@ func (e *extensionSQLGenerator) Add(extension schema.Extension) ([]Statement, er
 		s += fmt.Sprintf(" VERSION %s", schema.EscapeIdentifier(extension.Version))
 	}
 
-	return []Statement{{
+	stmts := []Statement{{
 		DDL:         s,
 		Timeout:     statementTimeoutDefault,
 		LockTimeout: lockTimeoutDefault,
 		Hazards:     nil,
-	}}, nil
+	}}
+	stmts = append(stmts, commentDDLForAdd(commentTargetExtension(extension), extension.Description)...)
+	return stmts, nil
 }
 
 func (e *extensionSQLGenerator) Delete(extension schema.Extension) ([]Statement, error) {
@@ -2753,6 +2825,7 @@ func (e *extensionSQLGenerator) Delete(extension schema.Extension) ([]Statement,
 
 func (e *extensionSQLGenerator) Alter(diff extensionDiff) ([]Statement, error) {
 	var statements []Statement
+	statements = append(statements, commentDDLForAlter(commentTargetExtension(diff.new), diff.old.Description, diff.new.Description)...)
 	if diff.new.Version != diff.old.Version {
 		if len(diff.new.Version) == 0 {
 			// This is an implicit upgrade to the latest extension version.

@@ -104,15 +104,18 @@ func (vsg *viewSQLGenerator) Add(v schema.View) (partialSQLGraph, error) {
 		deps = append(deps, mustRun(addVertexId).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
+	stmts := []Statement{{
+		DDL:         viewSb.String(),
+		Timeout:     statementTimeoutDefault,
+		LockTimeout: lockTimeoutDefault,
+	}}
+	stmts = append(stmts, commentDDLForAdd(commentTargetView(v.SchemaQualifiedName), v.Description)...)
+
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
-			id:       addVertexId,
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         viewSb.String(),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			}},
+			id:         addVertexId,
+			priority:   sqlPrioritySooner,
+			statements: stmts,
 		}},
 		dependencies: deps,
 	}, nil
@@ -143,11 +146,25 @@ func (vsg *viewSQLGenerator) Delete(v schema.View) (partialSQLGraph, error) {
 }
 
 func (vsg *viewSQLGenerator) Alter(vd viewDiff) (partialSQLGraph, error) {
-	// In the initial MVP, we will not support altering.
-	if !cmp.Equal(vd.old, vd.new) {
+	// Mask Description: a comment-only diff is altered via an explicit COMMENT statement.
+	oldCopy := vd.old
+	oldCopy.Description = vd.new.Description
+	if !cmp.Equal(oldCopy, vd.new) {
+		// In the initial MVP, we don't support altering anything other than the comment.
 		return partialSQLGraph{}, ErrNotImplemented
 	}
-	return partialSQLGraph{}, nil
+
+	commentStmts := commentDDLForAlter(commentTargetView(vd.new.SchemaQualifiedName), vd.old.Description, vd.new.Description)
+	if len(commentStmts) == 0 {
+		return partialSQLGraph{}, nil
+	}
+	return partialSQLGraph{
+		vertices: []sqlVertex{{
+			id:         buildTableVertexId(vd.new.SchemaQualifiedName, diffTypeAddAlter),
+			priority:   sqlPrioritySooner,
+			statements: commentStmts,
+		}},
+	}, nil
 }
 
 func buildViewVertexId(n schema.SchemaQualifiedName, d diffType) sqlVertexId {
