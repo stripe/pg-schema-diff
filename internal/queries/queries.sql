@@ -289,6 +289,64 @@ WHERE
             AND depend.deptype = 'e'
     );
 
+-- name: GetDependsOnCompositeTypes :many
+-- Returns the composite types (typtype = 'c') that the given object depends on.
+-- This includes dependencies through PostgreSQL's automatically-created array
+-- type for a composite type, e.g. `some_type[]`.
+-- Used to drive cascading drop+recreate of functions and procedures when the
+-- attribute list of a composite type changes.
+SELECT DISTINCT
+    pg_type.typname::TEXT AS type_name,
+    type_namespace.nspname::TEXT AS type_schema_name
+FROM pg_catalog.pg_depend AS depend
+INNER JOIN pg_catalog.pg_type AS referenced_type
+    ON
+        depend.refclassid = 'pg_type'::REGCLASS
+        AND depend.refobjid = referenced_type.oid
+INNER JOIN pg_catalog.pg_type AS pg_type
+    ON
+        (
+            referenced_type.oid = pg_type.oid
+            OR referenced_type.typelem = pg_type.oid
+        )
+        AND pg_type.typtype = 'c'
+INNER JOIN
+    pg_catalog.pg_namespace AS type_namespace
+    ON pg_type.typnamespace = type_namespace.oid
+INNER JOIN pg_catalog.pg_class AS rel
+    ON pg_type.typrelid = rel.oid AND rel.relkind = 'c'
+WHERE
+    depend.classid = sqlc.arg(system_catalog)::REGCLASS
+    AND depend.objid = sqlc.arg(object_id)
+    AND depend.deptype = 'n';
+
+-- name: GetCompositeTypeTableConsumers :many
+-- Returns the tables (relkind in r,p) whose columns are typed by the given
+-- composite type. Used to refuse a `CREATE TYPE` attribute change when a
+-- table column depends on the type — recreating the type would require
+-- rewriting the table, which is out of scope for this generator.
+SELECT
+    consumer_c.relname::TEXT AS table_name,
+    consumer_ns.nspname::TEXT AS table_schema_name
+FROM pg_catalog.pg_attribute AS att
+INNER JOIN pg_catalog.pg_class AS consumer_c
+    ON
+        att.attrelid = consumer_c.oid
+        AND consumer_c.relkind IN ('r', 'p')
+INNER JOIN pg_catalog.pg_namespace AS consumer_ns
+    ON consumer_c.relnamespace = consumer_ns.oid
+WHERE
+    (
+        att.atttypid = sqlc.arg(type_oid)
+        OR att.atttypid = (
+            SELECT typarray
+            FROM pg_catalog.pg_type
+            WHERE oid = sqlc.arg(type_oid)
+        )
+    )
+    AND att.attnum > 0
+    AND NOT att.attisdropped;
+
 -- name: GetDependsOnFunctions :many
 SELECT
     pg_proc.proname::TEXT AS func_name,
@@ -399,6 +457,60 @@ WHERE
     extension_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND extension_namespace.nspname !~ '^pg_toast'
     AND extension_namespace.nspname !~ '^pg_temp';
+
+
+-- name: GetCompositeTypes :many
+-- Returns one row per (composite type, attribute) pair, ordered so that the consumer
+-- can rebuild attribute lists in their declared order. Types with zero attributes still
+-- get a single row with attribute_name = '' so the type itself is not lost.
+SELECT
+    pg_type.oid AS type_oid,
+    rel.oid AS type_rel_oid,
+    pg_type.typname::TEXT AS type_name,
+    type_namespace.nspname::TEXT AS type_schema_name,
+    COALESCE(att.attname, '')::TEXT AS attribute_name,
+    COALESCE(
+        pg_catalog.format_type(att.atttypid, att.atttypmod), ''
+    )::TEXT AS attribute_type,
+    COALESCE(coll.collname, '')::TEXT AS collation_name,
+    COALESCE(coll_ns.nspname, '')::TEXT AS collation_schema_name
+FROM pg_catalog.pg_type AS pg_type
+INNER JOIN
+    pg_catalog.pg_namespace AS type_namespace
+    ON pg_type.typnamespace = type_namespace.oid
+INNER JOIN
+    pg_catalog.pg_class AS rel
+    -- A user-defined composite type's underlying class has relkind = 'c'. Implicit
+    -- row types created for tables/views/sequences have relkind in ('r','p','v','m','S')
+    -- and must be excluded.
+    ON pg_type.typrelid = rel.oid AND rel.relkind = 'c'
+LEFT JOIN
+    pg_catalog.pg_attribute AS att
+    ON
+        att.attrelid = rel.oid
+        AND att.attnum > 0
+        AND NOT att.attisdropped
+LEFT JOIN
+    pg_catalog.pg_collation AS coll
+    ON att.attcollation = coll.oid
+LEFT JOIN
+    pg_catalog.pg_namespace AS coll_ns
+    ON coll.collnamespace = coll_ns.oid
+WHERE
+    pg_type.typtype = 'c'
+    AND type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
+    -- Exclude composite types belonging to extensions
+    AND NOT EXISTS (
+        SELECT ext_depend.objid
+        FROM pg_catalog.pg_depend AS ext_depend
+        WHERE
+            ext_depend.classid = 'pg_type'::REGCLASS
+            AND ext_depend.objid = pg_type.oid
+            AND ext_depend.deptype = 'e'
+    )
+ORDER BY pg_type.oid, att.attnum;
 
 
 -- name: GetEnums :many

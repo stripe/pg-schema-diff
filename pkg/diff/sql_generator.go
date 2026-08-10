@@ -94,6 +94,10 @@ type (
 		oldAndNew[schema.Enum]
 	}
 
+	compositeTypeDiff struct {
+		oldAndNew[schema.CompositeType]
+	}
+
 	extensionDiff struct {
 		oldAndNew[schema.Extension]
 	}
@@ -146,6 +150,7 @@ type schemaDiff struct {
 	namedSchemaDiffs          listDiff[schema.NamedSchema, namedSchemaDiff]
 	extensionDiffs            listDiff[schema.Extension, extensionDiff]
 	enumDiffs                 listDiff[schema.Enum, enumDiff]
+	compositeTypeDiffs        listDiff[schema.CompositeType, compositeTypeDiff]
 	tableDiffs                listDiff[schema.Table, tableDiff]
 	indexDiffs                listDiff[schema.Index, indexDiff]
 	foreignKeyConstraintDiffs listDiff[schema.ForeignKeyConstraint, foreignKeyConstraintDiff]
@@ -234,6 +239,24 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing enums: %w", err)
 	}
 
+	// compositeTypesBeingRecreated tracks types whose attribute layout is changing,
+	// including composite types that must be recreated because one of their
+	// attribute types is being recreated. Functions and procedures that reference
+	// any of these must be force-recreated so they pick up the new layout —
+	// `CREATE OR REPLACE FUNCTION` cannot change a function's argument or return type.
+	compositeTypesBeingRecreated, err := identifyCompositeTypesToRecreate(old.CompositeTypes, new.CompositeTypes)
+	if err != nil {
+		return schemaDiff{}, false, err
+	}
+	compositeTypeDiffs, err := diffLists(old.CompositeTypes, new.CompositeTypes, func(old, new schema.CompositeType, _, _ int) (compositeTypeDiff, bool, error) {
+		return compositeTypeDiff{
+			oldAndNew[schema.CompositeType]{old: old, new: new},
+		}, compositeTypesBeingRecreated[new.GetName()], nil
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing composite types: %w", err)
+	}
+
 	tableDiffs, err := diffLists(old.Tables, new.Tables, buildTableDiff)
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing tables: %w", err)
@@ -285,6 +308,14 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	functionDiffs, err := diffLists(old.Functions, new.Functions, func(old, new schema.Function, _, _ int) (functionDiff, bool, error) {
+		// If the new function references a composite type whose attributes are being
+		// recreated, the function must be dropped and recreated alongside the type
+		// (CREATE OR REPLACE cannot change a function's argument or return type).
+		if dependsOnAnyRecreatedType(new.DependsOnCompositeTypes, compositeTypesBeingRecreated) {
+			return functionDiff{
+				oldAndNew[schema.Function]{old: old, new: new},
+			}, true, nil
+		}
 		return functionDiff{
 			oldAndNew[schema.Function]{
 				old: old,
@@ -297,6 +328,11 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	procedureDiffs, err := diffLists(old.Procedures, new.Procedures, func(old, new schema.Procedure, _, _ int) (procedureDiff, bool, error) {
+		if dependsOnAnyRecreatedType(new.DependsOnCompositeTypes, compositeTypesBeingRecreated) {
+			return procedureDiff{
+				oldAndNew[schema.Procedure]{old: old, new: new},
+			}, true, nil
+		}
 		return procedureDiff{
 			oldAndNew[schema.Procedure]{
 				old: old,
@@ -347,6 +383,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		namedSchemaDiffs:          schemaDiffs,
 		extensionDiffs:            extensionDiffs,
 		enumDiffs:                 enumDiffs,
+		compositeTypeDiffs:        compositeTypeDiffs,
 		tableDiffs:                tableDiffs,
 		indexDiffs:                indexesDiff,
 		foreignKeyConstraintDiffs: foreignKeyConstraintDiffs,
@@ -653,6 +690,17 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	}
 	partialGraph = concatPartialGraphs(partialGraph, sequenceOwnershipsPartialGraph)
 
+	compositeTypesBeingRecreated, err := identifyCompositeTypesToRecreate(diff.old.CompositeTypes, diff.new.CompositeTypes)
+	if err != nil {
+		return nil, fmt.Errorf("identifying composite types to recreate: %w", err)
+	}
+	compositeTypeGenerator := newCompositeTypeSQLVertexGenerator(diff.old, diff.new, compositeTypesBeingRecreated)
+	compositeTypesPartialGraph, err := generatePartialGraph(compositeTypeGenerator, diff.compositeTypeDiffs)
+	if err != nil {
+		return nil, fmt.Errorf("resolving composite type diff: %w", err)
+	}
+	partialGraph = concatPartialGraphs(partialGraph, compositeTypesPartialGraph)
+
 	functionGenerator := newFunctionSqlVertexGenerator(functionsInNewSchemaByName)
 	functionsPartialGraph, err := generatePartialGraph(functionGenerator, diff.functionDiffs)
 	if err != nil {
@@ -775,6 +823,46 @@ func buildSchemaObjByNameMap[S schema.Object](s []S) map[string]S {
 	return buildMap(s, func(s S) string {
 		return s.GetName()
 	})
+}
+
+func identifyCompositeTypesToRecreate(old, new []schema.CompositeType) (map[string]bool, error) {
+	oldByName := buildSchemaObjByNameMap(old)
+	recreated := make(map[string]bool)
+
+	for _, newType := range new {
+		oldType, ok := oldByName[newType.GetName()]
+		if !ok {
+			continue
+		}
+		if !cmp.Equal(oldType.Attributes, newType.Attributes) {
+			if oldType.IsUsedByTable {
+				return nil, fmt.Errorf("changing attributes of composite type %s used by a table column: %w", newType.GetFQEscapedName(), ErrNotImplemented)
+			}
+			recreated[newType.GetName()] = true
+		}
+	}
+
+	for changed := true; changed; {
+		changed = false
+		for _, newType := range new {
+			if recreated[newType.GetName()] {
+				continue
+			}
+			oldType, ok := oldByName[newType.GetName()]
+			if !ok {
+				continue
+			}
+			if dependsOnAnyRecreatedType(newType.DependsOnCompositeTypes, recreated) {
+				if oldType.IsUsedByTable {
+					return nil, fmt.Errorf("recreating composite type %s used by a table column because one of its composite attributes changed: %w", newType.GetFQEscapedName(), ErrNotImplemented)
+				}
+				recreated[newType.GetName()] = true
+				changed = true
+			}
+		}
+	}
+
+	return recreated, nil
 }
 
 func buildDiffByNameMap[S schema.Object, D diff[S]](d []D) map[string]D {

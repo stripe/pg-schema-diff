@@ -55,6 +55,7 @@ type Schema struct {
 	NamedSchemas          []NamedSchema
 	Extensions            []Extension
 	Enums                 []Enum
+	CompositeTypes        []CompositeType
 	Tables                []Table
 	Indexes               []Index
 	ForeignKeyConstraints []ForeignKeyConstraint
@@ -73,6 +74,15 @@ func (s Schema) Normalize() Schema {
 	s.Extensions = sortSchemaObjectsByName(s.Extensions)
 	s.Enums = sortSchemaObjectsByName(s.Enums)
 
+	// Composite type attribute order is meaningful (it determines the layout of every value
+	// of that type), so do NOT sort attributes — only sort the types themselves.
+	var normCompositeTypes []CompositeType
+	for _, compositeType := range sortSchemaObjectsByName(s.CompositeTypes) {
+		compositeType.DependsOnCompositeTypes = sortSchemaObjectsByName(compositeType.DependsOnCompositeTypes)
+		normCompositeTypes = append(normCompositeTypes, compositeType)
+	}
+	s.CompositeTypes = normCompositeTypes
+
 	var normTables []Table
 	for _, t := range sortSchemaObjectsByName(s.Tables) {
 		normTables = append(normTables, normalizeTable(t))
@@ -86,6 +96,7 @@ func (s Schema) Normalize() Schema {
 	var normFunctions []Function
 	for _, function := range sortSchemaObjectsByName(s.Functions) {
 		function.DependsOnFunctions = sortSchemaObjectsByName(function.DependsOnFunctions)
+		function.DependsOnCompositeTypes = sortSchemaObjectsByName(function.DependsOnCompositeTypes)
 		normFunctions = append(normFunctions, function)
 	}
 	s.Functions = normFunctions
@@ -210,6 +221,34 @@ type Extension struct {
 type Enum struct {
 	SchemaQualifiedName
 	Labels []string
+}
+
+// CompositeTypeAttribute represents a single attribute (field) of a composite type.
+type CompositeTypeAttribute struct {
+	Name string
+	// Type is the formatted type, as returned by `pg_catalog.format_type` (e.g. `integer`, `numeric(10,2)`,
+	// `text[]`, or another schema-qualified composite type).
+	Type      string
+	Collation SchemaQualifiedName
+}
+
+func (a CompositeTypeAttribute) GetName() string {
+	return a.Name
+}
+
+// CompositeType represents a user-defined composite type (`CREATE TYPE foo AS (a int, b text)`).
+// It does NOT include the implicit row types created for tables/views — those have a backing
+// pg_class entry of relkind != 'c' and are filtered out by GetCompositeTypes.
+type CompositeType struct {
+	SchemaQualifiedName
+	Attributes []CompositeTypeAttribute
+	// DependsOnCompositeTypes is the list of user-defined composite types referenced
+	// by this composite type's attributes, including references through array types.
+	DependsOnCompositeTypes []SchemaQualifiedName
+	// IsUsedByTable is true iff at least one table column has this composite type as its
+	// declared type. When true, attribute-level changes to the type are unsupported by the
+	// diff generator (recreating the type would require rewriting every consumer table).
+	IsUsedByTable bool
 }
 
 type Table struct {
@@ -449,6 +488,11 @@ type Function struct {
 	// can track the dependencies of the function (or not)
 	Language           string
 	DependsOnFunctions []SchemaQualifiedName
+	// DependsOnCompositeTypes is the list of user-defined composite types referenced
+	// (by argument, return, or body resolution) by this function. When any of those
+	// types' attributes change, this function must be dropped and recreated alongside
+	// the type recreation.
+	DependsOnCompositeTypes []SchemaQualifiedName
 }
 
 type Procedure struct {
@@ -457,6 +501,8 @@ type Procedure struct {
 	// the procedure, as returned by `pg_get_functiondef`. It is a CREATE OR REPLACE
 	// statement.
 	Def string
+	// DependsOnCompositeTypes — see Function.DependsOnCompositeTypes.
+	DependsOnCompositeTypes []SchemaQualifiedName
 }
 
 var (
@@ -702,6 +748,13 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("starting enums future: %w", err)
 	}
 
+	compositeTypesFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]CompositeType, error) {
+		return s.fetchCompositeTypes(ctx)
+	})
+	if err != nil {
+		return Schema{}, fmt.Errorf("starting composite types future: %w", err)
+	}
+
 	tablesFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Table, error) {
 		return s.fetchTables(ctx)
 	})
@@ -780,6 +833,11 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("getting enums: %w", err)
 	}
 
+	compositeTypes, err := compositeTypesFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting composite types: %w", err)
+	}
+
 	tables, err := tablesFuture.Get(ctx)
 	if err != nil {
 		return Schema{}, fmt.Errorf("getting tables: %w", err)
@@ -829,6 +887,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		NamedSchemas:          schemas,
 		Extensions:            extensions,
 		Enums:                 enums,
+		CompositeTypes:        compositeTypes,
 		Tables:                tables,
 		Indexes:               indexes,
 		ForeignKeyConstraints: fkCons,
@@ -922,6 +981,80 @@ func (s *schemaFetcher) fetchEnums(ctx context.Context) ([]Enum, error) {
 	)
 
 	return enums, nil
+}
+
+func (s *schemaFetcher) fetchCompositeTypes(ctx context.Context) ([]CompositeType, error) {
+	rawAttrs, err := s.q.GetCompositeTypes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetCompositeTypes: %w", err)
+	}
+
+	type ctWithOid struct {
+		typeOid interface{}
+		relOid  interface{}
+		ct      *CompositeType
+	}
+	byOid := make(map[interface{}]*CompositeType)
+	var ordered []ctWithOid
+	for _, row := range rawAttrs {
+		ct, ok := byOid[row.TypeOid]
+		if !ok {
+			ct = &CompositeType{
+				SchemaQualifiedName: SchemaQualifiedName{
+					SchemaName:  row.TypeSchemaName,
+					EscapedName: EscapeIdentifier(row.TypeName),
+				},
+			}
+			byOid[row.TypeOid] = ct
+			ordered = append(ordered, ctWithOid{typeOid: row.TypeOid, relOid: row.TypeRelOid, ct: ct})
+		}
+		// rawAttrs may include a synthetic row with attribute_name = '' for types that
+		// have zero attributes (rare but valid for types being constructed). Skip those.
+		if row.AttributeName == "" {
+			continue
+		}
+		collation := SchemaQualifiedName{}
+		if row.CollationName != "" {
+			collation = SchemaQualifiedName{
+				EscapedName: EscapeIdentifier(row.CollationName),
+				SchemaName:  row.CollationSchemaName,
+			}
+		}
+		ct.Attributes = append(ct.Attributes, CompositeTypeAttribute{
+			Name:      row.AttributeName,
+			Type:      row.AttributeType,
+			Collation: collation,
+		})
+	}
+
+	// Mark each composite type as IsUsedByTable iff at least one table column has it as
+	// its declared type. We probe pg_attribute per-type because pg_depend doesn't track
+	// the column→type relationship in a way we can rely on here.
+	var compositeTypes []CompositeType
+	for _, e := range ordered {
+		dependsOnTypes, err := s.fetchDependsOnCompositeTypes(ctx, "pg_class", e.relOid)
+		if err != nil {
+			return nil, fmt.Errorf("fetchDependsOnCompositeTypes(%s): %w", e.relOid, err)
+		}
+		e.ct.DependsOnCompositeTypes = dependsOnTypes
+
+		consumers, err := s.q.GetCompositeTypeTableConsumers(ctx, e.typeOid)
+		if err != nil {
+			return nil, fmt.Errorf("GetCompositeTypeTableConsumers: %w", err)
+		}
+		e.ct.IsUsedByTable = len(consumers) > 0
+		compositeTypes = append(compositeTypes, *e.ct)
+	}
+
+	compositeTypes = filterSliceByName(
+		compositeTypes,
+		func(ct CompositeType) SchemaQualifiedName {
+			return ct.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
+	return compositeTypes, nil
 }
 
 func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
@@ -1319,12 +1452,17 @@ func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.G
 	if err != nil {
 		return Function{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
 	}
+	dependsOnTypes, err := s.fetchDependsOnCompositeTypes(ctx, "pg_proc", rawFunction.Oid)
+	if err != nil {
+		return Function{}, fmt.Errorf("fetchDependsOnCompositeTypes(%s): %w", rawFunction.Oid, err)
+	}
 
 	return Function{
-		SchemaQualifiedName: buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
-		FunctionDef:         rawFunction.FuncDef,
-		Language:            rawFunction.FuncLang,
-		DependsOnFunctions:  dependsOnFunctions,
+		SchemaQualifiedName:     buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
+		FunctionDef:             rawFunction.FuncDef,
+		Language:                rawFunction.FuncLang,
+		DependsOnFunctions:      dependsOnFunctions,
+		DependsOnCompositeTypes: dependsOnTypes,
 	}, nil
 }
 
@@ -1345,6 +1483,25 @@ func (s *schemaFetcher) fetchDependsOnFunctions(ctx context.Context, systemCatal
 	return functionNames, nil
 }
 
+func (s *schemaFetcher) fetchDependsOnCompositeTypes(ctx context.Context, systemCatalog string, oid any) ([]SchemaQualifiedName, error) {
+	rows, err := s.q.GetDependsOnCompositeTypes(ctx, queries.GetDependsOnCompositeTypesParams{
+		SystemCatalog: systemCatalog,
+		ObjectID:      oid,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var names []SchemaQualifiedName
+	for _, r := range rows {
+		names = append(names, SchemaQualifiedName{
+			SchemaName:  r.TypeSchemaName,
+			EscapedName: EscapeIdentifier(r.TypeName),
+		})
+	}
+	return names, nil
+}
+
 func (s *schemaFetcher) fetchProcedures(ctx context.Context) ([]Procedure, error) {
 	rawProcedures, err := s.q.GetProcs(ctx, 'p')
 	if err != nil {
@@ -1353,9 +1510,14 @@ func (s *schemaFetcher) fetchProcedures(ctx context.Context) ([]Procedure, error
 
 	var procedures []Procedure
 	for _, rawProcedure := range rawProcedures {
+		dependsOnTypes, err := s.fetchDependsOnCompositeTypes(ctx, "pg_proc", rawProcedure.Oid)
+		if err != nil {
+			return nil, fmt.Errorf("fetchDependsOnCompositeTypes(%s): %w", rawProcedure.Oid, err)
+		}
 		p := Procedure{
-			SchemaQualifiedName: buildProcName(rawProcedure.FuncName, rawProcedure.FuncIdentityArguments, rawProcedure.FuncSchemaName),
-			Def:                 rawProcedure.FuncDef,
+			SchemaQualifiedName:     buildProcName(rawProcedure.FuncName, rawProcedure.FuncIdentityArguments, rawProcedure.FuncSchemaName),
+			Def:                     rawProcedure.FuncDef,
+			DependsOnCompositeTypes: dependsOnTypes,
 		}
 		procedures = append(procedures, p)
 	}
