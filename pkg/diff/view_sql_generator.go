@@ -54,6 +54,17 @@ func buildViewDiff(
 				return viewDiff{}, true, nil
 			}
 		}
+		// Also recreate if a dependent column's type is being changed.
+		// ALTER TABLE ... ALTER COLUMN ... SET DATA TYPE fails when a view depends
+		// on that column; the view must be dropped first and recreated after.
+		alteredColumnDiffsByName := buildDiffByNameMap[schema.Column, columnDiff](td.columnsDiff.alters)
+		for _, c := range t.Columns {
+			if colDiff, ok := alteredColumnDiffsByName[c]; ok {
+				if !strings.EqualFold(colDiff.old.Type, colDiff.new.Type) {
+					return viewDiff{}, true, nil
+				}
+			}
+		}
 	}
 
 	// Recreate if the view SQL generator cannot alter the view.
