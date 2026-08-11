@@ -72,21 +72,13 @@ func mergeVertices(old, new sqlVertex) sqlVertex {
 		priority = new.priority
 	}
 
-	return sqlVertex{
-		id:         old.id,
-		priority:   priority,
-		statements: append(old.statements, new.statements...),
-	}
+	return newSqlVertex(old.id, priority, append(old.statements, new.statements...))
 }
 
 func addVertexIfNotExists(graph *sqlGraph, id sqlVertexId) {
 	if !graph.HasVertexWithId(id.String()) {
 		// Create a filler node
-		graph.AddVertex(sqlVertex{
-			id:         id,
-			priority:   sqlPriorityUnset,
-			statements: nil,
-		})
+		graph.AddVertex(newSqlVertex(id, sqlPriorityUnset, nil))
 	}
 }
 
@@ -175,11 +167,7 @@ func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Add(o S) (partialSQLGraph, er
 	}
 
 	return partialSQLGraph{
-		vertices: []sqlVertex{{
-			id:         s.generator.GetSQLVertexId(o, diffTypeAddAlter),
-			priority:   sqlPrioritySooner,
-			statements: statements,
-		}},
+		vertices:     []sqlVertex{newSqlVertex(s.generator.GetSQLVertexId(o, diffTypeAddAlter), sqlPrioritySooner, statements)},
 		dependencies: deps,
 	}, nil
 }
@@ -195,11 +183,7 @@ func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Delete(o S) (partialSQLGraph,
 	}
 
 	return partialSQLGraph{
-		vertices: []sqlVertex{{
-			id:         s.generator.GetSQLVertexId(o, diffTypeDelete),
-			priority:   sqlPriorityLater,
-			statements: statements,
-		}},
+		vertices:     []sqlVertex{newSqlVertex(s.generator.GetSQLVertexId(o, diffTypeDelete), sqlPriorityLater, statements)},
 		dependencies: deps,
 	}, nil
 }
@@ -215,11 +199,7 @@ func (s *wrappedLegacySqlVertexGenerator[S, Diff]) Alter(d Diff) (partialSQLGrap
 	}
 
 	return partialSQLGraph{
-		vertices: []sqlVertex{{
-			id:         s.generator.GetSQLVertexId(d.GetNew(), diffTypeAddAlter),
-			priority:   sqlPrioritySooner,
-			statements: statements,
-		}},
+		vertices:     []sqlVertex{newSqlVertex(s.generator.GetSQLVertexId(d.GetNew(), diffTypeAddAlter), sqlPrioritySooner, statements)},
 		dependencies: deps,
 	}, nil
 }

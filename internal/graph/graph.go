@@ -219,3 +219,79 @@ func (g *Graph[V]) TopologicallySortWithPriority(isLowerPriority func(V, V) bool
 
 	return output, nil
 }
+
+// taggedVertex pairs a vertex with its pre-computed string ID to avoid
+// repeated GetId() calls to avoid extra allocations during sorting
+type taggedVertex[V Vertex] struct {
+	v  V
+	id string
+}
+
+// TopologicallySortWithPriorityFast is an optimized version of TopologicallySortWithPriority that:
+//   - Counts incoming edges in a single pass over forward edges (no Copy + Reverse)
+//   - Pre-caches vertex ID strings to avoid repeated GetId() calls during sorting
+//
+// It produces identical output to TopologicallySortWithPriority
+func (g *Graph[V]) TopologicallySortWithPriorityFast(isLowerPriority func(V, V) bool) ([]V, error) {
+	numVertices := len(g.verticesById)
+	if numVertices == 0 {
+		return nil, nil
+	}
+
+	// Count incoming edges directly from the forward edge map
+	incomingEdgeCount := make(map[string]int, numVertices)
+	for id := range g.verticesById {
+		incomingEdgeCount[id] = 0
+	}
+	for _, adjacentEdges := range g.edges {
+		for target, hasEdge := range adjacentEdges {
+			if hasEdge {
+				incomingEdgeCount[target]++
+			}
+		}
+	}
+
+	output := make([]V, 0, numVertices)
+	for len(incomingEdgeCount) > 0 {
+		var sources []taggedVertex[V]
+		for id, count := range incomingEdgeCount {
+			if count == 0 {
+				sources = append(sources, taggedVertex[V]{v: g.verticesById[id], id: id})
+			}
+		}
+
+		sort.Slice(sources, func(i, j int) bool {
+			return sources[i].id < sources[j].id
+		})
+
+		// Take the source with the highest priority from the sorted array of sources
+		bestIdx := -1
+		for i := range sources {
+			if bestIdx == -1 || isLowerPriority(sources[bestIdx].v, sources[i].v) {
+				bestIdx = i
+			}
+		}
+		if bestIdx == -1 {
+			dotSB := strings.Builder{}
+			if err := EncodeDOT(g, &dotSB, true); err != nil {
+				dotSB.Reset()
+				dotSB.WriteString(fmt.Sprintf("failed to encode graph to DOT: %v", err))
+			}
+			return nil, fmt.Errorf("cycle detected: %+v\n%s", incomingEdgeCount, dotSB.String())
+		}
+		best := sources[bestIdx]
+
+		output = append(output, best.v)
+
+		// Decrement incoming edge counts for vertices adjacent to the removed source
+		for target, hasEdge := range g.edges[best.id] {
+			if hasEdge {
+				incomingEdgeCount[target]--
+			}
+		}
+
+		delete(incomingEdgeCount, best.id)
+	}
+
+	return output, nil
+}

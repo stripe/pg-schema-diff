@@ -117,15 +117,11 @@ func (mvsg *materializedViewSQLGenerator) Add(mv schema.MaterializedView) (parti
 	}
 
 	return partialSQLGraph{
-		vertices: []sqlVertex{{
-			id:       addVertexId,
-			priority: sqlPrioritySooner,
-			statements: []Statement{{
-				DDL:         materializedViewSb.String(),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			}},
-		}},
+		vertices: []sqlVertex{newSqlVertex(addVertexId, sqlPrioritySooner, []Statement{{
+			DDL:         materializedViewSb.String(),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		}})},
 		dependencies: deps,
 	}, nil
 }
@@ -141,15 +137,11 @@ func (mvsg *materializedViewSQLGenerator) Delete(mv schema.MaterializedView) (pa
 	}
 
 	return partialSQLGraph{
-		vertices: []sqlVertex{{
-			id:       deleteVertexId,
-			priority: sqlPriorityLater,
-			statements: []Statement{{
-				DDL:         fmt.Sprintf("DROP MATERIALIZED VIEW %s", mv.GetFQEscapedName()),
-				Timeout:     statementTimeoutDefault,
-				LockTimeout: lockTimeoutDefault,
-			}},
-		}},
+		vertices: []sqlVertex{newSqlVertex(deleteVertexId, sqlPriorityLater, []Statement{{
+			DDL:         fmt.Sprintf("DROP MATERIALIZED VIEW %s", mv.GetFQEscapedName()),
+			Timeout:     statementTimeoutDefault,
+			LockTimeout: lockTimeoutDefault,
+		}})},
 		dependencies: deps,
 	}, nil
 }

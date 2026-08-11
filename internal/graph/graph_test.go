@@ -430,3 +430,144 @@ func getVertexIds(g *Graph[vertex]) []string {
 	}
 	return output
 }
+
+// sprintfVertex is a vertex whose GetId() calls fmt.Sprintf every time
+type sprintfVertex struct {
+	objType  string
+	objId    string
+	diffType string
+	priority int
+}
+
+func (s sprintfVertex) GetId() string {
+	return fmt.Sprintf("%s:%s:%s", s.objType, s.objId, s.diffType)
+}
+
+func TestTopologicallySortWithPriorityFast(t *testing.T) {
+	// Same graph and test cases as TestTopologicallySortWithPriority to prove
+	// the fast version produces identical output.
+	// Source: https://en.wikipedia.org/wiki/Topological_sorting#Examples
+	g := NewGraph[vertex]()
+	v5 := NewV("05")
+	g.AddVertex(v5)
+	v7 := NewV("07")
+	g.AddVertex(v7)
+	v3 := NewV("03")
+	g.AddVertex(v3)
+	v11 := NewV("11")
+	g.AddVertex(v11)
+	v8 := NewV("08")
+	g.AddVertex(v8)
+	v2 := NewV("02")
+	g.AddVertex(v2)
+	v9 := NewV("09")
+	g.AddVertex(v9)
+	v10 := NewV("10")
+	g.AddVertex(v10)
+	assert.NoError(t, g.AddEdge("05", "11"))
+	assert.NoError(t, g.AddEdge("07", "11"))
+	assert.NoError(t, g.AddEdge("07", "08"))
+	assert.NoError(t, g.AddEdge("03", "08"))
+	assert.NoError(t, g.AddEdge("03", "10"))
+	assert.NoError(t, g.AddEdge("11", "02"))
+	assert.NoError(t, g.AddEdge("11", "09"))
+	assert.NoError(t, g.AddEdge("11", "10"))
+	assert.NoError(t, g.AddEdge("08", "09"))
+
+	for _, tc := range []struct {
+		name             string
+		isLowerPriority  func(v1, v2 vertex) bool
+		expectedOrdering []vertex
+	}{
+		{
+			name: "largest-numbered available vertex first (string-based GetPriority)",
+			isLowerPriority: IsLowerPriorityFromGetPriority(func(v vertex) string {
+				return v.GetId()
+			}),
+			expectedOrdering: []vertex{v7, v5, v11, v3, v10, v8, v9, v2},
+		},
+		{
+			name: "smallest-numbered available vertex first (numeric-based GetPriority)",
+			isLowerPriority: IsLowerPriorityFromGetPriority(func(v vertex) int {
+				idAsInt, err := strconv.Atoi(v.GetId())
+				require.NoError(t, err)
+				return -idAsInt
+			}),
+			expectedOrdering: []vertex{v3, v5, v7, v8, v11, v2, v9, v10},
+		},
+		{
+			name: "fewest edges first (prioritize high id's for tie breakers)",
+			isLowerPriority: func(v1, v2 vertex) bool {
+				v1EdgeCount := getEdgeCount(g, v1)
+				v2EdgeCount := getEdgeCount(g, v2)
+				if v1EdgeCount == v2EdgeCount {
+					return v1.GetId() < v2.GetId()
+				}
+				return v1EdgeCount > v2EdgeCount
+			},
+			expectedOrdering: []vertex{v5, v7, v3, v8, v11, v10, v9, v2},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fast, err := g.TopologicallySortWithPriorityFast(tc.isLowerPriority)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expectedOrdering, fast, "fast version should match expected ordering")
+
+			original, err := g.TopologicallySortWithPriority(tc.isLowerPriority)
+			assert.NoError(t, err)
+			assert.Equal(t, original, fast, "fast version should match original version")
+		})
+	}
+
+	// Cycle should error
+	assert.NoError(t, g.AddEdge("10", "07"))
+	_, err := g.TopologicallySortWithPriorityFast(func(_, _ vertex) bool { return false })
+	assert.Error(t, err)
+}
+
+// buildBenchGraph creates a graph with N vertices simulating schema objects,
+// using sprintfVertex
+func buildBenchGraph(n int) *Graph[sprintfVertex] {
+	g := NewGraph[sprintfVertex]()
+	for i := 0; i < n; i++ {
+		g.AddVertex(sprintfVertex{
+			objType:  "TABLE",
+			objId:    fmt.Sprintf("public.table_%04d", i),
+			diffType: "ADDALTER",
+			priority: i % 3,
+		})
+	}
+	// Add edges: each vertex i depends on vertex i-1 (linear chain)
+	// plus some cross-edges to make it more realistic
+	for i := 1; i < n; i++ {
+		src := fmt.Sprintf("TABLE:public.table_%04d:ADDALTER", i-1)
+		dst := fmt.Sprintf("TABLE:public.table_%04d:ADDALTER", i)
+		_ = g.AddEdge(src, dst)
+		// Add a cross-edge from every 10th vertex to create wider fan-out
+		if i >= 10 && i%10 == 0 {
+			crossSrc := fmt.Sprintf("TABLE:public.table_%04d:ADDALTER", i-10)
+			_ = g.AddEdge(crossSrc, dst)
+		}
+	}
+	return g
+}
+
+func BenchmarkTopologicallySortWithPriority(b *testing.B) {
+	for _, size := range []int{50, 200, 500} {
+		g := buildBenchGraph(size)
+		isLowerPriority := IsLowerPriorityFromGetPriority(func(v sprintfVertex) int {
+			return v.priority
+		})
+
+		b.Run(fmt.Sprintf("original/n=%d", size), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = g.TopologicallySortWithPriority(isLowerPriority)
+			}
+		})
+		b.Run(fmt.Sprintf("fast/n=%d", size), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = g.TopologicallySortWithPriorityFast(isLowerPriority)
+			}
+		})
+	}
+}
