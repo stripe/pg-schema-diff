@@ -449,6 +449,9 @@ type Function struct {
 	// can track the dependencies of the function (or not)
 	Language           string
 	DependsOnFunctions []SchemaQualifiedName
+
+	// TableDependencies is a list of tables the function depends on.
+	TableDependencies []TableDependency
 }
 
 type Procedure struct {
@@ -531,6 +534,8 @@ type View struct {
 
 	// TableDependencies is a list of tables the view depends on.
 	TableDependencies []TableDependency
+	// DependsOnFunctions is a list of functions the view depends on.
+	DependsOnFunctions []SchemaQualifiedName
 }
 
 type MaterializedView struct {
@@ -544,6 +549,8 @@ type MaterializedView struct {
 
 	// TableDependencies is a list of tables the materialized view depends on.
 	TableDependencies []TableDependency
+	// DependsOnFunctions is a list of functions the materialized view depends on.
+	DependsOnFunctions []SchemaQualifiedName
 }
 
 type (
@@ -1320,11 +1327,21 @@ func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.G
 		return Function{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
 	}
 
+	// Supplement pg_depend with text-based detection of composite type refs
+	// (%ROWTYPE, type[]) and table refs (FROM/JOIN) in function bodies.
+	tableDependencies, err := parseJSONTableDependencies(
+		append(rawFunction.TableDependencies, parseBodyTableDeps(rawFunction.FuncDef, rawFunction.FuncSchemaName)...),
+	)
+	if err != nil {
+		return Function{}, fmt.Errorf("parsing table dependencies JSON: %w", err)
+	}
+
 	return Function{
 		SchemaQualifiedName: buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
 		FunctionDef:         rawFunction.FuncDef,
 		Language:            rawFunction.FuncLang,
 		DependsOnFunctions:  dependsOnFunctions,
+		TableDependencies:   tableDependencies,
 	}, nil
 }
 
@@ -1508,7 +1525,8 @@ func (s *schemaFetcher) fetchViews(ctx context.Context) ([]View, error) {
 			ViewDefinition:      v.ViewDefinition,
 			Options:             options,
 
-			TableDependencies: tableDependencies,
+			TableDependencies:  tableDependencies,
+			DependsOnFunctions: parseViewFunctionDeps(v.FunctionDependencies),
 		})
 	}
 
@@ -1547,7 +1565,8 @@ func (s *schemaFetcher) fetchMaterializedViews(ctx context.Context) ([]Materiali
 			Options:             options,
 			Tablespace:          mv.TablespaceName,
 
-			TableDependencies: tableDependencies,
+			TableDependencies:  tableDependencies,
+			DependsOnFunctions: parseViewFunctionDeps(mv.FunctionDependencies),
 		})
 	}
 
@@ -1581,6 +1600,95 @@ func parseJSONTableDependencies(vals []string) ([]TableDependency, error) {
 		})
 	}
 	return out, nil
+}
+
+
+var (
+	// Composite type patterns: schema.name%ROWTYPE and schema.name[]
+	bodyQualifiedCompositeRe = regexp.MustCompile(`(?i)\b(\w+)\.(\w+)(?:%ROWTYPE|\[\])`)
+	bodyUnqualifiedCompositeRe = regexp.MustCompile(`(?i)(?:^|[^\.\w])(\w+)(?:%ROWTYPE|\[\])`)
+	// Table reference patterns: FROM/JOIN schema.name
+	bodyQualifiedTableRefRe = regexp.MustCompile(`(?i)(?:FROM|JOIN)\s+(\w+)\.(\w+)\b`)
+	bodyUnqualifiedTableRefRe = regexp.MustCompile(`(?i)(?:FROM|JOIN)\s+([a-z_]\w*)\b`)
+)
+
+// parseBodyTableDeps scans a function definition for table/view references
+// that pg_depend does not track. Detects:
+//   - schema.name%ROWTYPE and schema.name[] (plpgsql DECLARE)
+//   - unqualified name%ROWTYPE and name[] (assumes function's schema)
+//   - FROM/JOIN schema.name (SQL table references in function body)
+
+// parseViewFunctionDeps parses function dependency strings from the view query
+// (format: "schema.name(args)") into SchemaQualifiedNames matching function vertex IDs.
+func parseViewFunctionDeps(deps []string) []SchemaQualifiedName {
+	var out []SchemaQualifiedName
+	for _, d := range deps {
+		// Format: "schema.name(args)"
+		dotIdx := strings.IndexByte(d, '.')
+		parenIdx := strings.IndexByte(d, '(')
+		if dotIdx < 0 || parenIdx < 0 || dotIdx >= parenIdx {
+			continue
+		}
+		schema := d[:dotIdx]
+		name := d[dotIdx+1 : parenIdx]
+		args := d[parenIdx+1 : len(d)-1] // strip parens
+		out = append(out, buildProcName(name, args, schema))
+	}
+	return out
+}
+
+func parseBodyTableDeps(funcDef, funcSchemaName string) []string {
+	seen := make(map[string]bool)
+	var out []string
+
+	add := func(schema, name string) {
+		key := schema + "." + name
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, fmt.Sprintf(`{"schema": "%s", "name": "%s", "columns": []}`, schema, name))
+		}
+	}
+
+	// Schema-qualified composite types
+	for _, m := range bodyQualifiedCompositeRe.FindAllStringSubmatch(funcDef, -1) {
+		if m[1] != "pg_catalog" && m[1] != "information_schema" {
+			add(m[1], m[2])
+		}
+	}
+
+	// Unqualified composite types
+	for _, m := range bodyUnqualifiedCompositeRe.FindAllStringSubmatch(funcDef, -1) {
+		switch strings.ToUpper(m[1]) {
+		case "RECORD", "BOOLEAN", "INTEGER", "BIGINT", "TEXT", "NUMERIC",
+			"VOID", "INT4", "INT8", "FLOAT8", "TIMESTAMPTZ", "TIMESTAMP",
+			"DATE", "JSONB", "JSON", "BYTEA", "UUID", "SMALLINT", "REAL",
+			"DOUBLE", "CHAR", "VARCHAR", "INTERVAL", "OID", "REGCLASS":
+			continue
+		}
+		add(funcSchemaName, m[1])
+	}
+
+	// Schema-qualified FROM/JOIN references
+	for _, m := range bodyQualifiedTableRefRe.FindAllStringSubmatch(funcDef, -1) {
+		if m[1] != "pg_catalog" && m[1] != "information_schema" {
+			add(m[1], m[2])
+		}
+	}
+
+	// Unqualified FROM/JOIN references (assumes function's schema)
+	for _, m := range bodyUnqualifiedTableRefRe.FindAllStringSubmatch(funcDef, -1) {
+		name := m[1]
+		switch strings.ToUpper(name) {
+		case "SELECT", "WHERE", "GROUP", "ORDER", "HAVING", "LIMIT", "OFFSET",
+			"LATERAL", "UNNEST", "GENERATE_SERIES", "VALUES", "ONLY", "EACH",
+			"ROW", "STATEMENT", "NOTHING":
+			continue
+		}
+		// Skip if already captured as qualified (contains a dot after FROM/JOIN)
+		add(funcSchemaName, name)
+	}
+
+	return out
 }
 
 // buildProcName is used to build the schema qualified name for a proc (function, procedure), i.e., anything

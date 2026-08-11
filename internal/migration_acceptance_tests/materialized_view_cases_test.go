@@ -614,3 +614,162 @@ var materializedViewAcceptanceTestCases = []acceptanceTestCase{
 func TestMaterializedViewTestCases(t *testing.T) {
 	runTestCases(t, materializedViewAcceptanceTestCases)
 }
+
+var materializedViewDepTestCases = []acceptanceTestCase{
+	{
+		name: "No-op: materialized view depends on a view (identical schemas)",
+		oldSchemaDDL: []string{`
+			CREATE TABLE events(id INT PRIMARY KEY, event_type TEXT, created_at TIMESTAMPTZ DEFAULT now());
+			CREATE VIEW recent_events AS SELECT id, event_type FROM events WHERE created_at > now() - interval '7 days';
+			CREATE MATERIALIZED VIEW event_stats AS SELECT event_type, COUNT(*) as cnt FROM recent_events GROUP BY event_type;
+		`},
+		newSchemaDDL: []string{`
+			CREATE TABLE events(id INT PRIMARY KEY, event_type TEXT, created_at TIMESTAMPTZ DEFAULT now());
+			CREATE VIEW recent_events AS SELECT id, event_type FROM events WHERE created_at > now() - interval '7 days';
+			CREATE MATERIALIZED VIEW event_stats AS SELECT event_type, COUNT(*) as cnt FROM recent_events GROUP BY event_type;
+		`},
+		expectEmptyPlan: true,
+	},
+	{
+		name: "Recreate matview when dependent view is recreated due to table change",
+		oldSchemaDDL: []string{`
+			CREATE TABLE table_c(c1 INT PRIMARY KEY, c2_old TEXT);
+			CREATE VIEW view_b AS SELECT c1, c2_old FROM table_c;
+			CREATE MATERIALIZED VIEW matview_a AS SELECT c1 FROM view_b;
+		`},
+		newSchemaDDL: []string{`
+			CREATE TABLE table_c(c1 INT PRIMARY KEY, c2_new TEXT);
+			CREATE VIEW view_b AS SELECT c1, c2_new FROM table_c;
+			CREATE MATERIALIZED VIEW matview_a AS SELECT c1 FROM view_b;
+		`},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "Add matview that depends on existing view",
+		oldSchemaDDL: []string{`
+			CREATE TABLE items(id INT PRIMARY KEY, active BOOLEAN DEFAULT true);
+			CREATE VIEW active_items AS SELECT id FROM items WHERE active = true;
+		`},
+		newSchemaDDL: []string{`
+			CREATE TABLE items(id INT PRIMARY KEY, active BOOLEAN DEFAULT true);
+			CREATE VIEW active_items AS SELECT id FROM items WHERE active = true;
+			CREATE MATERIALIZED VIEW active_count AS SELECT COUNT(*) as total FROM active_items;
+		`},
+	},
+	{
+		name: "Drop matview that depends on view",
+		oldSchemaDDL: []string{`
+			CREATE TABLE items(id INT PRIMARY KEY, active BOOLEAN DEFAULT true);
+			CREATE VIEW active_items AS SELECT id FROM items WHERE active = true;
+			CREATE MATERIALIZED VIEW active_count AS SELECT COUNT(*) as total FROM active_items;
+		`},
+		newSchemaDDL: []string{`
+			CREATE TABLE items(id INT PRIMARY KEY, active BOOLEAN DEFAULT true);
+			CREATE VIEW active_items AS SELECT id FROM items WHERE active = true;
+		`},
+	},
+	{
+		name: "Matview depends on function - no-op identical schemas",
+		oldSchemaDDL: []string{`
+			CREATE TABLE orders(id INT PRIMARY KEY, amount NUMERIC);
+			CREATE FUNCTION double_val(val NUMERIC) RETURNS NUMERIC LANGUAGE sql AS
+			$$ SELECT val * 2; $$;
+			CREATE MATERIALIZED VIEW order_doubles AS SELECT id, double_val(amount) as doubled FROM orders;
+		`},
+		newSchemaDDL: []string{`
+			CREATE TABLE orders(id INT PRIMARY KEY, amount NUMERIC);
+			CREATE FUNCTION double_val(val NUMERIC) RETURNS NUMERIC LANGUAGE sql AS
+			$$ SELECT val * 2; $$;
+			CREATE MATERIALIZED VIEW order_doubles AS SELECT id, double_val(amount) as doubled FROM orders;
+		`},
+		expectEmptyPlan: true,
+	},
+	{
+		name: "Recreate matview when dependent function signature changes",
+		oldSchemaDDL: []string{
+			`CREATE TABLE transactions(id INT PRIMARY KEY, amount NUMERIC);`,
+			`CREATE FUNCTION calc_fee(val NUMERIC) RETURNS NUMERIC LANGUAGE sql AS
+			$$ SELECT val * 0.1; $$;
+			CREATE MATERIALIZED VIEW transaction_fees AS SELECT id, calc_fee(amount) as fee FROM transactions;`,
+		},
+		newSchemaDDL: []string{
+			`CREATE TABLE transactions(id INT PRIMARY KEY, amount NUMERIC);`,
+			`CREATE FUNCTION calc_fee(val NUMERIC) RETURNS TEXT LANGUAGE sql AS
+			$$ SELECT (val * 0.1)::TEXT; $$;
+			CREATE MATERIALIZED VIEW transaction_fees AS SELECT id, calc_fee(amount) as fee FROM transactions;`,
+		},
+		// Upstream limitation: pg-schema-diff doesn't handle function return type
+		// changes as drop+create.
+		expectedPlanErrorContains: "cannot change return type of existing function",
+	},
+}
+
+func TestMaterializedViewDepTestCases(t *testing.T) {
+	runTestCases(t, materializedViewDepTestCases)
+}
+
+// Matview function dependency ordering tests — from-scratch creation.
+var materializedViewFuncDepTestCases = []acceptanceTestCase{
+	{
+		name: "From scratch: matview calls a function",
+		oldSchemaDDL: []string{``},
+		newSchemaDDL: []string{`
+			CREATE TABLE orders(id INT PRIMARY KEY, amount NUMERIC);
+			CREATE FUNCTION total_orders() RETURNS NUMERIC LANGUAGE sql AS
+			$$ SELECT COALESCE(SUM(amount), 0) FROM public.orders; $$;
+			CREATE MATERIALIZED VIEW order_summary AS SELECT total_orders() as total;
+		`},
+	},
+}
+
+func TestMaterializedViewFuncDepTestCases(t *testing.T) {
+	runTestCases(t, materializedViewFuncDepTestCases)
+}
+
+var materializedViewGapTestCases = []acceptanceTestCase{
+	{
+		name: "From scratch: matview depends on view that calls a function",
+		oldSchemaDDL: []string{``},
+		newSchemaDDL: []string{`
+			CREATE TABLE t(id INT PRIMARY KEY, val NUMERIC);
+			CREATE FUNCTION double_val(v NUMERIC) RETURNS NUMERIC LANGUAGE sql AS $$ SELECT v * 2; $$;
+			CREATE VIEW v AS SELECT id, double_val(val) as doubled FROM t;
+			CREATE MATERIALIZED VIEW mv AS SELECT * FROM v;
+		`},
+	},
+	{
+		name: "From scratch: matview depends on another matview",
+		oldSchemaDDL: []string{``},
+		newSchemaDDL: []string{`
+			CREATE TABLE t(id INT PRIMARY KEY, category TEXT, amount NUMERIC);
+			CREATE MATERIALIZED VIEW mv_base AS SELECT category, SUM(amount) as total FROM t GROUP BY category;
+			CREATE MATERIALIZED VIEW mv_top AS SELECT category FROM mv_base WHERE total > 1000;
+		`},
+		// vertex ID namespace, not table vertex IDs).
+	},
+	{
+		name: "Recreate matview when dependent matview is recreated",
+		oldSchemaDDL: []string{`
+			CREATE TABLE t(id INT PRIMARY KEY, old_col TEXT, amount NUMERIC);
+			CREATE MATERIALIZED VIEW mv_base AS SELECT old_col, SUM(amount) as total FROM t GROUP BY old_col;
+			CREATE MATERIALIZED VIEW mv_top AS SELECT old_col FROM mv_base WHERE total > 0;
+		`},
+		newSchemaDDL: []string{`
+			CREATE TABLE t(id INT PRIMARY KEY, new_col TEXT, amount NUMERIC);
+			CREATE MATERIALIZED VIEW mv_base AS SELECT new_col, SUM(amount) as total FROM t GROUP BY new_col;
+			CREATE MATERIALIZED VIEW mv_top AS SELECT new_col FROM mv_base WHERE total > 0;
+		`},
+		expectedHazardTypes: []diff.MigrationHazardType{diff.MigrationHazardTypeDeletesData},
+		expectedDBSchemaDDL: []string{`
+			CREATE TABLE t(id INT PRIMARY KEY, amount NUMERIC, new_col TEXT);
+			CREATE MATERIALIZED VIEW mv_base AS SELECT new_col, SUM(amount) as total FROM t GROUP BY new_col WITH NO DATA;
+			CREATE MATERIALIZED VIEW mv_top AS SELECT new_col FROM mv_base WHERE total > 0 WITH NO DATA;
+		`},
+	},
+}
+
+func TestMaterializedViewGapTestCases(t *testing.T) {
+	runTestCases(t, materializedViewGapTestCases)
+}

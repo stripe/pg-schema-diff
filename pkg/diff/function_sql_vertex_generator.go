@@ -87,12 +87,30 @@ func (f *functionSQLVertexGenerator) GetAddAlterDependencies(newFunction, oldFun
 		deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).after(buildFunctionVertexId(depFunction, diffTypeAddAlter)))
 	}
 
+	// Add/alter the function after the table it depends on has been added/altered.
+	for _, t := range newFunction.TableDependencies {
+		deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+	}
+
 	if !cmp.Equal(oldFunction, schema.Function{}) {
 		// If the function is being altered:
 		// If the old version of the function calls other functions that are being deleted come, those deletions
 		// must come after the function is altered, so it is no longer dependent on those dropped functions
 		for _, depFunction := range oldFunction.DependsOnFunctions {
 			deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).before(buildFunctionVertexId(depFunction, diffTypeDelete)))
+		}
+
+		// Alter the function before the table it used to depend on has been altered or deleted.
+		newTableDeps := make(map[string]bool)
+		for _, t := range newFunction.TableDependencies {
+			newTableDeps[t.GetName()] = true
+		}
+		for _, t := range oldFunction.TableDependencies {
+			if newTableDeps[t.GetName()] {
+				continue
+			}
+			deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+			deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)))
 		}
 	}
 
@@ -103,6 +121,10 @@ func (f *functionSQLVertexGenerator) GetDeleteDependencies(function schema.Funct
 	var deps []dependency
 	for _, depFunction := range function.DependsOnFunctions {
 		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeDelete)).before(buildFunctionVertexId(depFunction, diffTypeDelete)))
+	}
+	for _, t := range function.TableDependencies {
+		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeDelete)).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)))
+		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeDelete)).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)))
 	}
 	return deps, nil
 }
