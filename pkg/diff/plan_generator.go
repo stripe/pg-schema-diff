@@ -36,6 +36,7 @@ type (
 		getSchemaOpts           []schema.GetSchemaOpt
 		randReader              io.Reader
 		noConcurrentIndexOps    bool
+		skipTablePrivileges     bool
 	}
 
 	PlanOpt func(opts *planOptions)
@@ -113,6 +114,16 @@ func WithNoConcurrentIndexOps() PlanOpt {
 	}
 }
 
+// WithSkipTablePrivileges configures plan generation to ignore table privilege differences.
+// This is useful when privileges on partitioned tables cause plan generation to fail with
+// "privileges on partitions: not implemented", or when privilege changes should not be
+// included in the migration plan.
+func WithSkipTablePrivileges() PlanOpt {
+	return func(opts *planOptions) {
+		opts.skipTablePrivileges = true
+	}
+}
+
 // Generate generates a migration plan to migrate the database to the target schema
 //
 // Parameters:
@@ -151,6 +162,11 @@ func Generate(
 	})
 	if err != nil {
 		return Plan{}, fmt.Errorf("getting new schema: %w", err)
+	}
+
+	if planOptions.skipTablePrivileges {
+		currentSchema = clearTablePrivileges(currentSchema)
+		newSchema = clearTablePrivileges(newSchema)
 	}
 
 	statements, err := generateMigrationStatements(currentSchema, newSchema, planOptions)
