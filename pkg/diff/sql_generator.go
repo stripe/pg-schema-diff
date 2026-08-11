@@ -573,12 +573,14 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 
 	var partialGraph partialSQLGraph
 
+	skipNI := s.planOptions.skipNotImplemented
 	tablePartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Table, tableDiff](&tableSQLVertexGenerator{
 		randReader:              s.randReader,
 		deletedTablesByName:     deletedTablesByName,
 		tablesInNewSchemaByName: tablesInNewSchemaByName,
 		tableDiffsByName:        buildDiffByNameMap[schema.Table, tableDiff](diff.tableDiffs.alters),
-	}), diff.tableDiffs)
+		skipNotImplemented:      skipNI,
+	}), diff.tableDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving table diff: %w", err)
 	}
@@ -595,14 +597,14 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	}
 
 	attachPartitionGenerator := newAttachPartitionSQLVertexGenerator(diff.new.Indexes, diff.tableDiffs.adds)
-	attachPartitionsPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Table, tableDiff](attachPartitionGenerator), diff.tableDiffs)
+	attachPartitionsPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Table, tableDiff](attachPartitionGenerator), diff.tableDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving attach partition diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, attachPartitionsPartialGraph)
 
 	renameConflictingIndexesGenerator := newRenameConflictingIndexSQLVertexGenerator(s.randReader, buildSchemaObjByNameMap(diff.old.Indexes))
-	renameConflictingIndexesPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Index, indexDiff](renameConflictingIndexesGenerator), diff.indexDiffs)
+	renameConflictingIndexesPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Index, indexDiff](renameConflictingIndexesGenerator), diff.indexDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving renaming conflicting indexes diff: %w", err)
 	}
@@ -623,14 +625,14 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		attachPartitionSQLVertexGenerator: attachPartitionGenerator,
 		planOptions:                       s.planOptions,
 	})
-	indexesPartialGraph, err := generatePartialGraph(indexGenerator, diff.indexDiffs)
+	indexesPartialGraph, err := generatePartialGraph(indexGenerator, diff.indexDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving index diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, indexesPartialGraph)
 
 	foreignKeyGenerator := newForeignKeyConstraintSQLVertexGenerator(diff.oldAndNew, diff.tableDiffs)
-	fkConsPartialGraph, err := generatePartialGraph(foreignKeyGenerator, diff.foreignKeyConstraintDiffs)
+	fkConsPartialGraph, err := generatePartialGraph(foreignKeyGenerator, diff.foreignKeyConstraintDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving foreign key constraint diff: %w", err)
 	}
@@ -640,49 +642,49 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		deletedTablesByName: deletedTablesByName,
 		tableDiffsByName:    buildDiffByNameMap[schema.Table, tableDiff](diff.tableDiffs.alters),
 	})
-	sequencesPartialGraph, err := generatePartialGraph(sequenceGenerator, diff.sequenceDiffs)
+	sequencesPartialGraph, err := generatePartialGraph(sequenceGenerator, diff.sequenceDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving sequence diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, sequencesPartialGraph)
 
 	sequenceOwnershipGenerator := legacyToNewSqlVertexGenerator[schema.Sequence, sequenceDiff](&sequenceOwnershipSQLVertexGenerator{})
-	sequenceOwnershipsPartialGraph, err := generatePartialGraph(sequenceOwnershipGenerator, diff.sequenceDiffs)
+	sequenceOwnershipsPartialGraph, err := generatePartialGraph(sequenceOwnershipGenerator, diff.sequenceDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving sequence ownership diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, sequenceOwnershipsPartialGraph)
 
 	functionGenerator := newFunctionSqlVertexGenerator(functionsInNewSchemaByName)
-	functionsPartialGraph, err := generatePartialGraph(functionGenerator, diff.functionDiffs)
+	functionsPartialGraph, err := generatePartialGraph(functionGenerator, diff.functionDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving function diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, functionsPartialGraph)
 
 	procedureGenerator := newProcedureSqlVertexGenerator(diff.new)
-	proceduresPartialGraph, err := generatePartialGraph(procedureGenerator, diff.proceduresDiffs)
+	proceduresPartialGraph, err := generatePartialGraph(procedureGenerator, diff.proceduresDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving procedure diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, proceduresPartialGraph)
 
 	triggerGenerator := newTriggerSqlVertexGenerator(functionsInNewSchemaByName)
-	triggersPartialGraph, err := generatePartialGraph(triggerGenerator, diff.triggerDiffs)
+	triggersPartialGraph, err := generatePartialGraph(triggerGenerator, diff.triggerDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving trigger diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, triggersPartialGraph)
 
 	viewGenerator := newViewSQLVertexGenerator()
-	viewPartialGraph, err := generatePartialGraph(viewGenerator, diff.viewDiff)
+	viewPartialGraph, err := generatePartialGraph(viewGenerator, diff.viewDiff, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving view diff: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, viewPartialGraph)
 
 	materializedViewGenerator := newMaterializedViewSQLVertexGenerator()
-	materializedViewPartialGraph, err := generatePartialGraph(materializedViewGenerator, diff.materializedViewDiffs)
+	materializedViewPartialGraph, err := generatePartialGraph(materializedViewGenerator, diff.materializedViewDiffs, skipNI)
 	if err != nil {
 		return nil, fmt.Errorf("resolving materialized view diff: %w", err)
 	}
@@ -796,6 +798,7 @@ type tableSQLVertexGenerator struct {
 	deletedTablesByName     map[string]schema.Table
 	tablesInNewSchemaByName map[string]schema.Table
 	tableDiffsByName        map[string]tableDiff
+	skipNotImplemented      bool
 }
 
 func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
@@ -992,7 +995,7 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	var partialGraph partialSQLGraph
 
 	columnGenerator := newColumnSQLVertexGenerator(diff.new.SchemaQualifiedName)
-	columnsPartialGraph, err := generatePartialGraph(columnGenerator, diff.columnsDiff)
+	columnsPartialGraph, err := generatePartialGraph(columnGenerator, diff.columnsDiff, t.skipNotImplemented)
 	if err != nil {
 		return nil, fmt.Errorf("resolving index diff: %w", err)
 	}
@@ -1006,7 +1009,7 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 		deletedColumnsByName:   buildSchemaObjByNameMap(diff.columnsDiff.deletes),
 		isNewTable:             false,
 	})
-	checkConsPartialGraph, err := generatePartialGraph(checkConGenerator, diff.checkConstraintDiff)
+	checkConsPartialGraph, err := generatePartialGraph(checkConGenerator, diff.checkConstraintDiff, t.skipNotImplemented)
 	if err != nil {
 		return nil, fmt.Errorf("resolving check constraints sql: %w", err)
 	}
@@ -1029,14 +1032,14 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	if err != nil {
 		return nil, fmt.Errorf("creating policy sql vertex generator: %w", err)
 	}
-	policiesPartialGraph, err := generatePartialGraph(policyGenerator, diff.policiesDiff)
+	policiesPartialGraph, err := generatePartialGraph(policyGenerator, diff.policiesDiff, t.skipNotImplemented)
 	if err != nil {
 		return nil, fmt.Errorf("resolving policy sql: %w", err)
 	}
 	partialGraph = concatPartialGraphs(partialGraph, policiesPartialGraph)
 
 	privilegeGenerator := newPrivilegeSQLVertexGenerator(diff.new.SchemaQualifiedName)
-	privilegesPartialGraph, err := generatePartialGraph(privilegeGenerator, diff.privilegesDiff)
+	privilegesPartialGraph, err := generatePartialGraph(privilegeGenerator, diff.privilegesDiff, t.skipNotImplemented)
 	if err != nil {
 		return nil, fmt.Errorf("resolving privilege sql: %w", err)
 	}
