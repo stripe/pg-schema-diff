@@ -164,7 +164,9 @@ SELECT
             pg_catalog.pg_attribute AS att
             ON att.attrelid = table_c.oid AND indkey_ord.attnum = att.attnum
     )::TEXT [] AS column_names,
-    COALESCE(con.conislocal, false) AS constraint_is_local
+    COALESCE(con.conislocal, false) AS constraint_is_local,
+    COALESCE(con.condeferrable, false) AS constraint_is_deferrable,
+    COALESCE(con.condeferred, false) AS constraint_is_initially_deferred
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_index AS i ON (c.oid = i.indexrelid)
 INNER JOIN pg_catalog.pg_class AS table_c ON (i.indrelid = table_c.oid)

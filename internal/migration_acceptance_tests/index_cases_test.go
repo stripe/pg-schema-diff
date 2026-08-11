@@ -824,6 +824,144 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeIndexDropped,
 		},
 	},
+	{
+		name: "Add a deferrable unique constraint",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank) DEFERRABLE;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
+		name: "Add a deferrable initially deferred unique constraint",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank) DEFERRABLE INITIALLY DEFERRED;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
+		name: "No-op with deferrable unique constraint",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank) DEFERRABLE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank) DEFERRABLE;
+			`,
+		},
+	},
+	{
+		name: "No-op with deferrable initially deferred unique constraint",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank) DEFERRABLE INITIALLY DEFERRED;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank) DEFERRABLE INITIALLY DEFERRED;
+			`,
+		},
+	},
+	{
+		name: "Change unique constraint from not deferrable to deferrable",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank) DEFERRABLE;
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
+	{
+		name: "Change unique constraint from deferrable to not deferrable",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank) DEFERRABLE;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                rank INT NOT NULL
+            );
+            ALTER TABLE foobar ADD CONSTRAINT foobar_id_rank_key UNIQUE (id, rank);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeIndexDropped,
+			diff.MigrationHazardTypeIndexBuild,
+		},
+	},
 }
 
 func TestIndexTestCases(t *testing.T) {

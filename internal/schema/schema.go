@@ -347,6 +347,8 @@ type (
 		EscapedConstraintName string
 		ConstraintDef         string
 		IsLocal               bool
+		IsDeferrable          bool
+		IsInitiallyDeferred   bool
 	}
 
 	Index struct {
@@ -1165,6 +1167,8 @@ func (s *schemaFetcher) buildIndex(rawIndex queries.GetIndexesRow) Index {
 			EscapedConstraintName: EscapeIdentifier(rawIndex.ConstraintName),
 			ConstraintDef:         rawIndex.ConstraintDef,
 			IsLocal:               rawIndex.ConstraintIsLocal,
+			IsDeferrable:          rawIndex.ConstraintIsDeferrable,
+			IsInitiallyDeferred:   rawIndex.ConstraintIsInitiallyDeferred,
 		}
 	}
 
