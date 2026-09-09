@@ -94,6 +94,10 @@ type (
 		oldAndNew[schema.Enum]
 	}
 
+	domainDiff struct {
+		oldAndNew[schema.Domain]
+	}
+
 	extensionDiff struct {
 		oldAndNew[schema.Extension]
 	}
@@ -146,6 +150,7 @@ type schemaDiff struct {
 	namedSchemaDiffs          listDiff[schema.NamedSchema, namedSchemaDiff]
 	extensionDiffs            listDiff[schema.Extension, extensionDiff]
 	enumDiffs                 listDiff[schema.Enum, enumDiff]
+	domainDiffs               listDiff[schema.Domain, domainDiff]
 	tableDiffs                listDiff[schema.Table, tableDiff]
 	indexDiffs                listDiff[schema.Index, indexDiff]
 	foreignKeyConstraintDiffs listDiff[schema.ForeignKeyConstraint, foreignKeyConstraintDiff]
@@ -234,6 +239,23 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		return schemaDiff{}, false, fmt.Errorf("diffing enums: %w", err)
 	}
 
+	// domainsBeingRecreated tracks the domains whose base type or collation is changing.
+	// Neither can be altered in place, so those domains are dropped and re-created, and every
+	// function or procedure whose signature is typed with one of them must be re-created too:
+	// `CREATE OR REPLACE FUNCTION` cannot change an argument or return type.
+	domainsBeingRecreated, err := identifyDomainsToRecreate(old, new)
+	if err != nil {
+		return schemaDiff{}, false, err
+	}
+	domainDiffs, err := diffLists(old.Domains, new.Domains, func(old, new schema.Domain, _, _ int) (domainDiff, bool, error) {
+		return domainDiff{
+			oldAndNew[schema.Domain]{old: old, new: new},
+		}, domainsBeingRecreated[new.GetName()], nil
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing domains: %w", err)
+	}
+
 	tableDiffs, err := diffLists(old.Tables, new.Tables, buildTableDiff)
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing tables: %w", err)
@@ -285,6 +307,11 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	functionDiffs, err := diffLists(old.Functions, new.Functions, func(old, new schema.Function, _, _ int) (functionDiff, bool, error) {
+		if dependsOnAnyRecreatedDomain(new.DependsOnDomains, domainsBeingRecreated) {
+			return functionDiff{
+				oldAndNew[schema.Function]{old: old, new: new},
+			}, true, nil
+		}
 		return functionDiff{
 			oldAndNew[schema.Function]{
 				old: old,
@@ -297,6 +324,11 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	}
 
 	procedureDiffs, err := diffLists(old.Procedures, new.Procedures, func(old, new schema.Procedure, _, _ int) (procedureDiff, bool, error) {
+		if dependsOnAnyRecreatedDomain(new.DependsOnDomains, domainsBeingRecreated) {
+			return procedureDiff{
+				oldAndNew[schema.Procedure]{old: old, new: new},
+			}, true, nil
+		}
 		return procedureDiff{
 			oldAndNew[schema.Procedure]{
 				old: old,
@@ -347,6 +379,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		namedSchemaDiffs:          schemaDiffs,
 		extensionDiffs:            extensionDiffs,
 		enumDiffs:                 enumDiffs,
+		domainDiffs:               domainDiffs,
 		tableDiffs:                tableDiffs,
 		indexDiffs:                indexesDiff,
 		foreignKeyConstraintDiffs: foreignKeyConstraintDiffs,
@@ -653,6 +686,17 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	}
 	partialGraph = concatPartialGraphs(partialGraph, sequenceOwnershipsPartialGraph)
 
+	domainsBeingRecreated, err := identifyDomainsToRecreate(diff.old, diff.new)
+	if err != nil {
+		return nil, fmt.Errorf("identifying domains to recreate: %w", err)
+	}
+	domainGenerator := newDomainSQLVertexGenerator(diff.old, diff.new, domainsBeingRecreated)
+	domainsPartialGraph, err := generatePartialGraph(domainGenerator, diff.domainDiffs)
+	if err != nil {
+		return nil, fmt.Errorf("resolving domain diff: %w", err)
+	}
+	partialGraph = concatPartialGraphs(partialGraph, domainsPartialGraph)
+
 	functionGenerator := newFunctionSqlVertexGenerator(functionsInNewSchemaByName)
 	functionsPartialGraph, err := generatePartialGraph(functionGenerator, diff.functionDiffs)
 	if err != nil {
@@ -775,6 +819,42 @@ func buildSchemaObjByNameMap[S schema.Object](s []S) map[string]S {
 	return buildMap(s, func(s S) string {
 		return s.GetName()
 	})
+}
+
+// identifyDomainsToRecreate returns the domains whose base type or collation changed. Postgres
+// has no `ALTER DOMAIN ... TYPE`, so such a domain must be dropped and re-created. If a table
+// column is typed with one of them, the re-creation is refused: dropping the domain would require
+// dropping the column.
+func identifyDomainsToRecreate(old, new schema.Schema) (map[string]bool, error) {
+	oldByName := buildSchemaObjByNameMap(old.Domains)
+	recreated := make(map[string]bool)
+
+	for _, newDomain := range new.Domains {
+		oldDomain, ok := oldByName[newDomain.GetName()]
+		if !ok {
+			continue
+		}
+		if oldDomain.BaseType == newDomain.BaseType && cmp.Equal(oldDomain.Collation, newDomain.Collation) {
+			continue
+		}
+		for _, table := range old.Tables {
+			if dependsOnDomain(table.DependsOnDomains, newDomain.GetName()) {
+				return nil, fmt.Errorf("changing the base type or collation of domain %s used by a column of table %s: %w", newDomain.GetFQEscapedName(), table.GetFQEscapedName(), ErrNotImplemented)
+			}
+		}
+		recreated[newDomain.GetName()] = true
+	}
+
+	return recreated, nil
+}
+
+func dependsOnAnyRecreatedDomain(deps []schema.SchemaQualifiedName, recreated map[string]bool) bool {
+	for _, dep := range deps {
+		if recreated[dep.GetName()] {
+			return true
+		}
+	}
+	return false
 }
 
 func buildDiffByNameMap[S schema.Object, D diff[S]](d []D) map[string]D {

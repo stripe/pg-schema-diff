@@ -55,6 +55,7 @@ type Schema struct {
 	NamedSchemas          []NamedSchema
 	Extensions            []Extension
 	Enums                 []Enum
+	Domains               []Domain
 	Tables                []Table
 	Indexes               []Index
 	ForeignKeyConstraints []ForeignKeyConstraint
@@ -73,6 +74,17 @@ func (s Schema) Normalize() Schema {
 	s.Extensions = sortSchemaObjectsByName(s.Extensions)
 	s.Enums = sortSchemaObjectsByName(s.Enums)
 
+	var normDomains []Domain
+	for _, d := range sortSchemaObjectsByName(s.Domains) {
+		// Domain constraints are un-ordered in Postgres (they are all evaluated for every
+		// value), so sorting them by name is safe and makes the schema deterministic.
+		d.Constraints = sortSchemaObjectsByName(d.Constraints)
+		d.DependsOnFunctions = sortSchemaObjectsByName(d.DependsOnFunctions)
+		d.DependsOnDomains = sortSchemaObjectsByName(d.DependsOnDomains)
+		normDomains = append(normDomains, d)
+	}
+	s.Domains = normDomains
+
 	var normTables []Table
 	for _, t := range sortSchemaObjectsByName(s.Tables) {
 		normTables = append(normTables, normalizeTable(t))
@@ -86,11 +98,18 @@ func (s Schema) Normalize() Schema {
 	var normFunctions []Function
 	for _, function := range sortSchemaObjectsByName(s.Functions) {
 		function.DependsOnFunctions = sortSchemaObjectsByName(function.DependsOnFunctions)
+		function.DependsOnDomains = sortSchemaObjectsByName(function.DependsOnDomains)
 		normFunctions = append(normFunctions, function)
 	}
 	s.Functions = normFunctions
 
-	s.Procedures = sortSchemaObjectsByName(s.Procedures)
+	var normProcedures []Procedure
+	for _, procedure := range sortSchemaObjectsByName(s.Procedures) {
+		procedure.DependsOnDomains = sortSchemaObjectsByName(procedure.DependsOnDomains)
+		normProcedures = append(normProcedures, procedure)
+	}
+	s.Procedures = normProcedures
+
 	s.Triggers = sortSchemaObjectsByName(s.Triggers)
 
 	var normViews []View
@@ -109,6 +128,7 @@ func (s Schema) Normalize() Schema {
 }
 
 func normalizeTable(t Table) Table {
+	t.DependsOnDomains = sortSchemaObjectsByName(t.DependsOnDomains)
 	// Don't normalize columns order. their order is derived from the postgres catalogs
 	// (relevant to data packing)
 	var normCheckConstraints []CheckConstraint
@@ -212,6 +232,42 @@ type Enum struct {
 	Labels []string
 }
 
+// DomainConstraint is a CHECK constraint attached to a domain.
+type DomainConstraint struct {
+	Name string
+	// Def is the constraint definition taken verbatim from `pg_get_constraintdef`, e.g.
+	// `CHECK ((VALUE > (0)::numeric))` or `CHECK (some_schema.is_valid(VALUE)) NOT VALID`.
+	// It is kept verbatim so that expressions calling user-defined functions round-trip
+	// exactly as Postgres deparses them.
+	Def string
+}
+
+func (c DomainConstraint) GetName() string {
+	return c.Name
+}
+
+// Domain represents a user-defined domain (`CREATE DOMAIN foo AS numeric CHECK (VALUE > 0)`).
+type Domain struct {
+	SchemaQualifiedName
+	// BaseType is the underlying type formatted by `pg_catalog.format_type`, including the
+	// type modifier, e.g. `numeric(10,2)`.
+	BaseType string
+	// IsNotNull is the domain-level NOT NULL constraint.
+	IsNotNull bool
+	// Default is the SQL string of the domain's default value. Empty means no default.
+	Default string
+	// Collation is only set if the domain's collation differs from its base type's collation.
+	Collation   SchemaQualifiedName
+	Constraints []DomainConstraint
+	// DependsOnFunctions is the list of functions referenced by the domain's CHECK
+	// expressions and default value. The domain must be created after them and dropped
+	// before them.
+	DependsOnFunctions []SchemaQualifiedName
+	// DependsOnDomains is the list of domains this domain is built on top of (a domain
+	// may have another domain as its base type).
+	DependsOnDomains []SchemaQualifiedName
+}
+
 type Table struct {
 	SchemaQualifiedName
 	Columns          []Column
@@ -229,6 +285,10 @@ type Table struct {
 
 	ParentTable *SchemaQualifiedName
 	ForValues   string
+
+	// DependsOnDomains is the list of domains used as the type of at least one of the
+	// table's columns. The table must be created/altered after those domains exist.
+	DependsOnDomains []SchemaQualifiedName
 }
 
 func (t Table) IsPartitioned() bool {
@@ -449,6 +509,9 @@ type Function struct {
 	// can track the dependencies of the function (or not)
 	Language           string
 	DependsOnFunctions []SchemaQualifiedName
+	// DependsOnDomains is the list of domains referenced by the function's signature
+	// (argument or return types). The function must be created after those domains exist.
+	DependsOnDomains []SchemaQualifiedName
 }
 
 type Procedure struct {
@@ -457,6 +520,8 @@ type Procedure struct {
 	// the procedure, as returned by `pg_get_functiondef`. It is a CREATE OR REPLACE
 	// statement.
 	Def string
+	// DependsOnDomains — see Function.DependsOnDomains.
+	DependsOnDomains []SchemaQualifiedName
 }
 
 var (
@@ -702,6 +767,13 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("starting enums future: %w", err)
 	}
 
+	domainsFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Domain, error) {
+		return s.fetchDomains(ctx)
+	})
+	if err != nil {
+		return Schema{}, fmt.Errorf("starting domains future: %w", err)
+	}
+
 	tablesFuture, err := concurrent.SubmitFuture(ctx, goroutineRunner, func() ([]Table, error) {
 		return s.fetchTables(ctx)
 	})
@@ -780,6 +852,11 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		return Schema{}, fmt.Errorf("getting enums: %w", err)
 	}
 
+	domains, err := domainsFuture.Get(ctx)
+	if err != nil {
+		return Schema{}, fmt.Errorf("getting domains: %w", err)
+	}
+
 	tables, err := tablesFuture.Get(ctx)
 	if err != nil {
 		return Schema{}, fmt.Errorf("getting tables: %w", err)
@@ -829,6 +906,7 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 		NamedSchemas:          schemas,
 		Extensions:            extensions,
 		Enums:                 enums,
+		Domains:               domains,
 		Tables:                tables,
 		Indexes:               indexes,
 		ForeignKeyConstraints: fkCons,
@@ -924,6 +1002,111 @@ func (s *schemaFetcher) fetchEnums(ctx context.Context) ([]Enum, error) {
 	return enums, nil
 }
 
+func (s *schemaFetcher) fetchDomains(ctx context.Context) ([]Domain, error) {
+	rawDomains, err := s.q.GetDomains(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GetDomains: %w", err)
+	}
+
+	var domains []Domain
+	for _, rawDomain := range rawDomains {
+		rawConstraints, err := s.q.GetDomainConstraints(ctx, rawDomain.Oid)
+		if err != nil {
+			return nil, fmt.Errorf("GetDomainConstraints(%s): %w", rawDomain.Oid, err)
+		}
+
+		// The domain's default expression records its function dependencies against the
+		// pg_type entry, while each CHECK expression records them against its own
+		// pg_constraint entry, so both catalogs must be probed.
+		dependsOnFunctions, err := s.fetchDependsOnFunctions(ctx, "pg_type", rawDomain.Oid)
+		if err != nil {
+			return nil, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawDomain.Oid, err)
+		}
+
+		var constraints []DomainConstraint
+		for _, rawConstraint := range rawConstraints {
+			constraints = append(constraints, DomainConstraint{
+				Name: rawConstraint.ConstraintName,
+				Def:  rawConstraint.ConstraintDef,
+			})
+			constraintDeps, err := s.fetchDependsOnFunctions(ctx, "pg_constraint", rawConstraint.Oid)
+			if err != nil {
+				return nil, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawConstraint.Oid, err)
+			}
+			dependsOnFunctions = append(dependsOnFunctions, constraintDeps...)
+		}
+
+		dependsOnDomains, err := s.fetchDependsOnDomains(ctx, "pg_type", rawDomain.Oid)
+		if err != nil {
+			return nil, fmt.Errorf("fetchDependsOnDomains(%s): %w", rawDomain.Oid, err)
+		}
+
+		collation := SchemaQualifiedName{}
+		if rawDomain.CollationName != "" {
+			collation = SchemaQualifiedName{
+				EscapedName: EscapeIdentifier(rawDomain.CollationName),
+				SchemaName:  rawDomain.CollationSchemaName,
+			}
+		}
+
+		domains = append(domains, Domain{
+			SchemaQualifiedName: SchemaQualifiedName{
+				SchemaName:  rawDomain.DomainSchemaName,
+				EscapedName: EscapeIdentifier(rawDomain.DomainName),
+			},
+			BaseType:           rawDomain.BaseType,
+			IsNotNull:          rawDomain.IsNotNull,
+			Default:            rawDomain.DefaultValue,
+			Collation:          collation,
+			Constraints:        constraints,
+			DependsOnFunctions: dedupeSchemaQualifiedNames(dependsOnFunctions),
+			DependsOnDomains:   dependsOnDomains,
+		})
+	}
+
+	domains = filterSliceByName(
+		domains,
+		func(d Domain) SchemaQualifiedName {
+			return d.SchemaQualifiedName
+		},
+		s.nameFilter,
+	)
+
+	return domains, nil
+}
+
+func (s *schemaFetcher) fetchDependsOnDomains(ctx context.Context, systemCatalog string, oid any) ([]SchemaQualifiedName, error) {
+	rows, err := s.q.GetDependsOnDomains(ctx, queries.GetDependsOnDomainsParams{
+		SystemCatalog: systemCatalog,
+		ObjectID:      oid,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var names []SchemaQualifiedName
+	for _, row := range rows {
+		names = append(names, SchemaQualifiedName{
+			SchemaName:  row.DomainSchemaName,
+			EscapedName: EscapeIdentifier(row.DomainName),
+		})
+	}
+	return names, nil
+}
+
+func dedupeSchemaQualifiedNames(names []SchemaQualifiedName) []SchemaQualifiedName {
+	seen := make(map[string]bool, len(names))
+	var deduped []SchemaQualifiedName
+	for _, n := range names {
+		if seen[n.GetName()] {
+			continue
+		}
+		seen[n.GetName()] = true
+		deduped = append(deduped, n)
+	}
+	return deduped
+}
+
 func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 	rawTables, err := s.q.GetTables(ctx)
 	if err != nil {
@@ -996,6 +1179,10 @@ func (s *schemaFetcher) buildTable(
 	if err != nil {
 		return Table{}, fmt.Errorf("GetColumnsForTable(%s): %w", table.Oid, err)
 	}
+	dependsOnDomains, err := s.fetchDependsOnDomains(ctx, "pg_class", table.Oid)
+	if err != nil {
+		return Table{}, fmt.Errorf("fetchDependsOnDomains(%s): %w", table.Oid, err)
+	}
 	var columns []Column
 	for _, column := range rawColumns {
 		collation := SchemaQualifiedName{}
@@ -1053,6 +1240,7 @@ func (s *schemaFetcher) buildTable(
 	return Table{
 		SchemaQualifiedName: schemaQualifiedName,
 		Columns:             columns,
+		DependsOnDomains:    dependsOnDomains,
 		CheckConstraints:    checkConsByTable[schemaQualifiedName.GetFQEscapedName()],
 		Policies:            policiesByTable[schemaQualifiedName.GetFQEscapedName()],
 		Privileges:          privilegesByTable[schemaQualifiedName.GetFQEscapedName()],
@@ -1320,11 +1508,17 @@ func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.G
 		return Function{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
 	}
 
+	dependsOnDomains, err := s.fetchDependsOnDomains(ctx, "pg_proc", rawFunction.Oid)
+	if err != nil {
+		return Function{}, fmt.Errorf("fetchDependsOnDomains(%s): %w", rawFunction.Oid, err)
+	}
+
 	return Function{
 		SchemaQualifiedName: buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
 		FunctionDef:         rawFunction.FuncDef,
 		Language:            rawFunction.FuncLang,
 		DependsOnFunctions:  dependsOnFunctions,
+		DependsOnDomains:    dependsOnDomains,
 	}, nil
 }
 
@@ -1353,9 +1547,14 @@ func (s *schemaFetcher) fetchProcedures(ctx context.Context) ([]Procedure, error
 
 	var procedures []Procedure
 	for _, rawProcedure := range rawProcedures {
+		dependsOnDomains, err := s.fetchDependsOnDomains(ctx, "pg_proc", rawProcedure.Oid)
+		if err != nil {
+			return nil, fmt.Errorf("fetchDependsOnDomains(%s): %w", rawProcedure.Oid, err)
+		}
 		p := Procedure{
 			SchemaQualifiedName: buildProcName(rawProcedure.FuncName, rawProcedure.FuncIdentityArguments, rawProcedure.FuncSchemaName),
 			Def:                 rawProcedure.FuncDef,
+			DependsOnDomains:    dependsOnDomains,
 		}
 		procedures = append(procedures, p)
 	}
