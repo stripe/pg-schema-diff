@@ -223,6 +223,69 @@ func (q *Queries) GetColumnsForTable(ctx context.Context, attrelid interface{}) 
 	return items, nil
 }
 
+const getDependsOnDomains = `-- name: GetDependsOnDomains :many
+SELECT DISTINCT
+    pg_type.typname::TEXT AS domain_name,
+    type_namespace.nspname::TEXT AS domain_schema_name
+FROM pg_catalog.pg_depend AS depend
+INNER JOIN pg_catalog.pg_type AS referenced_type
+    ON
+        depend.refclassid = 'pg_type'::REGCLASS
+        AND depend.refobjid = referenced_type.oid
+INNER JOIN pg_catalog.pg_type AS pg_type
+    ON
+        (
+            referenced_type.oid = pg_type.oid
+            OR referenced_type.typelem = pg_type.oid
+        )
+        AND pg_type.typtype = 'd'
+INNER JOIN
+    pg_catalog.pg_namespace AS type_namespace
+    ON pg_type.typnamespace = type_namespace.oid
+WHERE
+    depend.classid = $1::REGCLASS
+    AND depend.objid = $2
+    AND depend.deptype = 'n'
+`
+
+type GetDependsOnDomainsParams struct {
+	SystemCatalog interface{}
+	ObjectID      interface{}
+}
+
+type GetDependsOnDomainsRow struct {
+	DomainName       string
+	DomainSchemaName string
+}
+
+// Returns the domains (typtype = 'd') that the given object depends on. This
+// includes dependencies through PostgreSQL's automatically-created array type
+// for a domain, e.g. `some_domain[]`.
+// Used to order a domain's CREATE before every consumer that is typed with it
+// (table columns, function/procedure signatures, other domains).
+func (q *Queries) GetDependsOnDomains(ctx context.Context, arg GetDependsOnDomainsParams) ([]GetDependsOnDomainsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getDependsOnDomains, arg.SystemCatalog, arg.ObjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDependsOnDomainsRow
+	for rows.Next() {
+		var i GetDependsOnDomainsRow
+		if err := rows.Scan(&i.DomainName, &i.DomainSchemaName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDependsOnFunctions = `-- name: GetDependsOnFunctions :many
 SELECT
     pg_proc.proname::TEXT AS func_name,
@@ -265,6 +328,146 @@ func (q *Queries) GetDependsOnFunctions(ctx context.Context, arg GetDependsOnFun
 	for rows.Next() {
 		var i GetDependsOnFunctionsRow
 		if err := rows.Scan(&i.FuncName, &i.FuncSchemaName, &i.FuncIdentityArguments); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getDomainConstraints = `-- name: GetDomainConstraints :many
+SELECT
+    con.oid AS oid,
+    con.conname::TEXT AS constraint_name,
+    pg_catalog.pg_get_constraintdef(con.oid) AS constraint_def
+FROM pg_catalog.pg_constraint AS con
+WHERE
+    con.contypid = $1
+    AND con.contype = 'c'
+ORDER BY con.conname
+`
+
+type GetDomainConstraintsRow struct {
+	Oid            interface{}
+	ConstraintName string
+	ConstraintDef  string
+}
+
+// Returns the CHECK constraints attached to the given domain. The definition is
+// taken verbatim from pg_get_constraintdef so that expressions (including calls
+// to user-defined functions and a trailing NOT VALID) round-trip exactly.
+// Only contype = 'c' is returned: since Postgres 18 a domain's NOT NULL is also a
+// pg_constraint row (contype = 'n'), and it is modelled separately so that the
+// extracted schema is identical across supported Postgres versions.
+func (q *Queries) GetDomainConstraints(ctx context.Context, domainOid interface{}) ([]GetDomainConstraintsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getDomainConstraints, domainOid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDomainConstraintsRow
+	for rows.Next() {
+		var i GetDomainConstraintsRow
+		if err := rows.Scan(&i.Oid, &i.ConstraintName, &i.ConstraintDef); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getDomains = `-- name: GetDomains :many
+SELECT
+    pg_type.oid AS oid,
+    pg_type.typname::TEXT AS domain_name,
+    type_namespace.nspname::TEXT AS domain_schema_name,
+    pg_catalog.format_type(
+        pg_type.typbasetype, pg_type.typtypmod
+    )::TEXT AS base_type,
+    pg_type.typnotnull AS is_not_null,
+    COALESCE(
+        pg_catalog.pg_get_expr(pg_type.typdefaultbin, 0), ''
+    )::TEXT AS default_value,
+    COALESCE(coll.collname, '')::TEXT AS collation_name,
+    COALESCE(coll_ns.nspname, '')::TEXT AS collation_schema_name
+FROM pg_catalog.pg_type AS pg_type
+INNER JOIN
+    pg_catalog.pg_namespace AS type_namespace
+    ON pg_type.typnamespace = type_namespace.oid
+INNER JOIN
+    pg_catalog.pg_type AS base_type
+    ON pg_type.typbasetype = base_type.oid
+LEFT JOIN
+    pg_catalog.pg_collation AS coll
+    ON
+        pg_type.typcollation = coll.oid
+        AND pg_type.typcollation != base_type.typcollation
+LEFT JOIN
+    pg_catalog.pg_namespace AS coll_ns
+    ON coll.collnamespace = coll_ns.oid
+WHERE
+    pg_type.typtype = 'd'
+    AND type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
+    -- Exclude domains belonging to extensions
+    AND NOT EXISTS (
+        SELECT ext_depend.objid
+        FROM pg_catalog.pg_depend AS ext_depend
+        WHERE
+            ext_depend.classid = 'pg_type'::REGCLASS
+            AND ext_depend.objid = pg_type.oid
+            AND ext_depend.deptype = 'e'
+    )
+ORDER BY pg_type.oid
+`
+
+type GetDomainsRow struct {
+	Oid                 interface{}
+	DomainName          string
+	DomainSchemaName    string
+	BaseType            string
+	IsNotNull           bool
+	DefaultValue        string
+	CollationName       string
+	CollationSchemaName string
+}
+
+// Returns the user-defined domains (typtype = 'd'). The base type is formatted
+// with its typmod (e.g. `numeric(10,2)`) so it round-trips through CREATE DOMAIN.
+// A collation is only reported when it differs from the base type's collation,
+// mirroring what pg_dump emits.
+func (q *Queries) GetDomains(ctx context.Context) ([]GetDomainsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getDomains)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDomainsRow
+	for rows.Next() {
+		var i GetDomainsRow
+		if err := rows.Scan(
+			&i.Oid,
+			&i.DomainName,
+			&i.DomainSchemaName,
+			&i.BaseType,
+			&i.IsNotNull,
+			&i.DefaultValue,
+			&i.CollationName,
+			&i.CollationSchemaName,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
