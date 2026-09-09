@@ -90,6 +90,10 @@ type (
 		oldAndNew[schema.NamedSchema]
 	}
 
+	defaultPrivilegeDiff struct {
+		oldAndNew[schema.DefaultPrivilege]
+	}
+
 	enumDiff struct {
 		oldAndNew[schema.Enum]
 	}
@@ -144,6 +148,7 @@ type (
 type schemaDiff struct {
 	oldAndNew[schema.Schema]
 	namedSchemaDiffs          listDiff[schema.NamedSchema, namedSchemaDiff]
+	defaultPrivilegeDiffs     listDiff[schema.DefaultPrivilege, defaultPrivilegeDiff]
 	extensionDiffs            listDiff[schema.Extension, extensionDiff]
 	enumDiffs                 listDiff[schema.Enum, enumDiff]
 	tableDiffs                listDiff[schema.Table, tableDiff]
@@ -205,6 +210,18 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing schemas: %w", err)
+	}
+
+	defaultPrivilegeDiffs, err := diffLists(
+		old.DefaultPrivileges,
+		new.DefaultPrivileges,
+		func(old, new schema.DefaultPrivilege, _, _ int) (defaultPrivilegeDiff, bool, error) {
+			// Re-create the privilege if IsGrantable changes: there is no ALTER for it.
+			recreate := old.IsGrantable != new.IsGrantable
+			return defaultPrivilegeDiff{oldAndNew[schema.DefaultPrivilege]{old: old, new: new}}, recreate, nil
+		})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing default privileges: %w", err)
 	}
 
 	extensionDiffs, err := diffLists(
@@ -345,6 +362,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 			new: new,
 		},
 		namedSchemaDiffs:          schemaDiffs,
+		defaultPrivilegeDiffs:     defaultPrivilegeDiffs,
 		extensionDiffs:            extensionDiffs,
 		enumDiffs:                 enumDiffs,
 		tableDiffs:                tableDiffs,
@@ -584,6 +602,11 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	}
 	partialGraph = concatPartialGraphs(partialGraph, tablePartialGraph)
 
+	defaultPrivilegeStatements, err := diff.defaultPrivilegeDiffs.resolveToSQLGroupedByEffect(&defaultPrivilegeSQLGenerator{})
+	if err != nil {
+		return nil, fmt.Errorf("resolving default privilege sql statements: %w", err)
+	}
+
 	extensionStatements, err := diff.extensionDiffs.resolveToSQLGroupedByEffect(&extensionSQLGenerator{})
 	if err != nil {
 		return nil, fmt.Errorf("resolving extension diff: %w", err)
@@ -706,6 +729,13 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	// that all dependencies exist before the view is created.
 	statements = append(statements, namedSchemaStatements.Adds...)
 	statements = append(statements, namedSchemaStatements.Alters...)
+	// Default privileges only affect objects created after them, so all of them are resolved
+	// before the graph statements create anything, and after every schema exists. Revokes come
+	// first so that a privilege whose grant option changed (a revoke plus a grant) ends up
+	// granted.
+	statements = append(statements, defaultPrivilegeStatements.Deletes...)
+	statements = append(statements, defaultPrivilegeStatements.Alters...)
+	statements = append(statements, defaultPrivilegeStatements.Adds...)
 	statements = append(statements, extensionStatements.Adds...)
 	statements = append(statements, extensionStatements.Alters...)
 	statements = append(statements, enumStatements.Adds...)
