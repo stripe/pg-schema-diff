@@ -15,6 +15,46 @@ WHERE
             AND depend.deptype = 'e'
     );
 
+-- name: GetDefaultPrivileges :many
+-- Returns one row per (default privilege rule, grantee, privilege) triple, i.e. one aclitem of
+-- one schema-scoped `pg_default_acl` row. Only rules scoped to a schema
+-- (`ALTER DEFAULT PRIVILEGES ... IN SCHEMA ...`, defaclnamespace != 0) are returned: a
+-- database-wide rule is not attached to any schema, so it cannot be expressed by a
+-- schema-scoped declarative source and would show up as spurious drift against a temporary
+-- database.
+-- Privileges granted to the rule's own target role are excluded: Postgres materializes the
+-- object owner's implicit grants into defaclacl as soon as any explicit grant is added.
+WITH parsed_acl AS (
+    SELECT
+        defacl.defaclrole AS target_role_oid,
+        defacl.defaclnamespace AS schema_oid,
+        defacl.defaclobjtype AS object_type,
+        (ACLEXPLODE(defacl.defaclacl)).grantee AS grantee_oid,
+        (ACLEXPLODE(defacl.defaclacl)).privilege_type AS privilege_type,
+        (ACLEXPLODE(defacl.defaclacl)).is_grantable AS is_grantable
+    FROM pg_catalog.pg_default_acl AS defacl
+)
+
+SELECT
+    target_role.rolname::TEXT AS target_role,
+    schema_namespace.nspname::TEXT AS schema_name,
+    pa.object_type::TEXT AS object_type,
+    COALESCE(grantee_role.rolname, '')::TEXT AS grantee,
+    pa.privilege_type::TEXT AS privilege,
+    pa.is_grantable
+FROM parsed_acl AS pa
+INNER JOIN
+    pg_catalog.pg_namespace AS schema_namespace
+    ON pa.schema_oid = schema_namespace.oid
+INNER JOIN pg_catalog.pg_roles AS target_role ON pa.target_role_oid = target_role.oid
+LEFT JOIN pg_catalog.pg_roles AS grantee_role ON pa.grantee_oid = grantee_role.oid
+WHERE
+    pa.grantee_oid != pa.target_role_oid
+    AND schema_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND schema_namespace.nspname !~ '^pg_toast'
+    AND schema_namespace.nspname !~ '^pg_temp'
+ORDER BY target_role, schema_name, object_type, grantee, privilege;
+
 -- name: GetTables :many
 SELECT
     c.oid,

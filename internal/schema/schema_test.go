@@ -238,13 +238,29 @@ var (
 			-- Add table privileges to test they are fetched correctly
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
+
+			-- Add default privileges to test they are fetched correctly
+			ALTER DEFAULT PRIVILEGES IN SCHEMA schema_1 GRANT SELECT ON TABLES TO some_role_1;
+			ALTER DEFAULT PRIVILEGES IN SCHEMA schema_1
+				GRANT USAGE ON SEQUENCES TO some_role_2 WITH GRANT OPTION;
+			ALTER DEFAULT PRIVILEGES IN SCHEMA schema_2 GRANT EXECUTE ON FUNCTIONS TO PUBLIC;
+			-- Validate default privileges of filtered schemas are filtered out
+			ALTER DEFAULT PRIVILEGES IN SCHEMA schema_filtered_1
+				GRANT SELECT ON TABLES TO some_role_1;
+			-- Validate database-wide default privileges are out of scope
+			ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO some_role_1;
 		`},
-			expectedHash: "4c2174e2cac3956b",
+			expectedHash: "8b5e2f964c2d9aa9",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
 					{Name: "schema_1"},
 					{Name: "schema_2"},
+				},
+				DefaultPrivileges: []DefaultPrivilege{
+					{TargetRole: "postgres", SchemaName: "schema_1", ObjectType: "SEQUENCES", Grantee: "some_role_2", Privilege: "USAGE", IsGrantable: true},
+					{TargetRole: "postgres", SchemaName: "schema_1", ObjectType: "TABLES", Grantee: "some_role_1", Privilege: "SELECT"},
+					{TargetRole: "postgres", SchemaName: "schema_2", ObjectType: "FUNCTIONS", Grantee: "", Privilege: "EXECUTE"},
 				},
 				Extensions: []Extension{
 					{
@@ -591,7 +607,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "32c5a9c52dcfb15e",
+			expectedHash: "a85b4317f33442b2",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -1173,7 +1189,7 @@ var (
 				CREATE TYPE pg_temp.color AS ENUM ('red', 'green', 'blue');
 			`},
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash: "9c413c6ad2f4a042",
+			expectedHash: "e9cc61450740c5e",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
