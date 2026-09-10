@@ -584,6 +584,12 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	}
 	partialGraph = concatPartialGraphs(partialGraph, tablePartialGraph)
 
+	deferredPoliciesPartialGraph, err := generateDeferredPolicyPartialGraph(diff.tableDiffs.adds)
+	if err != nil {
+		return nil, fmt.Errorf("resolving policies of added tables: %w", err)
+	}
+	partialGraph = concatPartialGraphs(partialGraph, deferredPoliciesPartialGraph)
+
 	extensionStatements, err := diff.extensionDiffs.resolveToSQLGroupedByEffect(&extensionSQLGenerator{})
 	if err != nil {
 		return nil, fmt.Errorf("resolving extension diff: %w", err)
@@ -870,6 +876,11 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		return nil, fmt.Errorf("creating policy sql vertex generator: %w", err)
 	}
 	for _, policy := range table.Policies {
+		if policyHasExternalDependencies(policy) {
+			// Created as its own vertex after the table and after what it references, because what it
+			// references may in turn depend on this table. See generateDeferredPolicyPartialGraph.
+			continue
+		}
 		addPolicyPartialGraph, err := policyGenerator.Add(policy)
 		if err != nil {
 			return nil, fmt.Errorf("generating add policy statements for policy %s: %w", policy.EscapedName, err)
@@ -1242,6 +1253,11 @@ func (t *tableSQLVertexGenerator) GetDeleteDependencies(table schema.Table) ([]d
 		deps = append(deps,
 			mustRun(t.GetSQLVertexId(table, diffTypeDelete)).after(buildTableVertexId(*table.ParentTable, diffTypeDelete)),
 		)
+	}
+	// Dropping the table drops its policies with it: it must happen before the relations and functions those
+	// policies reference are dropped or recreated.
+	for _, policy := range table.Policies {
+		deps = append(deps, policyReferenceDeleteDependencies(t.GetSQLVertexId(table, diffTypeDelete), policy)...)
 	}
 	return deps, nil
 }
