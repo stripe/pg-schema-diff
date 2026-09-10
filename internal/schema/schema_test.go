@@ -58,6 +58,8 @@ var (
 			CREATE TYPE schema_1.foobar_enum AS ENUM ('foobar_1', 'foobar_2');
 			-- Validate types are filtered out
 			CREATE TYPE schema_filtered_1.foobar_enum AS ENUM ('foobar_1', 'foobar_2');		
+			CREATE DOMAIN schema_1.email AS TEXT DEFAULT 'nobody@example.com' NOT NULL CONSTRAINT email_check CHECK (VALUE ~ '@');
+			CREATE DOMAIN schema_filtered_1.email AS TEXT CONSTRAINT email_check CHECK (VALUE ~ '@');
 
 			CREATE SEQUENCE schema_1.foobar_sequence
 			    AS BIGINT
@@ -239,7 +241,7 @@ var (
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
 		`},
-			expectedHash: "4c2174e2cac3956b",
+			expectedHash: "74bf5070126c8102",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -270,6 +272,17 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"foobar_enum\""},
 						Labels:              []string{"foobar_1", "foobar_2"},
+					},
+				},
+				Domains: []Domain{
+					{
+						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: "\"email\""},
+						BaseType:            "text",
+						Default:             "'nobody@example.com'::text",
+						NotNull:             true,
+						Constraints: []DomainConstraint{
+							{EscapedName: "\"email_check\"", Expression: "CHECK ((VALUE ~ '@'::text))"},
+						},
 					},
 				},
 				Tables: []Table{
@@ -591,7 +604,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "32c5a9c52dcfb15e",
+			expectedHash: "bcaf43809465d94c",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -1173,7 +1186,7 @@ var (
 				CREATE TYPE pg_temp.color AS ENUM ('red', 'green', 'blue');
 			`},
 			// Assert empty schema hash, since we want to validate specifically that this hash is deterministic
-			expectedHash: "9c413c6ad2f4a042",
+			expectedHash: "a83d9670a31116c6",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},

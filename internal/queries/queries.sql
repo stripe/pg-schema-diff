@@ -666,3 +666,63 @@ LEFT JOIN pg_catalog.pg_roles AS grantee_role
 -- Exclude privileges granted to the table owner (these are implicit)
 WHERE pa.grantee_oid != pa.owner_oid OR pa.grantee_oid = 0
 ORDER BY pa.table_schema_name, pa.table_name, grantee, pa.privilege_type;
+
+-- name: GetDomains :many
+SELECT
+    pg_type.typname::TEXT AS domain_name,
+    type_namespace.nspname::TEXT AS domain_schema_name,
+    pg_catalog.format_type(
+        pg_type.typbasetype, pg_type.typtypmod
+    )::TEXT AS base_type,
+    COALESCE(
+        pg_catalog.pg_get_expr(pg_type.typdefaultbin, 0), ''
+    )::TEXT AS default_expression,
+    pg_type.typnotnull AS not_null,
+    (
+        SELECT
+            COALESCE(
+                ARRAY_AGG(
+                    pg_constraint.conname
+                    ORDER BY pg_constraint.conname
+                ),
+                '{}'
+            )
+        FROM pg_catalog.pg_constraint
+        WHERE
+            pg_constraint.contypid = pg_type.oid
+            -- NOT NULL is a constraint from Postgres 17: it is typnotnull
+            AND pg_constraint.contype = 'c'
+    )::TEXT [] AS constraint_names,
+    (
+        SELECT
+            COALESCE(
+                ARRAY_AGG(
+                    pg_catalog.pg_get_constraintdef(pg_constraint.oid)
+                    ORDER BY pg_constraint.conname
+                ),
+                '{}'
+            )
+        FROM pg_catalog.pg_constraint
+        WHERE
+            pg_constraint.contypid = pg_type.oid
+            -- NOT NULL is a constraint from Postgres 17: it is typnotnull
+            AND pg_constraint.contype = 'c'
+    )::TEXT [] AS constraint_defs
+FROM pg_catalog.pg_type AS pg_type
+INNER JOIN
+    pg_catalog.pg_namespace AS type_namespace
+    ON pg_type.typnamespace = type_namespace.oid
+WHERE
+    pg_type.typtype = 'd'
+    AND type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
+    -- Exclude domains belonging to extensions
+    AND NOT EXISTS (
+        SELECT ext_depend.objid
+        FROM pg_catalog.pg_depend AS ext_depend
+        WHERE
+            ext_depend.classid = 'pg_type'::REGCLASS
+            AND ext_depend.objid = pg_type.oid
+            AND ext_depend.deptype = 'e'
+    );

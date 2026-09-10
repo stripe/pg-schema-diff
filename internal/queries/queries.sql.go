@@ -278,6 +278,108 @@ func (q *Queries) GetDependsOnFunctions(ctx context.Context, arg GetDependsOnFun
 	return items, nil
 }
 
+const getDomains = `-- name: GetDomains :many
+SELECT
+    pg_type.typname::TEXT AS domain_name,
+    type_namespace.nspname::TEXT AS domain_schema_name,
+    pg_catalog.format_type(
+        pg_type.typbasetype, pg_type.typtypmod
+    )::TEXT AS base_type,
+    COALESCE(
+        pg_catalog.pg_get_expr(pg_type.typdefaultbin, 0), ''
+    )::TEXT AS default_expression,
+    pg_type.typnotnull AS not_null,
+    (
+        SELECT
+            COALESCE(
+                ARRAY_AGG(
+                    pg_constraint.conname
+                    ORDER BY pg_constraint.conname
+                ),
+                '{}'
+            )
+        FROM pg_catalog.pg_constraint
+        WHERE
+            pg_constraint.contypid = pg_type.oid
+            -- NOT NULL is a constraint from Postgres 17: it is typnotnull
+            AND pg_constraint.contype = 'c'
+    )::TEXT [] AS constraint_names,
+    (
+        SELECT
+            COALESCE(
+                ARRAY_AGG(
+                    pg_catalog.pg_get_constraintdef(pg_constraint.oid)
+                    ORDER BY pg_constraint.conname
+                ),
+                '{}'
+            )
+        FROM pg_catalog.pg_constraint
+        WHERE
+            pg_constraint.contypid = pg_type.oid
+            -- NOT NULL is a constraint from Postgres 17: it is typnotnull
+            AND pg_constraint.contype = 'c'
+    )::TEXT [] AS constraint_defs
+FROM pg_catalog.pg_type AS pg_type
+INNER JOIN
+    pg_catalog.pg_namespace AS type_namespace
+    ON pg_type.typnamespace = type_namespace.oid
+WHERE
+    pg_type.typtype = 'd'
+    AND type_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND type_namespace.nspname !~ '^pg_toast'
+    AND type_namespace.nspname !~ '^pg_temp'
+    -- Exclude domains belonging to extensions
+    AND NOT EXISTS (
+        SELECT ext_depend.objid
+        FROM pg_catalog.pg_depend AS ext_depend
+        WHERE
+            ext_depend.classid = 'pg_type'::REGCLASS
+            AND ext_depend.objid = pg_type.oid
+            AND ext_depend.deptype = 'e'
+    )
+`
+
+type GetDomainsRow struct {
+	DomainName        string
+	DomainSchemaName  string
+	BaseType          string
+	DefaultExpression string
+	NotNull           bool
+	ConstraintNames   []string
+	ConstraintDefs    []string
+}
+
+func (q *Queries) GetDomains(ctx context.Context) ([]GetDomainsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getDomains)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDomainsRow
+	for rows.Next() {
+		var i GetDomainsRow
+		if err := rows.Scan(
+			&i.DomainName,
+			&i.DomainSchemaName,
+			&i.BaseType,
+			&i.DefaultExpression,
+			&i.NotNull,
+			pq.Array(&i.ConstraintNames),
+			pq.Array(&i.ConstraintDefs),
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getEnums = `-- name: GetEnums :many
 SELECT
     pg_type.typname::TEXT AS enum_name,

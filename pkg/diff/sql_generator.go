@@ -94,6 +94,10 @@ type (
 		oldAndNew[schema.Enum]
 	}
 
+	domainDiff struct {
+		oldAndNew[schema.Domain]
+	}
+
 	extensionDiff struct {
 		oldAndNew[schema.Extension]
 	}
@@ -146,6 +150,7 @@ type schemaDiff struct {
 	namedSchemaDiffs          listDiff[schema.NamedSchema, namedSchemaDiff]
 	extensionDiffs            listDiff[schema.Extension, extensionDiff]
 	enumDiffs                 listDiff[schema.Enum, enumDiff]
+	domainDiffs               listDiff[schema.Domain, domainDiff]
 	tableDiffs                listDiff[schema.Table, tableDiff]
 	indexDiffs                listDiff[schema.Index, indexDiff]
 	foreignKeyConstraintDiffs listDiff[schema.ForeignKeyConstraint, foreignKeyConstraintDiff]
@@ -232,6 +237,18 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 	})
 	if err != nil {
 		return schemaDiff{}, false, fmt.Errorf("diffing enums: %w", err)
+	}
+
+	domainDiffs, err := diffLists(old.Domains, new.Domains, func(old, new schema.Domain, _, _ int) (domainDiff, bool, error) {
+		return domainDiff{
+			oldAndNew[schema.Domain]{
+				old: old,
+				new: new,
+			},
+		}, false, nil
+	})
+	if err != nil {
+		return schemaDiff{}, false, fmt.Errorf("diffing domains: %w", err)
 	}
 
 	tableDiffs, err := diffLists(old.Tables, new.Tables, buildTableDiff)
@@ -347,6 +364,7 @@ func buildSchemaDiff(old, new schema.Schema) (schemaDiff, bool, error) {
 		namedSchemaDiffs:          schemaDiffs,
 		extensionDiffs:            extensionDiffs,
 		enumDiffs:                 enumDiffs,
+		domainDiffs:               domainDiffs,
 		tableDiffs:                tableDiffs,
 		indexDiffs:                indexesDiff,
 		foreignKeyConstraintDiffs: foreignKeyConstraintDiffs,
@@ -594,6 +612,11 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 		return nil, fmt.Errorf("resolving enum diff: %w", err)
 	}
 
+	domainStatements, err := diff.domainDiffs.resolveToSQLGroupedByEffect(&domainSQLGenerator{})
+	if err != nil {
+		return nil, fmt.Errorf("resolving domain diff: %w", err)
+	}
+
 	attachPartitionGenerator := newAttachPartitionSQLVertexGenerator(diff.new.Indexes, diff.tableDiffs.adds)
 	attachPartitionsPartialGraph, err := generatePartialGraph(legacyToNewSqlVertexGenerator[schema.Table, tableDiff](attachPartitionGenerator), diff.tableDiffs)
 	if err != nil {
@@ -710,7 +733,11 @@ func (s schemaSQLGenerator) Alter(diff schemaDiff) ([]Statement, error) {
 	statements = append(statements, extensionStatements.Alters...)
 	statements = append(statements, enumStatements.Adds...)
 	statements = append(statements, enumStatements.Alters...)
+	// Domains are created before anything that can use them and dropped after the last column that did.
+	statements = append(statements, domainStatements.Adds...)
+	statements = append(statements, domainStatements.Alters...)
 	statements = append(statements, graphStatements...)
+	statements = append(statements, domainStatements.Deletes...)
 	statements = append(statements, enumStatements.Deletes...)
 	statements = append(statements, extensionStatements.Deletes...)
 	statements = append(statements, namedSchemaStatements.Deletes...)
