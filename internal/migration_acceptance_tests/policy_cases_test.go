@@ -662,13 +662,13 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		name: "Create policy with role containing double quote",
 		roles: []string{
 			`"evil""role"`,
-        },
-        oldSchemaDDL: []string{
+		},
+		oldSchemaDDL: []string{
 			`
                 CREATE TABLE foobar();
 			`,
-        },
-        newSchemaDDL: []string{
+		},
+		newSchemaDDL: []string{
 			`
                 CREATE TABLE foobar();
                 CREATE POLICY foobar_policy ON foobar
@@ -678,14 +678,14 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
                     USING (true)
                     WITH CHECK (true);
 			`,
-        },
-        expectedHazardTypes: []diff.MigrationHazardType{
-            diff.MigrationHazardTypeAuthzUpdate,
-        },
-    },
-    {
-        name: "Alter policy with role containing SQL injection payload",
-        roles: []string{
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+	},
+	{
+		name: "Alter policy with role containing SQL injection payload",
+		roles: []string{
 			`"x""; DROP TABLE foobar; --"`,
 		},
 		oldSchemaDDL: []string{
@@ -761,9 +761,8 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
                     ));
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAuthzUpdate,
-		},
+		// The policy is on a brand-new table, so it carries no hazard, as when it is created inline with the table
+		expectedHazardTypes: []diff.MigrationHazardType{},
 	},
 	{
 		name: "Add policy calling a function created in the same migration",
@@ -832,8 +831,10 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
                 CREATE SCHEMA listing;
                 CREATE TABLE listing.publications(listing_id INT NOT NULL, scope TEXT NOT NULL);
                 CREATE FUNCTION listing.was_public(id INT) RETURNS BOOLEAN
-                    LANGUAGE sql STABLE AS $$
-                        SELECT EXISTS (SELECT 1 FROM listing.publications WHERE listing_id = id AND scope = 'public')
+                    LANGUAGE plpgsql STABLE AS $$
+                    BEGIN
+                        RETURN EXISTS (SELECT 1 FROM listing.publications WHERE listing_id = id AND scope = 'public');
+                    END
                     $$;
                 CREATE POLICY publications_public_read ON listing.publications
                     AS PERMISSIVE
@@ -842,7 +843,11 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
                     USING (listing.was_public(listing_id));
 			`,
 		},
-		expectedHazardTypes: []diff.MigrationHazardType{},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			// The function is plpgsql so that its body is not resolved at creation: on main, a sql function
+			// reading a table created in the same plan is not ordered after it (see #281 and #286)
+			diff.MigrationHazardTypeHasUntrackableDependencies,
+		},
 	},
 }
 
