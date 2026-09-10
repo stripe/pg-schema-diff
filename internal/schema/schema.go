@@ -126,6 +126,13 @@ func normalizeTable(t Table) Table {
 		p.AppliesTo = sortByKey(p.AppliesTo, func(s string) string {
 			return s
 		})
+		var normTableDeps []TableDependency
+		for _, d := range sortSchemaObjectsByName(p.TableDependencies) {
+			d.Columns = sortByKey(d.Columns, func(s string) string { return s })
+			normTableDeps = append(normTableDeps, d)
+		}
+		p.TableDependencies = normTableDeps
+		p.DependsOnFunctions = sortSchemaObjectsByName(p.DependsOnFunctions)
 		p.Columns = sortByKey(p.Columns, func(s string) string {
 			return s
 		})
@@ -496,6 +503,12 @@ type Policy struct {
 	UsingExpression string
 	// Columns are the columns that the policy applies to.
 	Columns []string
+	// TableDependencies are the relations, other than the owning table, that the
+	// policy expressions reference (e.g., via a subquery). The policy must be
+	// created after them and dropped before them.
+	TableDependencies []TableDependency
+	// DependsOnFunctions are the functions called by the policy expressions.
+	DependsOnFunctions []SchemaQualifiedName
 }
 
 func (p Policy) GetName() string {
@@ -1389,15 +1402,21 @@ func (s *schemaFetcher) fetchPolicies(ctx context.Context) ([]policyAndTable, er
 
 	var policies []policyAndTable
 	for _, rp := range rawPolicies {
+		tableDependencies, err := parseJSONTableDependencies(rp.TableDependencies)
+		if err != nil {
+			return nil, fmt.Errorf("policy (%q): parsing table dependencies: %w", rp.PolicyName, err)
+		}
 		policies = append(policies, policyAndTable{
 			policy: Policy{
-				EscapedName:     EscapeIdentifier(rp.PolicyName),
-				IsPermissive:    rp.IsPermissive,
-				AppliesTo:       rp.AppliesTo,
-				Cmd:             PolicyCmd(rp.Cmd),
-				CheckExpression: rp.CheckExpression,
-				UsingExpression: rp.UsingExpression,
-				Columns:         rp.ColumnNames,
+				EscapedName:        EscapeIdentifier(rp.PolicyName),
+				IsPermissive:       rp.IsPermissive,
+				AppliesTo:          rp.AppliesTo,
+				Cmd:                PolicyCmd(rp.Cmd),
+				CheckExpression:    rp.CheckExpression,
+				UsingExpression:    rp.UsingExpression,
+				Columns:            rp.ColumnNames,
+				TableDependencies:  tableDependencies,
+				DependsOnFunctions: parsePolicyFunctionDeps(rp.FunctionDependencies),
 			},
 			table: buildNameFromUnescaped(rp.OwningTableName, rp.OwningTableSchemaName),
 		})
@@ -1415,6 +1434,21 @@ func (s *schemaFetcher) fetchPolicies(ctx context.Context) ([]policyAndTable, er
 	)
 
 	return policies, nil
+}
+
+// parsePolicyFunctionDeps parses the "schema.name(args)" strings that
+// GetPolicies returns for the functions a policy expression calls.
+func parsePolicyFunctionDeps(deps []string) []SchemaQualifiedName {
+	var out []SchemaQualifiedName
+	for _, d := range deps {
+		dotIdx := strings.IndexByte(d, '.')
+		parenIdx := strings.IndexByte(d, '(')
+		if dotIdx < 0 || parenIdx < 0 || dotIdx >= parenIdx || !strings.HasSuffix(d, ")") {
+			continue
+		}
+		out = append(out, buildProcName(d[dotIdx+1:parenIdx], d[parenIdx+1:len(d)-1], d[:dotIdx]))
+	}
+	return out
 }
 
 func (s *schemaFetcher) fetchPrivileges(ctx context.Context) ([]privilegeAndTable, error) {

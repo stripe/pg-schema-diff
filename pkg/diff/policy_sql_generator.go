@@ -254,6 +254,9 @@ func (psg *policySQLVertexGenerator) Alter(diff policyDiff) ([]Statement, error)
 		oldCopy.CheckExpression = diff.new.CheckExpression
 	}
 	oldCopy.Columns = diff.new.Columns
+	// Dependencies follow the expressions, which ALTER POLICY already covers.
+	oldCopy.TableDependencies = diff.new.TableDependencies
+	oldCopy.DependsOnFunctions = diff.new.DependsOnFunctions
 
 	if diff := cmp.Diff(oldCopy, diff.new); diff != "" {
 		return nil, fmt.Errorf("unsupported diff %s: %w", diff, ErrNotImplemented)
@@ -299,6 +302,9 @@ func (psg *policySQLVertexGenerator) GetAddAlterDependencies(newPolicy, oldPolic
 		deps = append(deps, mustRun(psg.GetSQLVertexId(newPolicy, diffTypeAddAlter)).after(buildColumnVertexId(tc.Name, diffTypeAddAlter)))
 	}
 
+	// Run after the other relations and the functions the expressions reference exist
+	deps = append(deps, policyReferenceAddDependencies(psg.GetSQLVertexId(newPolicy, diffTypeAddAlter), newPolicy)...)
+
 	if !cmp.Equal(oldPolicy, schema.Policy{}) {
 		// Run before the old columns are deleted (if they are deleted)
 		oldTargetColumns, err := getTargetColumns(oldPolicy.Columns, psg.oldSchemaColumnsByName)
@@ -329,5 +335,90 @@ func (psg *policySQLVertexGenerator) GetDeleteDependencies(pol schema.Policy) ([
 		deps = append(deps, mustRun(psg.GetSQLVertexId(pol, diffTypeDelete)).before(buildColumnVertexId(c.Name, diffTypeAddAlter)))
 	}
 
+	// ... and before the other relations and functions its expressions reference are dropped or recreated
+	deps = append(deps, policyReferenceDeleteDependencies(psg.GetSQLVertexId(pol, diffTypeDelete), pol)...)
+
 	return deps, nil
+}
+
+// policyHasExternalDependencies reports whether the policy expressions reference relations other than the
+// owning table, or call functions.
+func policyHasExternalDependencies(p schema.Policy) bool {
+	return len(p.TableDependencies) > 0 || len(p.DependsOnFunctions) > 0
+}
+
+// generateDeferredPolicyPartialGraph creates the policies of brand-new tables that reference other relations or
+// functions as their own vertices, instead of inline with the table (see tableSQLVertexGenerator.Add): they must
+// run after the table and after what they reference, and what they reference may in turn depend on the table —
+// e.g., a function that reads the table it guards — so an edge on the table itself would form a cycle.
+func generateDeferredPolicyPartialGraph(addedTables []schema.Table) (partialSQLGraph, error) {
+	var parts []partialSQLGraph
+	for _, table := range addedTables {
+		if table.IsPartition() {
+			// Policies on partitions are not supported (see tableSQLVertexGenerator.Add)
+			continue
+		}
+		generator, err := newPolicySQLVertexGenerator(nil, table)
+		if err != nil {
+			return partialSQLGraph{}, fmt.Errorf("creating policy sql vertex generator for %s: %w", table.GetName(), err)
+		}
+		for _, policy := range table.Policies {
+			if !policyHasExternalDependencies(policy) {
+				continue
+			}
+			part, err := generator.Add(policy)
+			if err != nil {
+				return partialSQLGraph{}, fmt.Errorf("generating add policy statements for policy %s: %w", policy.EscapedName, err)
+			}
+			// Remove hazards from statements since the table is brand new, as for the inlined policies
+			for i := range part.vertices {
+				part.vertices[i].statements = stripMigrationHazards(part.vertices[i].statements...)
+			}
+			part.dependencies = append(part.dependencies,
+				mustRun(buildPolicyVertexId(table.SchemaQualifiedName, policy.EscapedName, diffTypeAddAlter)).after(buildTableVertexId(table.SchemaQualifiedName, diffTypeAddAlter)),
+			)
+			parts = append(parts, part)
+		}
+	}
+	return concatPartialGraphs(parts...), nil
+}
+
+// policyReferenceAddDependencies makes vertex run after the relations and functions the policy expressions
+// reference exist, e.g., a subquery on another table created in the same migration. A referenced relation may
+// be a table, a view or a materialized view, so edges to all three vertex ids are added; edges to vertices
+// absent from the graph are no-ops. The vertex is the policy's own when the policy is added or altered on an
+// existing table, and the table's when the table is new, because its policies are created inline with it.
+func policyReferenceAddDependencies(vertex sqlVertexId, p schema.Policy) []dependency {
+	var deps []dependency
+	for _, t := range p.TableDependencies {
+		deps = append(deps,
+			mustRun(vertex).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)),
+			mustRun(vertex).after(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)),
+			mustRun(vertex).after(buildViewVertexId(t.SchemaQualifiedName, diffTypeAddAlter)),
+			mustRun(vertex).after(buildMaterializedViewVertexId(t.SchemaQualifiedName, diffTypeAddAlter)),
+		)
+	}
+	for _, f := range p.DependsOnFunctions {
+		deps = append(deps, mustRun(vertex).after(buildFunctionVertexId(f, diffTypeAddAlter)))
+	}
+	return deps
+}
+
+// policyReferenceDeleteDependencies makes vertex run before the relations and functions the policy expressions
+// reference are dropped or recreated: Postgres refuses to drop them while the policy depends on them. The vertex
+// is the policy's own, or the table's when the whole table is dropped with its policies.
+func policyReferenceDeleteDependencies(vertex sqlVertexId, p schema.Policy) []dependency {
+	var deps []dependency
+	for _, t := range p.TableDependencies {
+		deps = append(deps,
+			mustRun(vertex).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeDelete)),
+			mustRun(vertex).before(buildTableVertexId(t.SchemaQualifiedName, diffTypeAddAlter)),
+			mustRun(vertex).before(buildViewVertexId(t.SchemaQualifiedName, diffTypeDelete)),
+			mustRun(vertex).before(buildMaterializedViewVertexId(t.SchemaQualifiedName, diffTypeDelete)),
+		)
+	}
+	for _, f := range p.DependsOnFunctions {
+		deps = append(deps, mustRun(vertex).before(buildFunctionVertexId(f, diffTypeDelete)))
+	}
+	return deps
 }

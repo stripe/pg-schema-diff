@@ -734,7 +734,76 @@ SELECT
             AND d.refclassid = 'pg_class'::REGCLASS
             AND a.attrelid = table_c.oid
             AND NOT a.attisdropped
-    )::TEXT [] AS column_names
+    )::TEXT [] AS column_names,
+    -- Relations referenced by the policy expressions (USING / WITH CHECK)
+    -- other than the owning table, e.g. a subquery on another table.
+    -- Postgres records them in pg_depend, so the policy can be ordered
+    -- after those relations exist and before they are dropped.
+    (
+        SELECT
+            ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
+                'schema', dep_ns.nspname,
+                'name', dep_c.relname,
+                'columns', (
+                    SELECT
+                        ARRAY_AGG(
+                            a.attname::TEXT
+                            ORDER BY a.attnum
+                        )
+                    FROM pg_catalog.pg_attribute AS a
+                    WHERE
+                        a.attrelid = dep_c.oid
+                        AND a.attnum > 0
+                        AND NOT a.attisdropped
+                        AND a.attnum IN (
+                            SELECT DISTINCT d3.refobjsubid
+                            FROM pg_catalog.pg_depend AS d3
+                            WHERE
+                                d3.objid = pol.oid
+                                AND d3.classid = 'pg_policy'::REGCLASS
+                                AND d3.refobjid = dep_c.oid
+                                AND d3.refobjsubid > 0
+                        )
+                )
+            ))
+        FROM pg_catalog.pg_depend AS d
+        INNER JOIN
+            pg_catalog.pg_class AS dep_c
+            ON
+                d.refobjid = dep_c.oid
+                AND dep_c.relkind IN ('r', 'p', 'v', 'm')
+                AND dep_c.oid != table_c.oid
+        INNER JOIN
+            pg_catalog.pg_namespace AS dep_ns
+            ON dep_c.relnamespace = dep_ns.oid
+        WHERE
+            d.objid = pol.oid
+            AND d.classid = 'pg_policy'::REGCLASS
+            AND d.refclassid = 'pg_class'::REGCLASS
+    )::TEXT [] AS table_dependencies,
+    -- Functions called by the policy expressions, same format as GetViews.
+    (
+        SELECT
+            ARRAY_AGG(
+                DISTINCT
+                proc_ns.nspname || '.' || pg_proc.proname || '('
+                || pg_catalog.pg_get_function_identity_arguments(pg_proc.oid)
+                || ')'
+            )
+        FROM pg_catalog.pg_depend AS d
+        INNER JOIN
+            pg_catalog.pg_proc AS pg_proc
+            ON d.refobjid = pg_proc.oid
+        INNER JOIN
+            pg_catalog.pg_namespace AS proc_ns
+            ON pg_proc.pronamespace = proc_ns.oid
+        WHERE
+            d.objid = pol.oid
+            AND d.classid = 'pg_policy'::REGCLASS
+            AND d.refclassid = 'pg_proc'::REGCLASS
+            AND d.deptype = 'n'
+            AND proc_ns.nspname NOT IN ('pg_catalog', 'information_schema')
+    )::TEXT [] AS function_dependencies
 FROM pg_catalog.pg_policy AS pol
 INNER JOIN pg_catalog.pg_class AS table_c ON pol.polrelid = table_c.oid
 INNER JOIN
@@ -756,6 +825,8 @@ type GetPoliciesRow struct {
 	CheckExpression       string
 	UsingExpression       string
 	ColumnNames           []string
+	TableDependencies     []string
+	FunctionDependencies  []string
 }
 
 func (q *Queries) GetPolicies(ctx context.Context) ([]GetPoliciesRow, error) {
@@ -777,6 +848,8 @@ func (q *Queries) GetPolicies(ctx context.Context) ([]GetPoliciesRow, error) {
 			&i.CheckExpression,
 			&i.UsingExpression,
 			pq.Array(&i.ColumnNames),
+			pq.Array(&i.TableDependencies),
+			pq.Array(&i.FunctionDependencies),
 		); err != nil {
 			return nil, err
 		}

@@ -662,13 +662,13 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		name: "Create policy with role containing double quote",
 		roles: []string{
 			`"evil""role"`,
-		},
-		oldSchemaDDL: []string{
+        },
+        oldSchemaDDL: []string{
 			`
                 CREATE TABLE foobar();
 			`,
-		},
-		newSchemaDDL: []string{
+        },
+        newSchemaDDL: []string{
 			`
                 CREATE TABLE foobar();
                 CREATE POLICY foobar_policy ON foobar
@@ -678,14 +678,14 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
                     USING (true)
                     WITH CHECK (true);
 			`,
-		},
-		expectedHazardTypes: []diff.MigrationHazardType{
-			diff.MigrationHazardTypeAuthzUpdate,
-		},
-	},
-	{
-		name: "Alter policy with role containing SQL injection payload",
-		roles: []string{
+        },
+        expectedHazardTypes: []diff.MigrationHazardType{
+            diff.MigrationHazardTypeAuthzUpdate,
+        },
+    },
+    {
+        name: "Alter policy with role containing SQL injection payload",
+        roles: []string{
 			`"x""; DROP TABLE foobar; --"`,
 		},
 		oldSchemaDDL: []string{
@@ -735,6 +735,114 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 		expectedHazardTypes: []diff.MigrationHazardType{
 			diff.MigrationHazardTypeAuthzUpdate,
 		},
+	},
+	{
+		name: "Add policy referencing another table created in the same migration",
+		roles: []string{
+			"role_1",
+		},
+		oldSchemaDDL: []string{
+			`
+                CREATE SCHEMA tenant;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+                CREATE SCHEMA tenant;
+                CREATE TABLE tenant.projects(id INT PRIMARY KEY, org_id INT NOT NULL);
+                CREATE TABLE tenant.project_members(project_id INT NOT NULL, member_id INT NOT NULL);
+                CREATE POLICY project_members_org_policy ON tenant.project_members
+                    AS PERMISSIVE
+                    FOR ALL
+                    TO role_1
+                    USING (EXISTS (
+                        SELECT 1 FROM tenant.projects AS p
+                        WHERE p.id = project_members.project_id AND p.org_id = 1
+                    ));
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+	},
+	{
+		name: "Add policy calling a function created in the same migration",
+		roles: []string{
+			"role_1",
+		},
+		oldSchemaDDL: []string{
+			`
+                CREATE TABLE foobar(owner TEXT NOT NULL);
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+                CREATE TABLE foobar(owner TEXT NOT NULL);
+                CREATE FUNCTION current_owner() RETURNS TEXT
+                    LANGUAGE sql STABLE AS $$ SELECT 'owner_1'::TEXT $$;
+                CREATE POLICY foobar_owner_policy ON foobar
+                    AS PERMISSIVE
+                    FOR ALL
+                    TO role_1
+                    USING (owner = current_owner());
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+		},
+	},
+	{
+		name: "Drop a table referenced by a policy on another table, dropping the policy",
+		roles: []string{
+			"role_1",
+		},
+		oldSchemaDDL: []string{
+			`
+                CREATE TABLE projects(id INT PRIMARY KEY);
+                CREATE TABLE project_members(project_id INT NOT NULL);
+                CREATE POLICY project_members_policy ON project_members
+                    AS PERMISSIVE
+                    FOR ALL
+                    TO role_1
+                    USING (EXISTS (SELECT 1 FROM projects AS p WHERE p.id = project_members.project_id));
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+                CREATE TABLE project_members(project_id INT NOT NULL);
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAuthzUpdate,
+			diff.MigrationHazardTypeDeletesData,
+		},
+	},
+	{
+		name: "Add table, a function reading it and a policy on it calling that function, all in the same migration",
+		roles: []string{
+			"role_1",
+		},
+		oldSchemaDDL: []string{
+			`
+                CREATE SCHEMA listing;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+                CREATE SCHEMA listing;
+                CREATE TABLE listing.publications(listing_id INT NOT NULL, scope TEXT NOT NULL);
+                CREATE FUNCTION listing.was_public(id INT) RETURNS BOOLEAN
+                    LANGUAGE sql STABLE AS $$
+                        SELECT EXISTS (SELECT 1 FROM listing.publications WHERE listing_id = id AND scope = 'public')
+                    $$;
+                CREATE POLICY publications_public_read ON listing.publications
+                    AS PERMISSIVE
+                    FOR SELECT
+                    TO role_1
+                    USING (listing.was_public(listing_id));
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{},
 	},
 }
 
