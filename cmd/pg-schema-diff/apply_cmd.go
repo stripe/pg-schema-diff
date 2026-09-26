@@ -133,6 +133,14 @@ func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig
 	}
 	defer conn.Close()
 
+	// PostgreSQL validates a routine's body at CREATE time, resolving references the body makes to
+	// relations and types. None of those body references are recorded in pg_depend, so a plan cannot
+	// order them; disable the check for the session, as pg_dump does when it emits
+	// `SET check_function_bodies = false` at the start of a dump.
+	if _, err := conn.ExecContext(ctx, "SET SESSION check_function_bodies = false"); err != nil {
+		return fmt.Errorf("disabling check_function_bodies: %w", err)
+	}
+
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.
 	//

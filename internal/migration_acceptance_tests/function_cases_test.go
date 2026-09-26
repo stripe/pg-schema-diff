@@ -617,6 +617,37 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 	},
+	{
+		name: "create a plpgsql function whose body names a table row type created in the same plan",
+		oldSchemaDDL: []string{
+			``,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foo(id INTEGER);
+            CREATE FUNCTION body_refs_foo() RETURNS INTEGER
+                LANGUAGE plpgsql
+                AS $$
+                DECLARE
+                    v foo;
+                BEGIN
+                    v.id := 1;
+                    RETURN v.id;
+                END;
+                $$;
+			`,
+		},
+		// A routine body's reference to a relation's row type is resolved at CREATE time but is not
+		// recorded in pg_depend, so the plan cannot order it. Like pg_dump, the plan is applied with
+		// check_function_bodies disabled, so the function may precede the table it names in its body.
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeHasUntrackableDependencies,
+		},
+		expectedPlanDDL: []string{
+			"CREATE OR REPLACE FUNCTION public.body_refs_foo()\n RETURNS integer\n LANGUAGE plpgsql\nAS $function$\n                DECLARE\n                    v foo;\n                BEGIN\n                    v.id := 1;\n                    RETURN v.id;\n                END;\n                $function$\n",
+			"CREATE TABLE \"public\".\"foo\" (\n\t\"id\" integer\n)",
+		},
+	},
 }
 
 func TestFunctionTestCases(t *testing.T) {

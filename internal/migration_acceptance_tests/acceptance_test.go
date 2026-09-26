@@ -243,7 +243,10 @@ func applyDDL(db *pgengine.DB, ddl []string) error {
 }
 
 func applyPlan(db *pgengine.DB, plan diff.Plan) error {
-	var ddl []string
+	// PostgreSQL validates a routine's body at CREATE time, resolving references the body makes to
+	// relations and types, and records none of them in pg_depend — so a plan cannot order them.
+	// Apply the plan the way the CLI and pg_dump do: with check_function_bodies disabled.
+	ddl := []string{"SET SESSION check_function_bodies = false"}
 	for _, stmt := range plan.Statements {
 		ddl = append(ddl, stmt.ToSQL())
 	}

@@ -326,6 +326,15 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, stat
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", (10*time.Second).Milliseconds())); err != nil {
 		return fmt.Errorf("setting statement timeout: %w", err)
 	}
+	// PostgreSQL validates a routine's body at CREATE time (the check_function_bodies session
+	// setting), resolving references the body makes to relations, composite types, domains, and so
+	// on. It records none of those body references in pg_depend, so a plan cannot order them.
+	// Disable the check, exactly as pg_dump does when it emits `SET check_function_bodies = false`
+	// at the start of a dump: without it, a plan that creates a relation and a routine whose body
+	// names that relation's row type cannot be ordered and fails validation.
+	if _, err := conn.ExecContext(ctx, "SET SESSION check_function_bodies = false"); err != nil {
+		return fmt.Errorf("disabling check_function_bodies: %w", err)
+	}
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.
 	//

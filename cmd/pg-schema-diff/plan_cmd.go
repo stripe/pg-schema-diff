@@ -610,6 +610,11 @@ func planToJsonS(plan diff.Plan) string {
 // planToSql converts the plan to one large runnable SQL script.
 func planToSql(plan diff.Plan) string {
 	sb := strings.Builder{}
+	// PostgreSQL validates a routine's body at CREATE time, resolving references the body makes to
+	// relations and types. None of those body references are recorded in pg_depend, so the plan
+	// cannot order them. Disable the check for the script, as pg_dump does when it emits
+	// `SET check_function_bodies = false` at the start of a dump.
+	sb.WriteString("SET check_function_bodies = false;\n\n")
 	for i, stmt := range plan.Statements {
 		sb.WriteString("/*\n")
 		sb.WriteString(fmt.Sprintf("Statement %d\n", i))
