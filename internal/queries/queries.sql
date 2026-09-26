@@ -447,6 +447,7 @@ WITH roles AS (
 )
 
 SELECT
+    pol.oid,
     pol.polname::TEXT AS policy_name,
     table_c.relname::TEXT AS owning_table_name,
     table_namespace.nspname::TEXT AS owning_table_schema_name,

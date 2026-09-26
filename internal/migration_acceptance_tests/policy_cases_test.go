@@ -736,6 +736,33 @@ var policyAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeAuthzUpdate,
 		},
 	},
+	{
+		name: "Create policy whose expression calls a function created in the same plan",
+		oldSchemaDDL: []string{
+			``,
+		},
+		newSchemaDDL: []string{
+			`
+                CREATE FUNCTION current_user_id() RETURNS uuid
+                    LANGUAGE sql STABLE
+                    AS $$ SELECT '00000000-0000-0000-0000-000000000000'::uuid $$;
+                CREATE TABLE foobar(id uuid);
+                CREATE POLICY foobar_policy ON foobar
+                    AS PERMISSIVE
+                    FOR SELECT
+                    TO PUBLIC
+                    USING (id = current_user_id());
+			`,
+		},
+		// PostgreSQL resolves the function the USING expression calls at CREATE time, so the function
+		// must come first.
+		expectedPlanDDL: []string{
+			"CREATE OR REPLACE FUNCTION public.current_user_id()\n RETURNS uuid\n LANGUAGE sql\n STABLE\nAS $function$ SELECT '00000000-0000-0000-0000-000000000000'::uuid $function$\n",
+			"CREATE TABLE \"public\".\"foobar\" (\n\t\"id\" uuid\n)",
+			"CREATE POLICY \"foobar_policy\" ON \"public\".\"foobar\"\n\tAS PERMISSIVE\n\tFOR SELECT\n\tTO PUBLIC\n\tUSING ((id = current_user_id()))",
+		},
+		// No hazards: the table is new, so the policy statements' hazards are stripped.
+	},
 }
 
 func TestPolicyCases(t *testing.T) {

@@ -1175,6 +1175,7 @@ func (t *tableSQLVertexGenerator) GetAddAlterDependencies(table, _ schema.Table)
 			mustRun(t.GetSQLVertexId(table, diffTypeAddAlter)).after(buildTableVertexId(*table.ParentTable, diffTypeAddAlter)),
 		)
 	}
+	deps = append(deps, consumerPolicyFunctionDependencies(table)...)
 	return deps, nil
 }
 
@@ -1243,7 +1244,35 @@ func (t *tableSQLVertexGenerator) GetDeleteDependencies(table schema.Table) ([]d
 			mustRun(t.GetSQLVertexId(table, diffTypeDelete)).after(buildTableVertexId(*table.ParentTable, diffTypeDelete)),
 		)
 	}
+	deps = append(deps, policyFunctionDeleteDependencies(table)...)
 	return deps, nil
+}
+
+// consumerPolicyFunctionDependencies orders a table's add/alter after every function its policies
+// call. A table's policies are created in the same vertex as the table — inside the CREATE TABLE
+// statement list for a new table, appended by the table's alter otherwise — and PostgreSQL resolves
+// the functions named in a policy expression at CREATE POLICY time.
+func consumerPolicyFunctionDependencies(table schema.Table) []dependency {
+	var deps []dependency
+	for _, policy := range table.Policies {
+		for _, depFunction := range policy.DependsOnFunctions {
+			deps = append(deps, mustRun(buildTableVertexId(table.SchemaQualifiedName, diffTypeAddAlter)).after(buildFunctionVertexId(depFunction, diffTypeAddAlter)))
+		}
+	}
+	return deps
+}
+
+// policyFunctionDeleteDependencies orders a table's drop before the drop of every function its
+// policies call: a policy lives and dies with its table, so the function may only be dropped after
+// the policy is gone.
+func policyFunctionDeleteDependencies(table schema.Table) []dependency {
+	var deps []dependency
+	for _, policy := range table.Policies {
+		for _, depFunction := range policy.DependsOnFunctions {
+			deps = append(deps, mustRun(buildTableVertexId(table.SchemaQualifiedName, diffTypeDelete)).before(buildFunctionVertexId(depFunction, diffTypeDelete)))
+		}
+	}
+	return deps
 }
 
 type columnSQLVertexGenerator struct {

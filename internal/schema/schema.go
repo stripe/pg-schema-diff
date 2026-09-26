@@ -129,6 +129,7 @@ func normalizeTable(t Table) Table {
 		p.Columns = sortByKey(p.Columns, func(s string) string {
 			return s
 		})
+		p.DependsOnFunctions = sortSchemaObjectsByName(p.DependsOnFunctions)
 		normPolicies = append(normPolicies, p)
 	}
 	t.Policies = normPolicies
@@ -496,6 +497,10 @@ type Policy struct {
 	UsingExpression string
 	// Columns are the columns that the policy applies to.
 	Columns []string
+	// DependsOnFunctions is the list of functions referenced by the policy's USING and WITH CHECK
+	// expressions. PostgreSQL resolves those references at CREATE time, so the policy must be
+	// created after the functions exist and dropped before they are dropped.
+	DependsOnFunctions []SchemaQualifiedName
 }
 
 func (p Policy) GetName() string {
@@ -1389,15 +1394,20 @@ func (s *schemaFetcher) fetchPolicies(ctx context.Context) ([]policyAndTable, er
 
 	var policies []policyAndTable
 	for _, rp := range rawPolicies {
+		dependsOnFunctions, err := s.fetchDependsOnFunctions(ctx, "pg_policy", rp.Oid)
+		if err != nil {
+			return nil, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rp.Oid, err)
+		}
 		policies = append(policies, policyAndTable{
 			policy: Policy{
-				EscapedName:     EscapeIdentifier(rp.PolicyName),
-				IsPermissive:    rp.IsPermissive,
-				AppliesTo:       rp.AppliesTo,
-				Cmd:             PolicyCmd(rp.Cmd),
-				CheckExpression: rp.CheckExpression,
-				UsingExpression: rp.UsingExpression,
-				Columns:         rp.ColumnNames,
+				EscapedName:        EscapeIdentifier(rp.PolicyName),
+				IsPermissive:       rp.IsPermissive,
+				AppliesTo:          rp.AppliesTo,
+				Cmd:                PolicyCmd(rp.Cmd),
+				CheckExpression:    rp.CheckExpression,
+				UsingExpression:    rp.UsingExpression,
+				Columns:            rp.ColumnNames,
+				DependsOnFunctions: dependsOnFunctions,
 			},
 			table: buildNameFromUnescaped(rp.OwningTableName, rp.OwningTableSchemaName),
 		})

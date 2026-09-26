@@ -708,6 +708,7 @@ WITH roles AS (
 )
 
 SELECT
+    pol.oid,
     pol.polname::TEXT AS policy_name,
     table_c.relname::TEXT AS owning_table_name,
     table_namespace.nspname::TEXT AS owning_table_schema_name,
@@ -747,6 +748,7 @@ WHERE
 `
 
 type GetPoliciesRow struct {
+	Oid                   interface{}
 	PolicyName            string
 	OwningTableName       string
 	OwningTableSchemaName string
@@ -768,6 +770,7 @@ func (q *Queries) GetPolicies(ctx context.Context) ([]GetPoliciesRow, error) {
 	for rows.Next() {
 		var i GetPoliciesRow
 		if err := rows.Scan(
+			&i.Oid,
 			&i.PolicyName,
 			&i.OwningTableName,
 			&i.OwningTableSchemaName,
