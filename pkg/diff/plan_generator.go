@@ -279,12 +279,13 @@ func schemaFromTempDb(ctx context.Context, db *tempdb.Database, plan *planOption
 	return schema.GetSchema(ctx, db.ConnPool, append(plan.getSchemaOpts, db.ExcludeMetadataOptions...)...)
 }
 
-// clearTablePrivileges returns a copy of the schema with all table privileges cleared.
+// clearTablePrivileges returns a copy of the schema with all table and column privileges cleared.
 // This is used during plan validation because privilege statements are skipped (roles don't exist in temp DB).
 func clearTablePrivileges(s schema.Schema) schema.Schema {
 	tables := make([]schema.Table, len(s.Tables))
 	for i, t := range s.Tables {
 		t.Privileges = nil
+		t.ColumnPrivileges = nil
 		tables[i] = t
 	}
 	s.Tables = tables

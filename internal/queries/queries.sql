@@ -666,3 +666,50 @@ LEFT JOIN pg_catalog.pg_roles AS grantee_role
 -- Exclude privileges granted to the table owner (these are implicit)
 WHERE pa.grantee_oid != pa.owner_oid OR pa.grantee_oid = 0
 ORDER BY pa.table_schema_name, pa.table_name, grantee, pa.privilege_type;
+
+-- name: GetColumnPrivileges :many
+WITH parsed_acl AS (
+    SELECT
+        c.oid AS table_oid,
+        c.relname AS table_name,
+        n.nspname AS table_schema_name,
+        c.relowner AS owner_oid,
+        a.attname AS column_name,
+        (ACLEXPLODE(a.attacl)).grantee AS grantee_oid,
+        (ACLEXPLODE(a.attacl)).privilege_type AS privilege_type,
+        (ACLEXPLODE(a.attacl)).is_grantable AS is_grantable
+    FROM pg_catalog.pg_attribute AS a
+    INNER JOIN pg_catalog.pg_class AS c ON a.attrelid = c.oid
+    INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
+    WHERE
+        n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND n.nspname !~ '^pg_toast'
+        AND n.nspname !~ '^pg_temp'
+        AND (c.relkind = 'r' OR c.relkind = 'p')
+        AND a.attacl IS NOT NULL
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        -- Exclude tables owned by extensions
+        AND NOT EXISTS (
+            SELECT depend.objid
+            FROM pg_catalog.pg_depend AS depend
+            WHERE
+                depend.classid = 'pg_class'::REGCLASS
+                AND depend.objid = c.oid
+                AND depend.deptype = 'e'
+        )
+)
+
+SELECT
+    pa.table_name::TEXT,
+    pa.table_schema_name::TEXT,
+    pa.column_name::TEXT,
+    COALESCE(grantee_role.rolname, '')::TEXT AS grantee,
+    pa.privilege_type::TEXT AS privilege,
+    pa.is_grantable
+FROM parsed_acl AS pa
+LEFT JOIN pg_catalog.pg_roles AS grantee_role
+    ON pa.grantee_oid = grantee_role.oid
+-- Exclude privileges granted to the table owner (these are implicit)
+WHERE pa.grantee_oid != pa.owner_oid OR pa.grantee_oid = 0
+ORDER BY pa.table_schema_name, pa.table_name, pa.column_name, grantee, pa.privilege_type;

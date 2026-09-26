@@ -112,12 +112,17 @@ type (
 		oldAndNew[schema.TablePrivilege]
 	}
 
+	columnPrivilegeDiff struct {
+		oldAndNew[schema.ColumnPrivilege]
+	}
+
 	tableDiff struct {
 		oldAndNew[schema.Table]
-		columnsDiff         listDiff[schema.Column, columnDiff]
-		checkConstraintDiff listDiff[schema.CheckConstraint, checkConstraintDiff]
-		policiesDiff        listDiff[schema.Policy, policyDiff]
-		privilegesDiff      listDiff[schema.TablePrivilege, privilegeDiff]
+		columnsDiff          listDiff[schema.Column, columnDiff]
+		checkConstraintDiff  listDiff[schema.CheckConstraint, checkConstraintDiff]
+		policiesDiff         listDiff[schema.Policy, policyDiff]
+		privilegesDiff       listDiff[schema.TablePrivilege, privilegeDiff]
+		columnPrivilegesDiff listDiff[schema.ColumnPrivilege, columnPrivilegeDiff]
 	}
 
 	indexDiff struct {
@@ -442,16 +447,51 @@ func buildTableDiff(oldTable, newTable schema.Table, _, _ int) (diff tableDiff, 
 		return tableDiff{}, false, fmt.Errorf("diffing privileges: %w", err)
 	}
 
+	columnPrivilegesDiff, err := diffLists(
+		oldTable.ColumnPrivileges,
+		newTable.ColumnPrivileges,
+		func(old, new schema.ColumnPrivilege, _, _ int) (columnPrivilegeDiff, bool, error) {
+			// Recreate the privilege if IsGrantable changes
+			recreate := old.IsGrantable != new.IsGrantable
+			return columnPrivilegeDiff{oldAndNew[schema.ColumnPrivilege]{old: old, new: new}}, recreate, nil
+		},
+	)
+	if err != nil {
+		return tableDiff{}, false, fmt.Errorf("diffing column privileges: %w", err)
+	}
+	columnPrivilegesDiff.deletes = pruneColumnPrivilegesForDroppedColumns(columnPrivilegesDiff.deletes, newTable)
+
 	return tableDiff{
 		oldAndNew: oldAndNew[schema.Table]{
 			old: oldTable,
 			new: newTable,
 		},
-		columnsDiff:         columnsDiff,
-		checkConstraintDiff: checkConsDiff,
-		policiesDiff:        policiesDiff,
-		privilegesDiff:      privilegesDiff,
+		columnsDiff:          columnsDiff,
+		checkConstraintDiff:  checkConsDiff,
+		policiesDiff:         policiesDiff,
+		privilegesDiff:       privilegesDiff,
+		columnPrivilegesDiff: columnPrivilegesDiff,
 	}, false, nil
+}
+
+// pruneColumnPrivilegesForDroppedColumns removes privileges belonging to columns that are absent from the
+// new schema. Such privileges are dropped together with their column, so emitting a REVOKE for them would
+// be unnecessary (and would fail, since the column no longer exists at that point).
+func pruneColumnPrivilegesForDroppedColumns(deletes []schema.ColumnPrivilege, newTable schema.Table) []schema.ColumnPrivilege {
+	if len(deletes) == 0 {
+		return deletes
+	}
+	columnsInNewTable := make(map[string]bool, len(newTable.Columns))
+	for _, column := range newTable.Columns {
+		columnsInNewTable[column.Name] = true
+	}
+	var kept []schema.ColumnPrivilege
+	for _, p := range deletes {
+		if columnsInNewTable[p.ColumnName] {
+			kept = append(kept, p)
+		}
+	}
+	return kept
 }
 
 type indexDiffConfig struct {
@@ -812,6 +852,9 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		if len(table.Privileges) > 0 {
 			return nil, fmt.Errorf("privileges on partitions: %w", ErrNotImplemented)
 		}
+		if len(table.ColumnPrivileges) > 0 {
+			return nil, fmt.Errorf("column privileges on partitions: %w", ErrNotImplemented)
+		}
 		// We attach the partitions separately. So the partition must have all the same check constraints
 		// as the original table
 		table.CheckConstraints = append(table.CheckConstraints, t.tablesInNewSchemaByName[table.ParentTable.GetName()].CheckConstraints...)
@@ -890,6 +933,16 @@ func (t *tableSQLVertexGenerator) Add(table schema.Table) ([]Statement, error) {
 		addPrivilegeStmts, err := privilegeGenerator.Add(privilege)
 		if err != nil {
 			return nil, fmt.Errorf("generating add privilege statements for privilege %s: %w", privilege.GetName(), err)
+		}
+		// Remove hazards from statements since the table is brand new
+		stmts = append(stmts, stripMigrationHazards(addPrivilegeStmts...)...)
+	}
+
+	columnPrivilegeGenerator := &columnPrivilegeSQLVertexGenerator{tableName: table.SchemaQualifiedName}
+	for _, privilege := range table.ColumnPrivileges {
+		addPrivilegeStmts, err := columnPrivilegeGenerator.Add(privilege)
+		if err != nil {
+			return nil, fmt.Errorf("generating add column privilege statements for privilege %s: %w", privilege.GetName(), err)
 		}
 		// Remove hazards from statements since the table is brand new
 		stmts = append(stmts, stripMigrationHazards(addPrivilegeStmts...)...)
@@ -1042,6 +1095,13 @@ func (t *tableSQLVertexGenerator) alterBaseTable(diff tableDiff) ([]Statement, e
 	}
 	partialGraph = concatPartialGraphs(partialGraph, privilegesPartialGraph)
 
+	columnPrivilegeGenerator := newColumnPrivilegeSQLVertexGenerator(diff.new.SchemaQualifiedName)
+	columnPrivilegesPartialGraph, err := generatePartialGraph(columnPrivilegeGenerator, diff.columnPrivilegesDiff)
+	if err != nil {
+		return nil, fmt.Errorf("resolving column privilege sql: %w", err)
+	}
+	partialGraph = concatPartialGraphs(partialGraph, columnPrivilegesPartialGraph)
+
 	graph, err := graphFromPartials(partialGraph)
 	if err != nil {
 		return nil, fmt.Errorf("converting to graph")
@@ -1076,6 +1136,11 @@ func (t *tableSQLVertexGenerator) alterPartition(diff tableDiff) ([]Statement, e
 		// Privilege diffing on individual partitions cannot be supported until where a SQL statement is generated is
 		// _independent_ of how it is ordered.
 		return nil, fmt.Errorf("privileges on partitions: %w", ErrNotImplemented)
+	}
+	if !diff.columnPrivilegesDiff.isEmpty() {
+		// Column privilege diffing on individual partitions cannot be supported until where a SQL statement is
+		// generated is _independent_ of how it is ordered.
+		return nil, fmt.Errorf("column privileges on partitions: %w", ErrNotImplemented)
 	}
 
 	var alteredParentColumnsByName map[string]columnDiff

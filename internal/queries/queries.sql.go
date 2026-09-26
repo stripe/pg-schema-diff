@@ -88,6 +88,93 @@ func (q *Queries) GetCheckConstraints(ctx context.Context) ([]GetCheckConstraint
 	return items, nil
 }
 
+const getColumnPrivileges = `-- name: GetColumnPrivileges :many
+WITH parsed_acl AS (
+    SELECT
+        c.oid AS table_oid,
+        c.relname AS table_name,
+        n.nspname AS table_schema_name,
+        c.relowner AS owner_oid,
+        a.attname AS column_name,
+        (ACLEXPLODE(a.attacl)).grantee AS grantee_oid,
+        (ACLEXPLODE(a.attacl)).privilege_type AS privilege_type,
+        (ACLEXPLODE(a.attacl)).is_grantable AS is_grantable
+    FROM pg_catalog.pg_attribute AS a
+    INNER JOIN pg_catalog.pg_class AS c ON a.attrelid = c.oid
+    INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
+    WHERE
+        n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND n.nspname !~ '^pg_toast'
+        AND n.nspname !~ '^pg_temp'
+        AND (c.relkind = 'r' OR c.relkind = 'p')
+        AND a.attacl IS NOT NULL
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        -- Exclude tables owned by extensions
+        AND NOT EXISTS (
+            SELECT depend.objid
+            FROM pg_catalog.pg_depend AS depend
+            WHERE
+                depend.classid = 'pg_class'::REGCLASS
+                AND depend.objid = c.oid
+                AND depend.deptype = 'e'
+        )
+)
+
+SELECT
+    pa.table_name::TEXT,
+    pa.table_schema_name::TEXT,
+    pa.column_name::TEXT,
+    COALESCE(grantee_role.rolname, '')::TEXT AS grantee,
+    pa.privilege_type::TEXT AS privilege,
+    pa.is_grantable
+FROM parsed_acl AS pa
+LEFT JOIN pg_catalog.pg_roles AS grantee_role
+    ON pa.grantee_oid = grantee_role.oid
+WHERE pa.grantee_oid != pa.owner_oid OR pa.grantee_oid = 0
+ORDER BY pa.table_schema_name, pa.table_name, pa.column_name, grantee, pa.privilege_type
+`
+
+type GetColumnPrivilegesRow struct {
+	PaTableName       string
+	PaTableSchemaName string
+	PaColumnName      string
+	Grantee           string
+	Privilege         string
+	IsGrantable       interface{}
+}
+
+// Exclude privileges granted to the table owner (these are implicit)
+func (q *Queries) GetColumnPrivileges(ctx context.Context) ([]GetColumnPrivilegesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getColumnPrivileges)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetColumnPrivilegesRow
+	for rows.Next() {
+		var i GetColumnPrivilegesRow
+		if err := rows.Scan(
+			&i.PaTableName,
+			&i.PaTableSchemaName,
+			&i.PaColumnName,
+			&i.Grantee,
+			&i.Privilege,
+			&i.IsGrantable,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getColumnsForTable = `-- name: GetColumnsForTable :many
 WITH identity_col_seq AS (
     SELECT
