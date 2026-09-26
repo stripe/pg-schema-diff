@@ -517,8 +517,33 @@ func (t Trigger) GetName() string {
 }
 
 // TableDependency represents a (view's) dependency on a table.
+// RelationKind is the pg_class.relkind of a relation a view or materialized view reads.
+type RelationKind string
+
+const (
+	// RelationKindTable is an ordinary table ('r').
+	RelationKindTable RelationKind = "r"
+	// RelationKindPartitionedTable is a partitioned table ('p').
+	RelationKindPartitionedTable RelationKind = "p"
+	// RelationKindView is a view ('v').
+	RelationKindView RelationKind = "v"
+	// RelationKindMaterializedView is a materialized view ('m').
+	RelationKindMaterializedView RelationKind = "m"
+)
+
+// IsTable reports whether the dependency is a table (ordinary or partitioned), i.e., a relation
+// whose columns the schema models per column.
+func (k RelationKind) IsTable() bool {
+	return k == RelationKindTable || k == RelationKindPartitionedTable
+}
+
 type TableDependency struct {
 	SchemaQualifiedName
+	// Kind is the dependency's pg_class.relkind. A view or materialized view reads tables, views,
+	// and materialized views alike; the kind says which generator owns the dependency's statement.
+	Kind RelationKind
+	// Columns are the dependency's columns that the view reads. Empty for a non-table dependency,
+	// whose columns are not tracked per column.
 	Columns []string
 }
 
@@ -1570,6 +1595,7 @@ func parseJSONTableDependencies(vals []string) ([]TableDependency, error) {
 		var s struct {
 			Schema  string   `json:"schema"`
 			Name    string   `json:"name"`
+			Kind    string   `json:"kind"`
 			Columns []string `json:"columns"`
 		}
 		if err := json.Unmarshal([]byte(v), &s); err != nil {
@@ -1577,6 +1603,7 @@ func parseJSONTableDependencies(vals []string) ([]TableDependency, error) {
 		}
 		out = append(out, TableDependency{
 			SchemaQualifiedName: buildNameFromUnescaped(s.Name, s.Schema),
+			Kind:                RelationKind(s.Kind),
 			Columns:             s.Columns,
 		})
 	}

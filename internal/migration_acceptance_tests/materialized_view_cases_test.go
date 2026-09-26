@@ -609,6 +609,26 @@ var materializedViewAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeDeletesData,
 		},
 	},
+	{
+		name: "create a materialized view that reads a view created in the same plan",
+		oldSchemaDDL: []string{
+			``,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(id INT, foo VARCHAR(255));
+            CREATE VIEW foobar_view AS SELECT id, foo FROM foobar;
+            CREATE MATERIALIZED VIEW foobar_mv AS SELECT id FROM foobar_view;
+			`,
+		},
+		// The materialized view's defining query is resolved at CREATE time, and it reads a view:
+		// the dependency kind, not just the name, decides which vertex the dependency is emitted by.
+		expectedPlanDDL: []string{
+			"CREATE TABLE \"public\".\"foobar\" (\n\t\"id\" integer,\n\t\"foo\" character varying(255) COLLATE \"pg_catalog\".\"default\"\n)",
+			"CREATE VIEW \"public\".\"foobar_view\" AS\n SELECT id,\n    foo\n   FROM foobar;",
+			"CREATE MATERIALIZED VIEW \"public\".\"foobar_mv\" AS\n SELECT id\n   FROM foobar_view\nWITH NO DATA",
+		},
+	},
 }
 
 func TestMaterializedViewTestCases(t *testing.T) {

@@ -239,7 +239,7 @@ var (
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
 		`},
-			expectedHash: "4c2174e2cac3956b",
+			expectedHash: "ac87ac7d68e7744",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -516,10 +516,12 @@ var (
 						TableDependencies: []TableDependency{
 							{
 								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_1", EscapedName: `"foo_fk"`},
+								Kind:                RelationKindTable,
 								Columns:             []string{"id"},
 							},
 							{
 								SchemaQualifiedName: SchemaQualifiedName{SchemaName: "schema_2", EscapedName: `"foo"`},
+								Kind:                RelationKindTable,
 								Columns:             []string{"author", "id"},
 							},
 						},

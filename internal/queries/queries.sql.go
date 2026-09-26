@@ -591,6 +591,7 @@ SELECT
         ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
             'schema', dep_ns.nspname,
             'name', dep_c.relname,
+            'kind', dep_c.relkind,
             'columns', (
                 SELECT
                     ARRAY_AGG(
@@ -626,7 +627,7 @@ SELECT
     INNER JOIN pg_catalog.pg_depend AS d2 ON r.oid = d2.objid
     INNER JOIN
         pg_catalog.pg_class AS dep_c
-        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p')
+        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p', 'v', 'm')
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
@@ -634,7 +635,10 @@ SELECT
     -- arrays into []json.RawMessage.
     -- Instead, they must be unmarshalled as string arrays.
     -- https://github.com/lib/pq/pull/466
-    WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
+    -- Only this object's own rewrite rule counts: ` + "`" + `d.refobjid = c.oid` + "`" + ` alone also matches the
+    -- rules of every other view that reads this one, which would report those readers as
+    -- dependencies of this object.
+    WHERE d.refobjid = c.oid AND r.ev_class = c.oid AND dep_c.oid != c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
@@ -1260,6 +1264,7 @@ SELECT
         ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
             'schema', dep_ns.nspname,
             'name', dep_c.relname,
+            'kind', dep_c.relkind,
             'columns', (
                 SELECT
                     ARRAY_AGG(
@@ -1294,7 +1299,7 @@ SELECT
     INNER JOIN pg_catalog.pg_depend AS d2 ON r.oid = d2.objid
     INNER JOIN
         pg_catalog.pg_class AS dep_c
-        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p')
+        ON d2.refobjid = dep_c.oid AND dep_c.relkind IN ('r', 'p', 'v', 'm')
     INNER JOIN
         pg_catalog.pg_namespace AS dep_ns
         ON dep_c.relnamespace = dep_ns.oid
@@ -1302,7 +1307,10 @@ SELECT
     -- arrays into []json.RawMessage.
     -- Instead, they must be unmarshalled as string arrays.
     -- https://github.com/lib/pq/pull/466
-    WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
+    -- Only this object's own rewrite rule counts: ` + "`" + `d.refobjid = c.oid` + "`" + ` alone also matches the
+    -- rules of every other view that reads this one, which would report those readers as
+    -- dependencies of this object.
+    WHERE d.refobjid = c.oid AND r.ev_class = c.oid AND dep_c.oid != c.oid)::TEXT [] AS table_dependencies,
     PG_GET_VIEWDEF(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
