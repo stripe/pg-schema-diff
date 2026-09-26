@@ -86,6 +86,11 @@ func (f *functionSQLVertexGenerator) GetAddAlterDependencies(newFunction, oldFun
 	for _, depFunction := range newFunction.DependsOnFunctions {
 		deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).after(buildFunctionVertexId(depFunction, diffTypeAddAlter)))
 	}
+	// The row type of a relation referenced by the signature — an argument type, the RETURNS
+	// type, or a RETURNS TABLE column — is resolved at CREATE time, so the relation must exist.
+	for _, relation := range newFunction.DependsOnRelations {
+		deps = append(deps, mustRun(f.GetSQLVertexId(newFunction, diffTypeAddAlter)).after(buildRelationVertexId(relation, diffTypeAddAlter)))
+	}
 
 	if !cmp.Equal(oldFunction, schema.Function{}) {
 		// If the function is being altered:
@@ -103,6 +108,10 @@ func (f *functionSQLVertexGenerator) GetDeleteDependencies(function schema.Funct
 	var deps []dependency
 	for _, depFunction := range function.DependsOnFunctions {
 		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeDelete)).before(buildFunctionVertexId(depFunction, diffTypeDelete)))
+	}
+	// A function must be dropped before a relation its signature refers to is dropped.
+	for _, relation := range function.DependsOnRelations {
+		deps = append(deps, mustRun(f.GetSQLVertexId(function, diffTypeDelete)).before(buildRelationVertexId(relation, diffTypeDelete)))
 	}
 	return deps, nil
 }

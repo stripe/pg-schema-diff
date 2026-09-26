@@ -1165,6 +1165,26 @@ func buildTableVertexId(name schema.SchemaQualifiedName, diffType diffType) sqlV
 	return buildSchemaObjVertexId("table", name.GetFQEscapedName(), diffType)
 }
 
+// buildRelationVertexId maps a relation referenced by a routine's signature to the vertex of the
+// generator that emits that relation's statement, so a dependency edge can point at the right
+// statement.
+func buildRelationVertexId(relation schema.RelationDependency, diffType diffType) sqlVertexId {
+	switch relation.Kind {
+	case schema.RelationKindView:
+		// The view generator emits CREATE VIEW under the table vertex id (so a view is ordered with
+		// the tables it reads) and DROP VIEW under the view vertex id.
+		if diffType == diffTypeDelete {
+			return buildViewVertexId(relation.SchemaQualifiedName, diffType)
+		}
+		return buildTableVertexId(relation.SchemaQualifiedName, diffType)
+	case schema.RelationKindMaterializedView:
+		return buildMaterializedViewVertexId(relation.SchemaQualifiedName, diffType)
+	default:
+		// Ordinary and partitioned tables share the table generator.
+		return buildTableVertexId(relation.SchemaQualifiedName, diffType)
+	}
+}
+
 func (t *tableSQLVertexGenerator) GetAddAlterDependencies(table, _ schema.Table) ([]dependency, error) {
 	deps := []dependency{
 		mustRun(t.GetSQLVertexId(table, diffTypeAddAlter)).after(t.GetSQLVertexId(table, diffTypeDelete)),

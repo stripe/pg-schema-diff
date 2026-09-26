@@ -163,6 +163,31 @@ var procedureAcceptanceTestCases = []acceptanceTestCase{
 			diff.WithDoNotValidatePlan(),
 		},
 	},
+	{
+		name: "create a procedure whose argument is a view row type",
+		oldSchemaDDL: []string{
+			``,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foo(id INTEGER);
+            CREATE VIEW foo_view AS SELECT id FROM foo;
+            CREATE PROCEDURE count_view(v foo_view) LANGUAGE SQL AS $$
+            SELECT v.id;
+            $$;
+			`,
+		},
+		// The view's row type is resolved at CREATE time. The blanket "after every table" ordering
+		// the procedure generator relies on does not cover views.
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeHasUntrackableDependencies,
+		},
+		expectedPlanDDL: []string{
+			"CREATE TABLE \"public\".\"foo\" (\n\t\"id\" integer\n)",
+			"CREATE VIEW \"public\".\"foo_view\" AS\n SELECT id\n   FROM foo;",
+			"CREATE OR REPLACE PROCEDURE public.count_view(IN v foo_view)\n LANGUAGE sql\nAS $procedure$\n            SELECT v.id;\n            $procedure$\n",
+		},
+	},
 }
 
 func TestProcedureTestCases(t *testing.T) {

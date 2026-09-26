@@ -385,6 +385,43 @@ WHERE
             AND ext_depend.deptype = 'e'
     );
 
+-- name: GetDependsOnRelations :many
+-- Returns the relations (tables, views, materialized views) whose row type the
+-- given object depends on, i.e. the type of a function/procedure argument, of its
+-- RETURNS type, or of a RETURNS TABLE column. This includes dependencies through
+-- PostgreSQL's automatically-created array type of that row type, e.g.
+-- `some_table[]`.
+-- Used to order a routine's CREATE after the relations referenced by its
+-- signature, which PostgreSQL validates at CREATE time.
+SELECT DISTINCT
+    pg_class.relname::TEXT AS relation_name,
+    relation_namespace.nspname::TEXT AS relation_schema_name,
+    pg_class.relkind::TEXT AS relation_kind
+FROM pg_catalog.pg_depend AS depend
+INNER JOIN pg_catalog.pg_type AS referenced_type
+    ON
+        depend.refclassid = 'pg_type'::REGCLASS
+        AND depend.refobjid = referenced_type.oid
+INNER JOIN pg_catalog.pg_type AS pg_type
+    ON
+        referenced_type.oid = pg_type.oid
+        OR referenced_type.typelem = pg_type.oid
+INNER JOIN pg_catalog.pg_class AS pg_class
+    ON
+        pg_type.typrelid = pg_class.oid
+        AND pg_class.relkind IN ('r', 'p', 'v', 'm')
+INNER JOIN
+    pg_catalog.pg_namespace AS relation_namespace
+    ON pg_class.relnamespace = relation_namespace.oid
+WHERE
+    depend.classid = sqlc.arg(system_catalog)::REGCLASS
+    AND depend.objid = sqlc.arg(object_id)
+    AND depend.deptype = 'n'
+    AND relation_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND relation_namespace.nspname !~ '^pg_toast'
+    AND relation_namespace.nspname !~ '^pg_temp';
+
+
 -- name: GetExtensions :many
 SELECT
     ext.oid,

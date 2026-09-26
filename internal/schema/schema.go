@@ -86,11 +86,18 @@ func (s Schema) Normalize() Schema {
 	var normFunctions []Function
 	for _, function := range sortSchemaObjectsByName(s.Functions) {
 		function.DependsOnFunctions = sortSchemaObjectsByName(function.DependsOnFunctions)
+		function.DependsOnRelations = sortSchemaObjectsByName(function.DependsOnRelations)
 		normFunctions = append(normFunctions, function)
 	}
 	s.Functions = normFunctions
 
-	s.Procedures = sortSchemaObjectsByName(s.Procedures)
+	var normProcedures []Procedure
+	for _, procedure := range sortSchemaObjectsByName(s.Procedures) {
+		procedure.DependsOnRelations = sortSchemaObjectsByName(procedure.DependsOnRelations)
+		normProcedures = append(normProcedures, procedure)
+	}
+	s.Procedures = normProcedures
+
 	s.Triggers = sortSchemaObjectsByName(s.Triggers)
 
 	var normViews []View
@@ -439,6 +446,30 @@ type (
 	}
 )
 
+// RelationKind is the pg_class.relkind of a relation whose row type is referenced by a routine's
+// signature. Only relation kinds that own a row type usable as a column/argument/return type are
+// modelled.
+type RelationKind string
+
+const (
+	// RelationKindTable is an ordinary table ('r') or a partitioned table ('p').
+	RelationKindTable RelationKind = "r"
+	// RelationKindPartitionedTable is a partitioned table, which owns its own row type.
+	RelationKindPartitionedTable RelationKind = "p"
+	// RelationKindView is a view.
+	RelationKindView RelationKind = "v"
+	// RelationKindMaterializedView is a materialized view.
+	RelationKindMaterializedView RelationKind = "m"
+)
+
+// RelationDependency is a relation whose row type is referenced by a routine's signature — an
+// argument type, the RETURNS type, or a RETURNS TABLE column. PostgreSQL validates those references
+// at CREATE time, so the relation (and therefore its row type) must exist first.
+type RelationDependency struct {
+	SchemaQualifiedName
+	Kind RelationKind
+}
+
 type Function struct {
 	SchemaQualifiedName
 	// FunctionDef is the statement required to completely (re)create
@@ -449,6 +480,9 @@ type Function struct {
 	// can track the dependencies of the function (or not)
 	Language           string
 	DependsOnFunctions []SchemaQualifiedName
+	// DependsOnRelations is the list of relations whose row type is referenced by the
+	// function's signature. The function must be created after those relations exist.
+	DependsOnRelations []RelationDependency
 }
 
 type Procedure struct {
@@ -457,6 +491,8 @@ type Procedure struct {
 	// the procedure, as returned by `pg_get_functiondef`. It is a CREATE OR REPLACE
 	// statement.
 	Def string
+	// DependsOnRelations — see Function.DependsOnRelations.
+	DependsOnRelations []RelationDependency
 }
 
 var (
@@ -924,6 +960,28 @@ func (s *schemaFetcher) fetchEnums(ctx context.Context) ([]Enum, error) {
 	return enums, nil
 }
 
+func (s *schemaFetcher) fetchDependsOnRelations(ctx context.Context, systemCatalog string, oid any) ([]RelationDependency, error) {
+	rows, err := s.q.GetDependsOnRelations(ctx, queries.GetDependsOnRelationsParams{
+		SystemCatalog: systemCatalog,
+		ObjectID:      oid,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var relations []RelationDependency
+	for _, row := range rows {
+		relations = append(relations, RelationDependency{
+			SchemaQualifiedName: SchemaQualifiedName{
+				SchemaName:  row.RelationSchemaName,
+				EscapedName: EscapeIdentifier(row.RelationName),
+			},
+			Kind: RelationKind(row.RelationKind),
+		})
+	}
+	return relations, nil
+}
+
 func (s *schemaFetcher) fetchTables(ctx context.Context) ([]Table, error) {
 	rawTables, err := s.q.GetTables(ctx)
 	if err != nil {
@@ -1320,11 +1378,17 @@ func (s *schemaFetcher) buildFunction(ctx context.Context, rawFunction queries.G
 		return Function{}, fmt.Errorf("fetchDependsOnFunctions(%s): %w", rawFunction.Oid, err)
 	}
 
+	dependsOnRelations, err := s.fetchDependsOnRelations(ctx, "pg_proc", rawFunction.Oid)
+	if err != nil {
+		return Function{}, fmt.Errorf("fetchDependsOnRelations(%s): %w", rawFunction.Oid, err)
+	}
+
 	return Function{
 		SchemaQualifiedName: buildProcName(rawFunction.FuncName, rawFunction.FuncIdentityArguments, rawFunction.FuncSchemaName),
 		FunctionDef:         rawFunction.FuncDef,
 		Language:            rawFunction.FuncLang,
 		DependsOnFunctions:  dependsOnFunctions,
+		DependsOnRelations:  dependsOnRelations,
 	}, nil
 }
 
@@ -1353,9 +1417,14 @@ func (s *schemaFetcher) fetchProcedures(ctx context.Context) ([]Procedure, error
 
 	var procedures []Procedure
 	for _, rawProcedure := range rawProcedures {
+		dependsOnRelations, err := s.fetchDependsOnRelations(ctx, "pg_proc", rawProcedure.Oid)
+		if err != nil {
+			return nil, fmt.Errorf("fetchDependsOnRelations(%s): %w", rawProcedure.Oid, err)
+		}
 		p := Procedure{
 			SchemaQualifiedName: buildProcName(rawProcedure.FuncName, rawProcedure.FuncIdentityArguments, rawProcedure.FuncSchemaName),
 			Def:                 rawProcedure.FuncDef,
+			DependsOnRelations:  dependsOnRelations,
 		}
 		procedures = append(procedures, p)
 	}

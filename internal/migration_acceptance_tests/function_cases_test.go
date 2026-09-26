@@ -617,6 +617,90 @@ var functionAcceptanceTestCases = []acceptanceTestCase{
 			`,
 		},
 	},
+	{
+		name: "create a function whose argument is a table row type",
+		oldSchemaDDL: []string{
+			``,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foo(id INTEGER, name TEXT);
+            CREATE FUNCTION takes_foo(f foo) RETURNS INTEGER
+                LANGUAGE SQL
+                IMMUTABLE
+                RETURN f.id;
+			`,
+		},
+		// The table row type is resolved at CREATE time, so the table must come first.
+		expectedPlanDDL: []string{
+			"CREATE TABLE \"public\".\"foo\" (\n\t\"id\" integer,\n\t\"name\" text COLLATE \"pg_catalog\".\"default\"\n)",
+			"CREATE OR REPLACE FUNCTION public.takes_foo(f foo)\n RETURNS integer\n LANGUAGE sql\n IMMUTABLE\nRETURN (f).id\n",
+		},
+	},
+	{
+		name: "create a function whose RETURNS TABLE column is a table row type",
+		oldSchemaDDL: []string{
+			``,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foo(id INTEGER);
+            CREATE FUNCTION returns_foo()
+                RETURNS TABLE(whole foo)
+                LANGUAGE SQL
+                IMMUTABLE
+                AS $$ SELECT f FROM foo f $$;
+			`,
+		},
+		expectedPlanDDL: []string{
+			"CREATE TABLE \"public\".\"foo\" (\n\t\"id\" integer\n)",
+			"CREATE OR REPLACE FUNCTION public.returns_foo()\n RETURNS TABLE(whole foo)\n LANGUAGE sql\n IMMUTABLE\nAS $function$ SELECT f FROM foo f $function$\n",
+		},
+	},
+	{
+		name: "create a function whose argument is a view row type",
+		oldSchemaDDL: []string{
+			``,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foo(id INTEGER);
+            CREATE VIEW foo_view AS SELECT id FROM foo;
+            CREATE FUNCTION takes_view(v foo_view) RETURNS INTEGER
+                LANGUAGE SQL
+                IMMUTABLE
+                RETURN v.id;
+			`,
+		},
+		// The view's row type is resolved at CREATE time, so the view must come first.
+		expectedPlanDDL: []string{
+			"CREATE TABLE \"public\".\"foo\" (\n\t\"id\" integer\n)",
+			"CREATE VIEW \"public\".\"foo_view\" AS\n SELECT id\n   FROM foo;",
+			"CREATE OR REPLACE FUNCTION public.takes_view(v foo_view)\n RETURNS integer\n LANGUAGE sql\n IMMUTABLE\nRETURN (v).id\n",
+		},
+	},
+	{
+		name: "drop a function before the table row type it references",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foo(id INTEGER);
+            CREATE FUNCTION takes_foo(f foo) RETURNS INTEGER
+                LANGUAGE SQL
+                IMMUTABLE
+                RETURN f.id;
+			`,
+		},
+		newSchemaDDL: []string{
+			``,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+		},
+		expectedPlanDDL: []string{
+			"DROP FUNCTION \"public\".\"takes_foo\"(f foo)",
+			"DROP TABLE \"public\".\"foo\"",
+		},
+	},
 }
 
 func TestFunctionTestCases(t *testing.T) {

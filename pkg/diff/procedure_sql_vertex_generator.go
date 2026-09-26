@@ -39,6 +39,13 @@ func (p procedureSQLVertexGenerator) Add(s schema.Procedure) (partialSQLGraph, e
 		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
 	}
 
+	// Run after every relation whose row type the signature references — an argument type, the
+	// RETURNS type, or a RETURNS TABLE column — including views and materialized views, which the
+	// blanket table dependency above does not cover.
+	for _, relation := range s.DependsOnRelations {
+		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter)).after(buildRelationVertexId(relation, diffTypeAddAlter)))
+	}
+
 	return partialSQLGraph{
 		vertices: []sqlVertex{{
 			id:       buildProcedureVertexId(s.SchemaQualifiedName, diffTypeAddAlter),
@@ -81,6 +88,11 @@ func (p procedureSQLVertexGenerator) Delete(s schema.Procedure) (partialSQLGraph
 	// Run before all sequences, since a procedure might call a sequence.
 	for _, seq := range p.newSchema.Sequences {
 		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeDelete)).after(buildSequenceVertexId(seq.SchemaQualifiedName, diffTypeAddAlter)))
+	}
+
+	// Run before a relation its signature refers to is dropped.
+	for _, relation := range s.DependsOnRelations {
+		deps = append(deps, mustRun(buildProcedureVertexId(s.SchemaQualifiedName, diffTypeDelete)).before(buildRelationVertexId(relation, diffTypeDelete)))
 	}
 
 	return partialSQLGraph{
