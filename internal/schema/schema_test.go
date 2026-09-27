@@ -239,7 +239,7 @@ var (
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
 		`},
-			expectedHash: "4c2174e2cac3956b",
+			expectedHash: "27280c1ab5bc3ad1",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -509,7 +509,8 @@ var (
 							SchemaName:  "schema_2",
 							EscapedName: "\"foo_view\"",
 						},
-						ViewDefinition: " SELECT foo.id,\n    foo.author\n   FROM schema_2.foo\n     JOIN schema_1.foo_fk ON foo.id = foo_fk.id;",
+						ViewDefinition:          " SELECT foo.id,\n    foo.author\n   FROM schema_2.foo\n     JOIN schema_1.foo_fk ON foo.id = foo_fk.id;",
+						ViewDefinitionCanonical: " SELECT foo.id,\n    foo.author\n   FROM schema_2.foo\n     JOIN schema_1.foo_fk ON foo.id = foo_fk.id;",
 						Options: map[string]string{
 							"security_barrier": "true",
 						},

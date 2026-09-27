@@ -537,11 +537,93 @@ var viewAcceptanceTestCases = []acceptanceTestCase{
             );
 
             CREATE VIEW foobar_view AS
-                SELECT id, foo, bar 
-                FROM foobar 
+                SELECT id, foo, bar
+                FROM foobar
                 WHERE buzz = true;
 			`,
 		},
+	},
+	{
+		name: "no-op - view definition with an unnamed union column",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
+
+            CREATE VIEW foobar_view AS
+                SELECT x.id, x.kind
+                FROM (
+                    SELECT id, 'credit'::text AS kind FROM foobar
+                    UNION ALL
+                    SELECT id, 'incentive' FROM foobar
+                ) x;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
+
+            CREATE VIEW foobar_view AS
+                SELECT x.id, x.kind
+                FROM (
+                    SELECT id, 'credit'::text AS kind FROM foobar
+                    UNION ALL
+                    SELECT id, 'incentive' FROM foobar
+                ) x;
+			`,
+		},
+		// The second UNION branch is an untyped literal, so pg_get_viewdef
+		// deparses the view without naming it, and re-creating the view from that
+		// text names it "text". The two databases hold the same view under two
+		// texts; validation must not read that as a change.
+		expectEmptyPlan: true,
+	},
+	{
+		name: "no-op - recursive view",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                parent_id INT REFERENCES foobar(id)
+            );
+
+            CREATE VIEW foobar_hierarchy AS
+                WITH RECURSIVE hierarchy AS (
+                    SELECT id, parent_id, 'root'::text AS kind
+                    FROM foobar
+                    WHERE parent_id IS NULL
+                    UNION ALL
+                    SELECT f.id, f.parent_id, 'child'
+                    FROM foobar f
+                    JOIN hierarchy h ON f.parent_id = h.id
+                )
+                SELECT * FROM hierarchy;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                parent_id INT REFERENCES foobar(id)
+            );
+
+            CREATE VIEW foobar_hierarchy AS
+                WITH RECURSIVE hierarchy AS (
+                    SELECT id, parent_id, 'root'::text AS kind
+                    FROM foobar
+                    WHERE parent_id IS NULL
+                    UNION ALL
+                    SELECT f.id, f.parent_id, 'child'
+                    FROM foobar f
+                    JOIN hierarchy h ON f.parent_id = h.id
+                )
+                SELECT * FROM hierarchy;
+			`,
+		},
+		expectEmptyPlan: true,
 	},
 }
 

@@ -526,6 +526,14 @@ type View struct {
 	SchemaQualifiedName
 	// ViewDefinition is the select query that defines the view. It is derived from pg_get_viewdef.
 	ViewDefinition string
+	// ViewDefinitionCanonical is ViewDefinition rewritten to the fixed point of
+	// pg_get_viewdef: the definition PostgreSQL returns when the view is created
+	// from ViewDefinition and read back. Two views with the same canonical
+	// definition are the same view, and the diff compares this field rather than
+	// ViewDefinition, because a text that is an output of pg_get_viewdef is not
+	// necessarily its own output: deparsing names an output column the definition
+	// left unnamed, so re-creating a view from that text can change it.
+	ViewDefinitionCanonical string
 	// Options represents key value map of view options, i.e., pg_class.reloptions.
 	Options map[string]string
 
@@ -537,6 +545,9 @@ type MaterializedView struct {
 	SchemaQualifiedName
 	// ViewDefinition is the select query that defines the materialized view. It is derived from pg_get_viewdef.
 	ViewDefinition string
+	// ViewDefinitionCanonical is ViewDefinition rewritten to the fixed point of
+	// pg_get_viewdef. See View.ViewDefinitionCanonical.
+	ViewDefinitionCanonical string
 	// Options represents key value map of materialized view options, i.e., pg_class.reloptions.
 	Options map[string]string
 	// Tablespace is the tablespace where the materialized view is stored. Empty string means default tablespace.
@@ -601,6 +612,7 @@ func GetSchema(ctx context.Context, db queries.DBTX, opts ...GetSchemaOpt) (Sche
 
 	return (&schemaFetcher{
 		q:                      queries.New(db),
+		db:                     db,
 		goroutineRunnerFactory: goroutineRunnerFactory,
 		nameFilter:             nameFilter,
 	}).getSchema(ctx)
@@ -661,6 +673,10 @@ func buildExcludeSchemasFilter(schemas []string) nameFilter {
 type (
 	schemaFetcher struct {
 		q *queries.Queries
+		// db is the connection the fetcher was given. It is used to acquire a
+		// single connection for canonicalizing view definitions, which needs
+		// temporary objects and therefore one session.
+		db queries.DBTX
 		// goroutineRunnerFactory is a factory function that returns a GoroutineRunner. We need to be able to construct
 		// multiple GoroutineRunners to avoid deadlock created by circular dependencies of submitted go routines.
 		goroutineRunnerFactory func() concurrent.GoroutineRunner
@@ -823,6 +839,11 @@ func (s *schemaFetcher) getSchema(ctx context.Context) (Schema, error) {
 	materializedViews, err := materializedViewsFuture.Get(ctx)
 	if err != nil {
 		return Schema{}, fmt.Errorf("getting materialized views: %w", err)
+	}
+
+	views, materializedViews, err = s.canonicalizeViewDefinitions(ctx, views, materializedViews)
+	if err != nil {
+		return Schema{}, err
 	}
 
 	return Schema{
@@ -1560,6 +1581,106 @@ func (s *schemaFetcher) fetchMaterializedViews(ctx context.Context) ([]Materiali
 	)
 
 	return materializedViews, nil
+}
+
+// canonicalizeViewDefinitions fills ViewDefinitionCanonical for every view and
+// materialized view, and leaves ViewDefinition (the text a plan emits) alone.
+//
+// A definition read from pg_get_viewdef is not necessarily its own output:
+// deparsing names an output column that the definition left unnamed, so a view
+// created from that text can deparse to a different text than the view it was
+// created from. A view is compared by its definition, so without a canonical
+// form the differ reports a difference between two databases that hold the same
+// view, and validation rebuilds the current schema only to disagree with itself.
+//
+// The canonical form is obtained by creating the definition as a temporary view
+// and reading the definition back: one round trip through the parser and the
+// deparser is a fixed point (the second round trip returns the same text).
+// Materialized views go through a temporary view for the same reason — a
+// materialized view cannot be created in pg_temp.
+func (s *schemaFetcher) canonicalizeViewDefinitions(ctx context.Context, views []View, materializedViews []MaterializedView) ([]View, []MaterializedView, error) {
+	if len(views) == 0 && len(materializedViews) == 0 {
+		return views, materializedViews, nil
+	}
+
+	conn, release, err := s.pinnedConnection(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer release()
+
+	canonicalizer := &viewDefinitionCanonicalizer{q: conn}
+	for i := range views {
+		if views[i].ViewDefinition == "" {
+			continue
+		}
+		canonical, err := canonicalizer.canonicalize(ctx, views[i].ViewDefinition)
+		if err != nil {
+			return nil, nil, fmt.Errorf("canonicalizing the definition of view %s: %w", views[i].GetFQEscapedName(), err)
+		}
+		views[i].ViewDefinitionCanonical = canonical
+	}
+	for i := range materializedViews {
+		if materializedViews[i].ViewDefinition == "" {
+			continue
+		}
+		canonical, err := canonicalizer.canonicalize(ctx, materializedViews[i].ViewDefinition)
+		if err != nil {
+			return nil, nil, fmt.Errorf("canonicalizing the definition of materialized view %s: %w", materializedViews[i].GetFQEscapedName(), err)
+		}
+		materializedViews[i].ViewDefinitionCanonical = canonical
+	}
+	return views, materializedViews, nil
+}
+
+// pinnedConnection returns a connection that will serve every statement of the
+// caller. Temporary objects live in a session, so a pool cannot be used: two
+// statements of one canonicalization could otherwise land on two connections.
+func (s *schemaFetcher) pinnedConnection(ctx context.Context) (queries.DBTX, func(), error) {
+	if pool, ok := s.db.(interface {
+		Conn(context.Context) (*sql.Conn, error)
+	}); ok {
+		conn, err := pool.Conn(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("acquiring a connection for canonicalizing view definitions: %w", err)
+		}
+		return conn, func() { _ = conn.Close() }, nil
+	}
+	// Anything that is not a pool is a single connection: GetSchema disables
+	// concurrency for those, and its callers pass a *sql.Conn or a driver
+	// connection.
+	return s.db, func() {}, nil
+}
+
+// viewDefinitionCanonicalizer rewrites view definitions through a temporary view.
+type viewDefinitionCanonicalizer struct {
+	q       queries.DBTX
+	created int
+}
+
+// temporaryViewPrefix names the temporary views in pg_temp. They collide with
+// nothing (a stored view cannot live in pg_temp) and disappear with the session.
+const temporaryViewPrefix = "pg_temp.__pg_schema_diff_canonical_"
+
+func (c *viewDefinitionCanonicalizer) canonicalize(ctx context.Context, definition string) (string, error) {
+	c.created++
+	// PostgreSQL accepts a definition that ends in a semicolon, which is what
+	// pg_get_viewdef returns.
+	name := fmt.Sprintf("%s%d", temporaryViewPrefix, c.created)
+
+	if _, err := c.q.ExecContext(ctx, fmt.Sprintf("CREATE TEMP VIEW %s AS %s", name, definition)); err != nil {
+		return "", fmt.Errorf("creating a temporary view from the definition: %w", err)
+	}
+
+	var canonical string
+	if err := c.q.QueryRowContext(ctx, fmt.Sprintf("SELECT pg_catalog.pg_get_viewdef(%s::regclass, true)", EscapeLiteral(name))).Scan(&canonical); err != nil {
+		return "", fmt.Errorf("reading the definition back: %w", err)
+	}
+
+	if _, err := c.q.ExecContext(ctx, "DROP VIEW "+name); err != nil {
+		return "", fmt.Errorf("dropping the temporary view: %w", err)
+	}
+	return canonical, nil
 }
 
 // parseViewJSONTableDependencies takes an slice of JSON values with schema,

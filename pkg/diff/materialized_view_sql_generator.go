@@ -155,8 +155,13 @@ func (mvsg *materializedViewSQLGenerator) Delete(mv schema.MaterializedView) (pa
 }
 
 func (mvsg *materializedViewSQLGenerator) Alter(mvd materializedViewDiff) (partialSQLGraph, error) {
-	// In the initial MVP, we will not support altering.
-	if !cmp.Equal(mvd.old, mvd.new) {
+	// In the initial MVP, we will not support altering. The definition is
+	// compared through its canonical form; see viewSQLGenerator.Alter.
+	oldMasked := mvd.old
+	maskViewDefinition(&oldMasked.ViewDefinition, &oldMasked.ViewDefinitionCanonical)
+	newMasked := mvd.new
+	maskViewDefinition(&newMasked.ViewDefinition, &newMasked.ViewDefinitionCanonical)
+	if !cmp.Equal(oldMasked, newMasked) {
 		return partialSQLGraph{}, ErrNotImplemented
 	}
 	return partialSQLGraph{}, nil

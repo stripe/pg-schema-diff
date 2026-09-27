@@ -609,6 +609,42 @@ var materializedViewAcceptanceTestCases = []acceptanceTestCase{
 			diff.MigrationHazardTypeDeletesData,
 		},
 	},
+	{
+		name: "no-op - materialized view definition with an unnamed union column",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
+
+            CREATE MATERIALIZED VIEW foobar_view AS
+                SELECT x.id, x.kind
+                FROM (
+                    SELECT id, 'credit'::text AS kind FROM foobar
+                    UNION ALL
+                    SELECT id, 'incentive' FROM foobar
+                ) x;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
+
+            CREATE MATERIALIZED VIEW foobar_view AS
+                SELECT x.id, x.kind
+                FROM (
+                    SELECT id, 'credit'::text AS kind FROM foobar
+                    UNION ALL
+                    SELECT id, 'incentive' FROM foobar
+                ) x;
+			`,
+		},
+		// A materialized view cannot be created in pg_temp, so its canonical
+		// definition is taken through a temporary view over the same query.
+		expectEmptyPlan: true,
+	},
 }
 
 func TestMaterializedViewTestCases(t *testing.T) {
