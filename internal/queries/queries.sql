@@ -154,15 +154,37 @@ SELECT
     COALESCE(parent_c.relname, '')::TEXT AS parent_index_name,
     COALESCE(parent_namespace.nspname, '')::TEXT AS parent_index_schema_name,
     (
-        SELECT
-            ARRAY_AGG(
-                att.attname
-                ORDER BY indkey_ord.ord
-            )
-        FROM UNNEST(i.indkey) WITH ORDINALITY AS indkey_ord (attnum, ord)
-        INNER JOIN
-            pg_catalog.pg_attribute AS att
-            ON att.attrelid = table_c.oid AND indkey_ord.attnum = att.attnum
+        (
+            SELECT
+                ARRAY_AGG(
+                    att.attname
+                    ORDER BY indkey_ord.ord
+                )
+            FROM UNNEST(i.indkey) WITH ORDINALITY AS indkey_ord (attnum, ord)
+            INNER JOIN
+                pg_catalog.pg_attribute AS att
+                ON att.attrelid = table_c.oid AND indkey_ord.attnum = att.attnum
+        )::TEXT []
+        -- Columns referenced only by index expressions or the predicate are
+        -- absent from indkey, so they are picked up from pg_depend
+        || (
+            SELECT
+                ARRAY_AGG(
+                    DISTINCT att.attname
+                    ORDER BY att.attname
+                )
+            FROM pg_catalog.pg_depend AS d
+            INNER JOIN
+                pg_catalog.pg_attribute AS att
+                ON d.refobjid = att.attrelid AND d.refobjsubid = att.attnum
+            WHERE
+                d.classid = 'pg_class'::REGCLASS
+                AND d.objid = c.oid
+                AND d.refclassid = 'pg_class'::REGCLASS
+                AND d.refobjid = table_c.oid
+                AND NOT att.attisdropped
+                AND att.attnum != ALL(i.indkey::INT2 [])
+        )::TEXT []
     )::TEXT [] AS column_names,
     COALESCE(con.conislocal, false) AS constraint_is_local
 FROM pg_catalog.pg_class AS c

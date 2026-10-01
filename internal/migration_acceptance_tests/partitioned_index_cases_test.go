@@ -876,6 +876,39 @@ var partitionedIndexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Delete a partial index and a column only its predicate references",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                foo VARCHAR(255),
+                archived_at TIMESTAMPTZ
+            ) PARTITION BY LIST (foo);
+            CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+            CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+            CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+
+            CREATE INDEX some_idx ON foobar(id) WHERE archived_at IS NULL;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT,
+                foo VARCHAR(255)
+            ) PARTITION BY LIST (foo);
+            CREATE TABLE foobar_1 PARTITION OF foobar FOR VALUES IN ('foo_1');
+            CREATE TABLE foobar_2 PARTITION OF foobar FOR VALUES IN ('foo_2');
+            CREATE TABLE foobar_3 PARTITION OF foobar FOR VALUES IN ('foo_3');
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeAcquiresAccessExclusiveLock,
+			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeIndexDropped,
+		},
+	},
+	{
 		name: "Switch primary key",
 		oldSchemaDDL: []string{
 			`

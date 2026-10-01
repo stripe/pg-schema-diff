@@ -408,6 +408,62 @@ var indexAcceptanceTestCases = []acceptanceTestCase{
 		},
 	},
 	{
+		name: "Delete a partial index and a column only its predicate references (index dropped concurrently first)",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255) NOT NULL,
+                archived_at TIMESTAMPTZ
+            );
+            CREATE INDEX some_idx ON foobar(foo) WHERE archived_at IS NULL;
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255) NOT NULL
+            );
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeIndexDropped,
+		},
+		expectedPlanDDL: []string{
+			"DROP INDEX CONCURRENTLY \"public\".\"some_idx\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"archived_at\"",
+		},
+	},
+	{
+		name: "Delete an expression index and the column its expression references (index dropped concurrently first)",
+		oldSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY,
+                foo VARCHAR(255) NOT NULL
+            );
+            CREATE INDEX some_idx ON foobar(lower(foo));
+			`,
+		},
+		newSchemaDDL: []string{
+			`
+            CREATE TABLE foobar(
+                id INT PRIMARY KEY
+            );
+			`,
+		},
+		expectedHazardTypes: []diff.MigrationHazardType{
+			diff.MigrationHazardTypeDeletesData,
+			diff.MigrationHazardTypeIndexDropped,
+		},
+		expectedPlanDDL: []string{
+			"DROP INDEX CONCURRENTLY \"public\".\"some_idx\"",
+			"ALTER TABLE \"public\".\"foobar\" DROP COLUMN \"foo\"",
+		},
+	},
+	{
 		name: "Delete a normal index with quoted names",
 		oldSchemaDDL: []string{
 			`
