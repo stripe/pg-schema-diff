@@ -188,8 +188,19 @@ We leave plan application up to the user. For example, you might want to take ou
 concerned about concurrent migrations on your database. You might also want a second user to approve the plan
 before applying it.
 
+Apply the plan with `search_path` set to `pg_catalog`. Plans reference non-built-in objects by schema-qualified name, and
+pinning `search_path` prevents unqualified names from resolving to objects created on the default `search_path` after
+the plan was generated. Function bodies are kept as written, so also disable `check_function_bodies` (as `pg_dump` does)
+to avoid validating them against the pinned `search_path`.
+
 Example apply:
 ```go
+if _, err := conn.ExecContext(ctx, "SET SESSION search_path = pg_catalog"); err != nil {
+	panic(fmt.Sprintf("setting search_path: %s", err))
+}
+if _, err := conn.ExecContext(ctx, "SET SESSION check_function_bodies = false"); err != nil {
+	panic(fmt.Sprintf("setting check_function_bodies: %s", err))
+}
 for _, stmt := range plan.Statements {
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", stmt.Timeout.Milliseconds())); err != nil {
 		panic(fmt.Sprintf("setting statement timeout: %s", err))

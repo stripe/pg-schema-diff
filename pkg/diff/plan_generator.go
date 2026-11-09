@@ -322,6 +322,14 @@ func executeStatementsIgnoreTimeouts(ctx context.Context, connPool *sql.DB, stat
 	}
 	defer conn.Close()
 
+	// Match how plans are meant to be applied (see README) so validation catches statements that depend on
+	// the session's search_path.
+	if _, err := conn.ExecContext(ctx, "SET SESSION search_path = pg_catalog"); err != nil {
+		return fmt.Errorf("setting search_path: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, "SET SESSION check_function_bodies = false"); err != nil {
+		return fmt.Errorf("setting check_function_bodies: %w", err)
+	}
 	// Set a session-level statement_timeout to bound the execution of the migration plan.
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION statement_timeout = %d", (10*time.Second).Milliseconds())); err != nil {
 		return fmt.Errorf("setting statement timeout: %w", err)

@@ -243,11 +243,30 @@ func applyDDL(db *pgengine.DB, ddl []string) error {
 }
 
 func applyPlan(db *pgengine.DB, plan diff.Plan) error {
-	var ddl []string
-	for _, stmt := range plan.Statements {
-		ddl = append(ddl, stmt.ToSQL())
+	ctx := context.Background()
+	connPool, err := sql.Open("pgx", db.GetDSN())
+	if err != nil {
+		return err
 	}
-	return applyDDL(db, ddl)
+	defer connPool.Close()
+	conn, err := connPool.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, "SET SESSION search_path = pg_catalog"); err != nil {
+		return fmt.Errorf("setting search_path: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, "SET SESSION check_function_bodies = false"); err != nil {
+		return fmt.Errorf("setting check_function_bodies: %w", err)
+	}
+	for _, stmt := range plan.Statements {
+		if _, err := conn.ExecContext(ctx, stmt.ToSQL()); err != nil {
+			return fmt.Errorf("DDL:\n%s: %w", stmt.ToSQL(), err)
+		}
+	}
+	return nil
 }
 
 func getUniqueHazardTypesFromStatements(statements []diff.Statement) []diff.MigrationHazardType {

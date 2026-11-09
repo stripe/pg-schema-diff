@@ -133,6 +133,16 @@ func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig
 	}
 	defer conn.Close()
 
+	// Plans reference non-built-in objects by qualified name, so pinning search_path stops unqualified names from
+	// resolving to objects created on the default search_path after the plan was generated. Function bodies are
+	// stored verbatim rather than deparsed, so, like pg_dump, skip validating them against the pinned search_path.
+	if _, err := conn.ExecContext(ctx, "SET SESSION search_path = pg_catalog"); err != nil {
+		return fmt.Errorf("setting search_path: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, "SET SESSION check_function_bodies = false"); err != nil {
+		return fmt.Errorf("setting check_function_bodies: %w", err)
+	}
+
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.
 	//

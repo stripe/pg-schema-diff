@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -576,18 +577,31 @@ type getSchemaOptions struct {
 }
 
 // GetSchema fetches the database schema. It is a non-atomic operation.
-func GetSchema(ctx context.Context, db queries.DBTX, opts ...GetSchemaOpt) (Schema, error) {
-	// To allow backwards compatibility with connections, we will not use concurrency if passed in a db that is not a
-	// *sql.DB. This is because not all implementations are thread safe, e.g., pgx.Connection.
-	//
-	// In the future, we should maybe create options where users can pass in a DB pool (WithPool(db) or WithConnection(db))
-	// and we can set concurrency to 1 if the passed in db is not a *sql.DB.
-	goroutineRunnerFactory := concurrent.NewSynchronousGoroutineRunner
-	if _, ok := db.(*sql.DB); ok {
-		goroutineRunnerFactory = func() concurrent.GoroutineRunner {
-			return concurrent.NewGoroutineLimiter(50)
+func GetSchema(ctx context.Context, db queries.DBTX, opts ...GetSchemaOpt) (_ Schema, retErr error) {
+	// Postgres deparse functions (pg_get_indexdef, pg_get_expr, ...) omit the schema of any object visible on the
+	// search_path. Fetching with search_path pinned to pg_catalog makes every non-built-in reference schema-qualified,
+	// so the extracted DDL cannot later resolve to an object planted on another session's search_path. Because the
+	// setting is per-session, all queries must run on a single connection.
+	if pool, ok := db.(*sql.DB); ok {
+		conn, err := pool.Conn(ctx)
+		if err != nil {
+			return Schema{}, fmt.Errorf("acquiring connection: %w", err)
 		}
+		defer conn.Close()
+		db = conn
 	}
+	var originalSearchPath string
+	if err := db.QueryRowContext(ctx, "SELECT pg_catalog.current_setting('search_path')").Scan(&originalSearchPath); err != nil {
+		return Schema{}, fmt.Errorf("getting search_path: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, "SET search_path = pg_catalog"); err != nil {
+		return Schema{}, fmt.Errorf("setting search_path: %w", err)
+	}
+	defer func() {
+		if _, err := db.ExecContext(context.WithoutCancel(ctx), "SELECT pg_catalog.set_config('search_path', $1, false)", originalSearchPath); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("restoring search_path: %w", err))
+		}
+	}()
 
 	options := getSchemaOptions{}
 	for _, opt := range opts {
@@ -601,7 +615,7 @@ func GetSchema(ctx context.Context, db queries.DBTX, opts ...GetSchemaOpt) (Sche
 
 	return (&schemaFetcher{
 		q:                      queries.New(db),
-		goroutineRunnerFactory: goroutineRunnerFactory,
+		goroutineRunnerFactory: concurrent.NewSynchronousGoroutineRunner,
 		nameFilter:             nameFilter,
 	}).getSchema(ctx)
 }
