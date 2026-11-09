@@ -239,7 +239,7 @@ var (
 			GRANT SELECT ON schema_2.foo TO some_role_1;
 			GRANT INSERT ON schema_2.foo TO some_role_2 WITH GRANT OPTION;
 		`},
-			expectedHash: "4c2174e2cac3956b",
+			expectedHash: "4254d27208e06952",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -288,7 +288,7 @@ var (
 							{Name: "foo_created_at_check", Expression: "(created_at > (CURRENT_TIMESTAMP - '1 mon'::interval))", IsValid: true, KeyColumns: []string{"created_at"}},
 							{
 								Name:          "foo_id_check",
-								Expression:    "(function_with_dependencies(id, id) > 0)",
+								Expression:    "(public.function_with_dependencies(id, id) > 0)",
 								IsValid:       true,
 								IsInheritable: true,
 								DependsOnFunctions: []SchemaQualifiedName{
@@ -591,7 +591,7 @@ var (
 			ALTER TABLE foo_fk_1 ADD CONSTRAINT foo_fk_1_fk FOREIGN KEY (author, content) REFERENCES foo_1 (author, content)
 				NOT VALID;
 		`},
-			expectedHash: "32c5a9c52dcfb15e",
+			expectedHash: "59a13950db96ae25",
 			expectedSchema: Schema{
 				NamedSchemas: []NamedSchema{
 					{Name: "public"},
@@ -600,7 +600,7 @@ var (
 					{
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('public.foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
@@ -621,7 +621,7 @@ var (
 						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('public.foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
@@ -636,7 +636,7 @@ var (
 						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_2\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('public.foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
@@ -651,7 +651,7 @@ var (
 						ParentTable:         &SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
 						SchemaQualifiedName: SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_3\""},
 						Columns: []Column{
-							{Name: "id", Type: "integer", Size: 4, Default: "nextval('foo_id_seq'::regclass)"},
+							{Name: "id", Type: "integer", Size: 4, Default: "nextval('public.foo_id_seq'::regclass)"},
 							{Name: "author", Type: "text", Size: -1, Collation: cCollation},
 							{Name: "content", Type: "text", Default: "''::text", IsNullable: true, Size: -1, Collation: defaultCollation},
 							{Name: "genre", Type: "character varying(256)", Size: -1, Collation: defaultCollation},
@@ -849,14 +849,14 @@ var (
 						EscapedName:   "\"foo_fk_fk\"",
 						OwningTable:   SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_fk\""},
 						ForeignTable:  SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo\""},
-						ConstraintDef: "FOREIGN KEY (author, id) REFERENCES foo(author, id) ON UPDATE CASCADE ON DELETE CASCADE",
+						ConstraintDef: "FOREIGN KEY (author, id) REFERENCES public.foo(author, id) ON UPDATE CASCADE ON DELETE CASCADE",
 						IsValid:       true,
 					},
 					{
 						EscapedName:   "\"foo_fk_1_fk\"",
 						OwningTable:   SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_fk_1\""},
 						ForeignTable:  SchemaQualifiedName{SchemaName: "public", EscapedName: "\"foo_1\""},
-						ConstraintDef: "FOREIGN KEY (author, content) REFERENCES foo_1(author, content) NOT VALID",
+						ConstraintDef: "FOREIGN KEY (author, content) REFERENCES public.foo_1(author, content) NOT VALID",
 						IsValid:       false,
 					},
 				},
@@ -888,13 +888,13 @@ var (
 						EscapedName:       "\"some_trigger\"",
 						OwningTable:       SchemaQualifiedName{EscapedName: "\"foo\"", SchemaName: "public"},
 						Function:          SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
-						GetTriggerDefStmt: "CREATE TRIGGER some_trigger BEFORE UPDATE ON public.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
+						GetTriggerDefStmt: "CREATE TRIGGER some_trigger BEFORE UPDATE ON public.foo FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION public.increment_version()",
 					},
 					{
 						EscapedName:       "\"some_partition_trigger\"",
 						OwningTable:       SchemaQualifiedName{EscapedName: "\"foo_1\"", SchemaName: "public"},
 						Function:          SchemaQualifiedName{EscapedName: "\"increment_version\"()", SchemaName: "public"},
-						GetTriggerDefStmt: "CREATE TRIGGER some_partition_trigger BEFORE UPDATE ON public.foo_1 FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION increment_version()",
+						GetTriggerDefStmt: "CREATE TRIGGER some_partition_trigger BEFORE UPDATE ON public.foo_1 FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION public.increment_version()",
 					},
 				},
 			},
@@ -986,7 +986,7 @@ var (
 							{Name: "integer", Type: "integer", Default: "0", Size: 4},
 							{Name: "big_integer", Type: "bigint", Default: "0", Size: 8},
 							{Name: "decimal", Type: "numeric(65,10)", Default: "0.0", Size: -1},
-							{Name: "serial", Type: "integer", Collation: SchemaQualifiedName{}, Default: "nextval('foo_serial_seq'::regclass)", IsNullable: false, Size: 4},
+							{Name: "serial", Type: "integer", Collation: SchemaQualifiedName{}, Default: "nextval('public.foo_serial_seq'::regclass)", IsNullable: false, Size: 4},
 							{Name: "identity_always", Type: "bigint", Size: 8,
 								Identity: &ColumnIdentity{
 									Type:       ColumnIdentityTypeAlways,
