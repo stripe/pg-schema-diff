@@ -215,3 +215,47 @@ func (suite *onInstanceTempDbFactorySuite) TestDropTempDB_CannotDropNonTempDb() 
 func TestOnInstanceFactorySuite(t *testing.T) {
 	suite.Run(t, new(onInstanceTempDbFactorySuite))
 }
+
+func (suite *onInstanceTempDbFactorySuite) TestCreate_OtherRolesCannotConnect() {
+	ctx := context.Background()
+	const otherRole = "tempdb_other_role"
+
+	postgresDb, err := suite.getConnPoolForDb("postgres")
+	suite.Require().NoError(err)
+	defer postgresDb.Close()
+	_, err = postgresDb.ExecContext(ctx, fmt.Sprintf("CREATE ROLE %s LOGIN", otherRole))
+	suite.Require().NoError(err)
+	defer func() {
+		_, err := postgresDb.ExecContext(ctx, fmt.Sprintf("DROP ROLE %s", otherRole))
+		suite.Require().NoError(err)
+	}()
+
+	factory := suite.mustBuildFactory()
+	defer func(factory Factory) {
+		suite.Require().NoError(factory.Close())
+	}(factory)
+	tempDb, err := factory.Create(ctx)
+	suite.Require().NoError(err)
+	defer func() {
+		suite.Require().NoError(tempDb.Close(ctx))
+	}()
+
+	// Plan validation replays function definitions into the temporary database, so they are owned by the
+	// operator's role and SECURITY DEFINER functions execute as it.
+	_, err = tempDb.ConnPool.ExecContext(ctx,
+		"CREATE FUNCTION public.whoami() RETURNS text LANGUAGE sql SECURITY DEFINER AS 'SELECT current_user'")
+	suite.Require().NoError(err)
+	var tempDbName string
+	suite.Require().NoError(tempDb.ConnPool.QueryRowContext(ctx, "SELECT current_database()").Scan(&tempDbName))
+
+	otherRoleDb, err := sql.Open("pgx", suite.engine.GetPostgresDatabaseConnOpts().
+		With("dbname", tempDbName).
+		With(pgengine.ConnectionOptionUser, otherRole).
+		ToDSN())
+	suite.Require().NoError(err)
+	defer otherRoleDb.Close()
+	var currentUser string
+	err = otherRoleDb.QueryRowContext(ctx, "SELECT public.whoami()").Scan(&currentUser)
+	suite.ErrorContains(err, "permission denied for database",
+		"%s connected to the temporary database and ran an operator-owned function as %q", otherRole, currentUser)
+}
