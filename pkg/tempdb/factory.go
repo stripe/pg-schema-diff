@@ -195,7 +195,11 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 
 	tempDbName := o.options.dbPrefix + strings.ReplaceAll(dbUUID.String(), "-", "_")
 	// Create the temporary database using template0, the default Postgres template with no user-defined objects.
-	if _, err = rootConn.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE template0;", tempDbName)); err != nil {
+	//
+	// Objects replayed into the temporary database are owned by this role, so a SECURITY DEFINER function executes
+	// as it. The database must not accept connections until PUBLIC's default CONNECT privilege is revoked, otherwise
+	// another role on the instance could connect and invoke those functions.
+	if _, err = rootConn.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE template0 ALLOW_CONNECTIONS false;", tempDbName)); err != nil {
 		return nil, fmt.Errorf("creating temporary database: %w", err)
 	}
 	defer util.DoOnErrOrPanic(&_retErr, func() {
@@ -204,6 +208,12 @@ func (o *onInstanceFactory) Create(ctx context.Context) (_ *Database, _retErr er
 			o.options.logger.Errorf("Failed to drop temporary database %s because %q. This drop was automatically triggered by %q", tempDbName, err.Error(), _retErr.Error())
 		}
 	})
+	if _, err := rootConn.ExecContext(ctx, fmt.Sprintf("REVOKE CONNECT, TEMPORARY ON DATABASE %s FROM PUBLIC;", tempDbName)); err != nil {
+		return nil, fmt.Errorf("revoking public access to temporary database: %w", err)
+	}
+	if _, err := rootConn.ExecContext(ctx, fmt.Sprintf("ALTER DATABASE %s ALLOW_CONNECTIONS true;", tempDbName)); err != nil {
+		return nil, fmt.Errorf("allowing connections to temporary database: %w", err)
+	}
 
 	tempDbConnPool, err := o.createConnPoolForDb(ctx, tempDbName)
 	if err != nil {
