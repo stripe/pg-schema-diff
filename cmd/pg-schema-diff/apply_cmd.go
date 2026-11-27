@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/log"
+	"github.com/stripe/pg-schema-diff/pkg/schema"
 )
 
 func buildApplyCmd() *cobra.Command {
@@ -80,7 +81,7 @@ func buildApplyCmd() *cobra.Command {
 			}
 		}
 
-		if err := runPlan(cmd.Context(), cmd, connConfig, plan); err != nil {
+		if err := runPlan(cmd.Context(), cmd, connConfig, plan, planOptions.getSchemaOpts); err != nil {
 			return err
 		}
 		cmdPrintln(cmd, "Schema applied successfully")
@@ -120,7 +121,13 @@ func failIfHazardsNotAllowed(plan diff.Plan, allowedHazardsTypesStrs []string) e
 	return nil
 }
 
-func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig, plan diff.Plan) error {
+func runPlan(
+	ctx context.Context,
+	cmd *cobra.Command,
+	connConfig *pgx.ConnConfig,
+	plan diff.Plan,
+	getSchemaOpts []schema.GetSchemaOpt,
+) error {
 	connPool, err := openDbWithPgxConfig(connConfig)
 	if err != nil {
 		return err
@@ -132,6 +139,17 @@ func runPlan(ctx context.Context, cmd *cobra.Command, connConfig *pgx.ConnConfig
 		return err
 	}
 	defer conn.Close()
+
+	// The plan was reviewed against the schema at generation time. Objects created since then, e.g., a function
+	// overload that is a better match for an unqualified call in the plan, could change what the statements do.
+	currentSchemaHash, err := schema.GetSchemaHash(ctx, conn, getSchemaOpts...)
+	if err != nil {
+		return fmt.Errorf("getting current schema hash: %w", err)
+	}
+	if currentSchemaHash != plan.CurrentSchemaHash {
+		return fmt.Errorf("the schema has changed since the plan was generated (expected hash %q, got %q); regenerate the plan",
+			plan.CurrentSchemaHash, currentSchemaHash)
+	}
 
 	// Due to the way *sql.Db works, when a statement_timeout is set for the session, it will NOT reset
 	// by default when it's returned to the pool.

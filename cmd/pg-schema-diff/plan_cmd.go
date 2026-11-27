@@ -18,6 +18,7 @@ import (
 	"github.com/stripe/pg-schema-diff/internal/util"
 	"github.com/stripe/pg-schema-diff/pkg/diff"
 	"github.com/stripe/pg-schema-diff/pkg/log"
+	"github.com/stripe/pg-schema-diff/pkg/schema"
 	"github.com/stripe/pg-schema-diff/pkg/tempdb"
 )
 
@@ -142,7 +143,10 @@ type (
 
 	// planOptions stores options that are plumbed into plan generation process and dictate post-plan processing.
 	planOptions struct {
-		opts                      []diff.PlanOpt
+		opts []diff.PlanOpt
+		// getSchemaOpts are the schema filters the plan was generated with. They must be reused when checking the
+		// plan's CurrentSchemaHash against the database.
+		getSchemaOpts             []schema.GetSchemaOpt
 		statementTimeoutModifiers []timeoutModifier
 		lockTimeoutModifiers      []timeoutModifier
 		insertStatements          []insertStatement
@@ -315,9 +319,12 @@ func dsnSchemaSource(connConfig *pgx.ConnConfig) schemaSourceFactory {
 }
 
 func parsePlanOptions(p planOptionsFlags) (planOptions, error) {
+	getSchemaOpts := []schema.GetSchemaOpt{
+		schema.WithIncludeSchemas(p.includeSchemas...),
+		schema.WithExcludeSchemas(p.excludeSchemas...),
+	}
 	opts := []diff.PlanOpt{
-		diff.WithIncludeSchemas(p.includeSchemas...),
-		diff.WithExcludeSchemas(p.excludeSchemas...),
+		diff.WithGetSchemaOpts(getSchemaOpts...),
 	}
 
 	if p.dataPackNewTables {
@@ -359,6 +366,7 @@ func parsePlanOptions(p planOptionsFlags) (planOptions, error) {
 
 	return planOptions{
 		opts:                      opts,
+		getSchemaOpts:             getSchemaOpts,
 		statementTimeoutModifiers: statementTimeoutModifiers,
 		lockTimeoutModifiers:      lockTimeoutModifiers,
 		insertStatements:          insertStatements,
