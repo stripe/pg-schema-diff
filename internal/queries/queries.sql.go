@@ -17,9 +17,9 @@ SELECT
     pg_constraint.oid,
     pg_constraint.conname::TEXT AS constraint_name,
     (
-        SELECT ARRAY_AGG(a.attname)
-        FROM UNNEST(pg_constraint.conkey) AS conkey
-        INNER JOIN pg_catalog.pg_attribute AS a ON conkey = a.attnum
+        SELECT pg_catalog.array_agg(a.attname)
+        FROM pg_catalog.unnest(pg_constraint.conkey) AS conkey (attnum)
+        INNER JOIN pg_catalog.pg_attribute AS a ON conkey.attnum = a.attnum
         WHERE
             a.attrelid = pg_constraint.conrelid
             AND a.attnum = ANY(pg_constraint.conkey)
@@ -283,7 +283,7 @@ SELECT
     pg_type.typname::TEXT AS enum_name,
     type_namespace.nspname::TEXT AS enum_schema_name,
     (SELECT
-        ARRAY_AGG(
+        pg_catalog.array_agg(
             pg_enum.enumlabel
             ORDER BY pg_enum.enumsortorder
         )
@@ -479,11 +479,13 @@ SELECT
     COALESCE(parent_namespace.nspname, '')::TEXT AS parent_index_schema_name,
     (
         SELECT
-            ARRAY_AGG(
+            pg_catalog.array_agg(
                 att.attname
                 ORDER BY indkey_ord.ord
             )
-        FROM UNNEST(i.indkey) WITH ORDINALITY AS indkey_ord (attnum, ord)
+        FROM
+            pg_catalog.unnest(i.indkey)
+            WITH ORDINALITY AS indkey_ord (attnum, ord)
         INNER JOIN
             pg_catalog.pg_attribute AS att
             ON att.attrelid = table_c.oid AND indkey_ord.attnum = att.attnum
@@ -588,12 +590,12 @@ SELECT
     c.reloptions::TEXT [] AS rel_options,
     COALESCE(ts.spcname, '')::TEXT AS tablespace_name,
     (SELECT
-        ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
+        pg_catalog.array_agg(DISTINCT pg_catalog.jsonb_build_object(
             'schema', dep_ns.nspname,
             'name', dep_c.relname,
             'columns', (
                 SELECT
-                    ARRAY_AGG(
+                    pg_catalog.array_agg(
                         a.attname::TEXT
                         ORDER BY a.attnum
                     )
@@ -635,7 +637,7 @@ SELECT
     -- Instead, they must be unmarshalled as string arrays.
     -- https://github.com/lib/pq/pull/466
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
-    PG_GET_VIEWDEF(c.oid, true) AS view_definition
+    pg_catalog.pg_get_viewdef(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
 LEFT JOIN pg_catalog.pg_tablespace AS ts ON c.reltablespace = ts.oid
@@ -713,7 +715,7 @@ SELECT
     table_namespace.nspname::TEXT AS owning_table_schema_name,
     pol.polpermissive AS is_permissive,
     (
-        SELECT ARRAY_AGG(roles.rolname)
+        SELECT pg_catalog.array_agg(roles.rolname)
         FROM roles
         WHERE roles.oid = ANY(pol.polroles)
     )::TEXT [] AS applies_to,
@@ -725,7 +727,7 @@ SELECT
         pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), ''
     )::TEXT AS using_expression,
     (
-        SELECT ARRAY_AGG(a.attname)
+        SELECT pg_catalog.array_agg(a.attname)
         FROM pg_catalog.pg_attribute AS a
         INNER JOIN pg_catalog.pg_depend AS d ON a.attnum = d.refobjsubid
         WHERE
@@ -917,7 +919,7 @@ SELECT
     pg_seq.seqmin AS min_value,
     pg_seq.seqcache AS cache_size,
     pg_seq.seqcycle AS is_cycle,
-    FORMAT_TYPE(pg_seq.seqtypid, null) AS data_type
+    pg_catalog.format_type(pg_seq.seqtypid, null) AS data_type
 FROM pg_catalog.pg_sequence AS pg_seq
 INNER JOIN pg_catalog.pg_class AS seq_c ON pg_seq.seqrelid = seq_c.oid
 INNER JOIN pg_catalog.pg_namespace AS seq_ns ON seq_c.relnamespace = seq_ns.oid
@@ -1011,9 +1013,9 @@ WITH parsed_acl AS (
         c.relname AS table_name,
         n.nspname AS table_schema_name,
         c.relowner AS owner_oid,
-        (ACLEXPLODE(c.relacl)).grantee AS grantee_oid,
-        (ACLEXPLODE(c.relacl)).privilege_type AS privilege_type,
-        (ACLEXPLODE(c.relacl)).is_grantable AS is_grantable
+        (pg_catalog.aclexplode(c.relacl)).grantee AS grantee_oid,
+        (pg_catalog.aclexplode(c.relacl)).privilege_type AS privilege_type,
+        (pg_catalog.aclexplode(c.relacl)).is_grantable AS is_grantable
     FROM pg_catalog.pg_class AS c
     INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
     WHERE
@@ -1257,12 +1259,12 @@ SELECT
     c.relname::TEXT AS view_name,
     c.reloptions::TEXT [] AS rel_options,
     (SELECT
-        ARRAY_AGG(DISTINCT JSONB_BUILD_OBJECT(
+        pg_catalog.array_agg(DISTINCT pg_catalog.jsonb_build_object(
             'schema', dep_ns.nspname,
             'name', dep_c.relname,
             'columns', (
                 SELECT
-                    ARRAY_AGG(
+                    pg_catalog.array_agg(
                         a.attname::TEXT
                         ORDER BY a.attnum
                     )
@@ -1303,7 +1305,7 @@ SELECT
     -- Instead, they must be unmarshalled as string arrays.
     -- https://github.com/lib/pq/pull/466
     WHERE d.refobjid = c.oid)::TEXT [] AS table_dependencies,
-    PG_GET_VIEWDEF(c.oid, true) AS view_definition
+    pg_catalog.pg_get_viewdef(c.oid, true) AS view_definition
 FROM pg_catalog.pg_class AS c
 INNER JOIN pg_catalog.pg_namespace AS n ON c.relnamespace = n.oid
 WHERE

@@ -1443,3 +1443,74 @@ func TestTriggerDefStmtToCreateOrReplace(t *testing.T) {
 		})
 	}
 }
+
+func TestGetSchemaIgnoresCatalogFunctionOverloads(t *testing.T) {
+	engine, err := pgengine.StartEngine()
+	require.NoError(t, err)
+	defer engine.Close()
+
+	db, err := engine.CreateDatabase()
+	require.NoError(t, err)
+	defer db.DropDB()
+
+	connPool, err := sql.Open("pgx", db.GetDSN())
+	require.NoError(t, err)
+	defer connPool.Close()
+
+	// Each overload is a better match than its polymorphic pg_catalog counterpart for an argument introspection
+	// passes, so an unqualified call would resolve to it.
+	_, err = connPool.Exec(`
+		CREATE TABLE hijack_log (fn text);
+		CREATE TABLE t (id int CONSTRAINT t_id_check CHECK (id > 0));
+		CREATE INDEX t_id_idx ON t (id);
+		CREATE SEQUENCE s AS bigint;
+		CREATE TYPE e AS ENUM ('a');
+
+		CREATE FUNCTION public.unnest(smallint[]) RETURNS SETOF smallint LANGUAGE plpgsql AS $$
+		BEGIN
+			INSERT INTO public.hijack_log VALUES ('unnest(smallint[])');
+			RETURN QUERY SELECT pg_catalog.unnest($1);
+		END $$;
+		CREATE FUNCTION public.unnest(int2vector) RETURNS SETOF smallint LANGUAGE plpgsql AS $$
+		BEGIN
+			INSERT INTO public.hijack_log VALUES ('unnest(int2vector)');
+			RETURN QUERY SELECT pg_catalog.unnest($1::smallint[]);
+		END $$;
+		CREATE FUNCTION public.format_type(oid, text) RETURNS text LANGUAGE plpgsql AS $$
+		BEGIN
+			INSERT INTO public.hijack_log VALUES ('format_type(oid, text)');
+			RETURN 'bigint; CREATE TABLE pwned()';
+		END $$;
+		CREATE FUNCTION public.hijack_array_agg_sfunc(name[], name) RETURNS name[] LANGUAGE plpgsql AS $$
+		BEGIN
+			INSERT INTO public.hijack_log VALUES ('array_agg(name)');
+			RETURN pg_catalog.array_append($1, $2);
+		END $$;
+		CREATE AGGREGATE public.array_agg(name) (SFUNC = public.hijack_array_agg_sfunc, STYPE = name[]);
+		CREATE FUNCTION public.hijack_array_agg_sfunc(text[], text) RETURNS text[] LANGUAGE plpgsql AS $$
+		BEGIN
+			INSERT INTO public.hijack_log VALUES ('array_agg(text)');
+			RETURN pg_catalog.array_append($1, $2);
+		END $$;
+		CREATE AGGREGATE public.array_agg(text) (SFUNC = public.hijack_array_agg_sfunc, STYPE = text[]);
+	`)
+	require.NoError(t, err)
+
+	schema, err := GetSchema(context.Background(), connPool)
+	require.NoError(t, err)
+
+	rows, err := connPool.Query("SELECT DISTINCT fn FROM hijack_log ORDER BY fn")
+	require.NoError(t, err)
+	defer rows.Close()
+	var calledOverloads []string
+	for rows.Next() {
+		var fn string
+		require.NoError(t, rows.Scan(&fn))
+		calledOverloads = append(calledOverloads, fn)
+	}
+	require.NoError(t, rows.Err())
+	assert.Empty(t, calledOverloads, "introspection called planted overloads")
+
+	require.Len(t, schema.Sequences, 1)
+	assert.Equal(t, "bigint", schema.Sequences[0].Type)
+}
